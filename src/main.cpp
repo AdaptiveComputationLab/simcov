@@ -40,8 +40,15 @@ int main(int argc, char **argv) {
   MemoryTrackerThread memory_tracker;
   memory_tracker.start();
   SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
+
+  DHTGraph dht_graph();
+  dht_graph.construct(options->num_vertices, options->avg_degree);
+
+  Agents agents();
+  agents.generate_new(options->num_agents);
+
+  run_sim(dht_graph, agents, options->iterations);
   
-        
   memory_tracker.stop();
   chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(),

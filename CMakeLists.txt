@@ -43,8 +43,8 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-if(NOT APPLE)
-    add_definitions(-D_XOPEN_SOURCE=700)
+if (NOT APPLE)
+  add_definitions(-D_XOPEN_SOURCE=700)
 endif()
 
 include(CMakeDefinitions.txt)
