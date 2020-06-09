@@ -18,8 +18,9 @@ using namespace std;
 #include "upcxx_utils.hpp"
 #include "options.hpp"
 #include "utils.hpp"
+#include "tissue.hpp"
 
-using namespace std;
+
 using namespace upcxx;
 using namespace upcxx_utils;
 
@@ -41,18 +42,19 @@ int main(int argc, char **argv) {
   memory_tracker.start();
   SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
 
-  DHTGraph dht_graph();
-  dht_graph.construct(options->num_vertices, options->avg_degree);
+  Tissue tissue;
+  tissue.construct(options->x_size, options->y_size, options->z_size);
+  tissue.infect(options->num_infections);
+  
+//  TCells t_cells();
+//  t_cells.generate_new(options->num_t_cells);
 
-  Agents agents();
-  agents.generate_new(options->num_agents);
-
-  run_sim(dht_graph, agents, options->iterations);
+//  run_sim(tissue, t_cells, options->iterations);
   
   memory_tracker.stop();
   chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(),
-	   " for SimCov version ", SIMCOV_VERSION, "\n");
+       " for SimCov version ", SIMCOV_VERSION, "\n");
   barrier();
   upcxx::finalize();
   return 0;

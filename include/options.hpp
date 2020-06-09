@@ -91,9 +91,10 @@ class Options {
 
 public:
 
-  int64_t num_vertices = 1000;
-  int avg_degree = 3;
-  int num_agents = 100;
+  int64_t x_size = 100, y_size = 100, z_size = 100;
+  int num_iters = 10;
+  int num_t_cells = 100;
+  int num_infections = 1;
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
     to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + get_current_time(true);
   bool show_progress = false;
@@ -104,15 +105,16 @@ public:
     string full_version_str = "SimCov version " + string(SIMCOV_VERSION) + "-" + string(SIMCOV_BRANCH) + " built on " +
 	  string(SIMCOV_BUILD_DATE);
     CLI::App app(full_version_str);
-    app.add_option("-n, --num_vertices", num_vertices,
-                   "Number of vertices")
-                   ->capture_default_str() ->check(CLI::Range(1, 1000000000));
-    app.add_option("-m, --num_agents", num_agents,
-                   "Number of agents")
-                   ->capture_default_str() ->check(CLI::Range(1, 1000000000));
-    app.add_option("-i, --iterations", num_iters,
-                   "Number of iterations")
-                   ->capture_default_str() ->check(CLI::Range(1, 1000000));
+    app.add_option("-x,--xdim", x_size, "X dimension")
+	  ->capture_default_str();
+    app.add_option("-y,--ydim", y_size, "Y dimension")
+	  ->capture_default_str();
+    app.add_option("-z,--zdim", z_size, "Z dimension")
+	  ->capture_default_str();
+    app.add_option("-i,--iterations", num_iters, "Number of iterations")
+	  ->capture_default_str() ->check(CLI::Range(1, 1000000));
+    app.add_option("-f,--infections", num_iters, "Number of starting infections")
+	  ->capture_default_str() ->check(CLI::Range(1, 1000));
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory")
                                           ->capture_default_str();
     app.add_flag("--progress", show_progress,
