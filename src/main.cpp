@@ -45,10 +45,7 @@ int main(int argc, char **argv) {
   Tissue tissue;
   tissue.construct(options->x_size, options->y_size, options->z_size);
   tissue.infect(options->num_infections);
-  SLOG("Now there are ", tissue.get_num_infected(), " infected cells\n");
-  
-//  TCells t_cells();
-//  t_cells.generate_new(options->num_t_cells);
+  tissue.generate_tcells(options->num_tcells);
 
 //  run_sim(tissue, t_cells, options->iterations);
   

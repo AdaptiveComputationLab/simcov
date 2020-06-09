@@ -17,22 +17,19 @@
 #include "utils.hpp"
 
 
-//#define SANITY_CHECK_INDEXES
-
-
 using upcxx::rank_me;
 using upcxx::rank_n;
 
 
 struct TCell {
   int64_t id;
-  int64_t x, y, z;
+  //int64_t x, y, z;
 };
 
 struct EpiCell {
   int64_t id;
   int64_t x, y, z;
-  vector<TCell> t_cells;
+  vector<TCell> tcells;
   double cytokines;
   double virus;
 
@@ -51,7 +48,11 @@ class Tissue {
   using epi_cells_t = upcxx::dist_object<vector<EpiCell>>;
   epi_cells_t epi_cells;
   int64_t num_infected = 0;
+  int64_t num_tcells = 0;
 
+  // TODO: maintain a list of active cells (i.e. those that need to be updated, e.g because of cytokines, viruses, T-cells).
+  // This will reduce computation by avoiding having to iterate through the whole space.
+  
   int64_t map_3d_to_1d(int64_t x, int64_t y, int64_t z) {
     return x + y * Tissue::x_dim + z * Tissue::x_dim * Tissue::y_dim;
   }
@@ -74,33 +75,37 @@ class Tissue {
     return (!x ? y : gcd(y % x, x));
   }
 
-#ifdef SANITY_CHECK_INDEXES
-  void sanity_check_cell(int64_t id, int64_t x, int64_t y, int64_t z) {
-    upcxx::rpc(get_rank_for_cell(x, y, z),
-               [](epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z) {
-                 // find the entry in our local epi_cells array and compare id, x, y and z
-                 int64_t block_i = id / Tissue::block_size / rank_n();
-                 int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
-                 EpiCell *epi_cell = &(*epi_cells)[i];
-                 if (epi_cell->id != id) WARN("ID not equal ", id, " != ", epi_cell->id, "\n");
-                 if (epi_cell->x != x) WARN("X not equal ", x, " != ", epi_cell->x, "\n");
-                 if (epi_cell->y != y) WARN("Y not equal ", y, " != ", epi_cell->y, "\n");
-                 if (epi_cell->z != z) WARN("Z not equal ", z, " != ", epi_cell->z, "\n");
-               }, epi_cells, id, x, y, z).wait();
-  }
-#endif
-  
+  static EpiCell *get_local_cell(epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z) {
+    int64_t block_i = id / Tissue::block_size / rank_n();
+    int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
+    assert(i < epi_cells->size());
+    EpiCell *epi_cell = &(*epi_cells)[i];
+    assert(epi_cell->id == id);
+    assert(epi_cell->x == x);
+    assert(epi_cell->y == y);
+    assert(epi_cell->z == z);
+    return epi_cell;
+  }    
+    
   void set_infection(int64_t x, int64_t y, int64_t z, double concentration) {
     int64_t id = map_3d_to_1d(x, y, z);
     num_infected++;
     upcxx::rpc(get_rank_for_cell(x, y, z),
                [](epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z, double concentration) {
-                 // find the entry in our local epi_cells array and compare id, x, y and z
-                 int64_t block_i = id / Tissue::block_size / rank_n();
-                 int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
-                 EpiCell *epi_cell = &(*epi_cells)[i];
+                 auto epi_cell = Tissue::get_local_cell(epi_cells, id, x, y, z);
                  epi_cell->virus = concentration;
                }, epi_cells, id, x, y, z, concentration).wait();
+  }
+
+  void add_tcell(int64_t x, int64_t y, int64_t z, int64_t tcell_id) {
+    // FIXME: this should be an aggregating store
+    int64_t id = map_3d_to_1d(x, y, z);
+    num_tcells++;
+    upcxx::rpc(get_rank_for_cell(x, y, z),
+               [](epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z, int64_t tcell_id) {
+                 auto epi_cell = Tissue::get_local_cell(epi_cells, id, x, y, z);
+                 epi_cell->tcells.push_back({.id = tcell_id});
+               }, epi_cells, id, x, y, z, tcell_id).wait();
   }
   
  public:
@@ -108,6 +113,10 @@ class Tissue {
 
   ~Tissue() {}
 
+  int64_t get_num_cells() {
+    return Tissue::x_dim * Tissue::y_dim * Tissue::z_dim;
+  }
+  
   void construct(int64_t x_dim, int64_t y_dim, int64_t z_dim) {
     BarrierTimer timer(__FILEFUNC__, false, true);
     Tissue::x_dim = x_dim;
@@ -141,24 +150,12 @@ class Tissue {
       if (start_id >= num_cells) break;
       for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
         auto [x, y, z] = map_1d_to_3d(id);
-        epi_cells->push_back({.id = id, .x = x, .y = y, .z = z, .t_cells = {}, .cytokines = 0, .virus = 0});
+        epi_cells->push_back({.id = id, .x = x, .y = y, .z = z, .tcells = {}, .cytokines = 0, .virus = 0});
       }
     }
 #ifdef DEBUG
     for (auto &epi_cell : (*epi_cells)) {
-      DBG("cell ", rank_me(), " ", epi_cell.to_string(), "\n");
-    }
-#endif
-#ifdef SANITY_CHECK_INDEXES
-    if (!rank_me()) {
-      for (int xi = 0; xi < Tissue::x_dim; xi++) {
-        for (int yi = 0; yi < Tissue::y_dim; yi++) {
-          for (int zi = 0; zi < Tissue::z_dim; zi++) {
-            int64_t id = map_3d_to_1d(xi, yi, zi);
-            sanity_check_cell(id, xi, yi, zi);
-          }
-        }
-      }
+      DBG("cell ", epi_cell.to_string(), "\n");
     }
 #endif
     barrier();
@@ -167,28 +164,55 @@ class Tissue {
   void infect(int num_infections) {
     BarrierTimer timer(__FILEFUNC__, false, true);
     Random rnd_gen;
-    // rank 0 decides which spots to infect
+    // each rank generates a block of infected cells
     // for large dimensions, the chance of repeat sampling for a few points is very small
-    if (!rank_me()) {
-      SLOG("Infection points: \n");
-      for (int i = 0; i < num_infections; i++) {
-        auto x = rnd_gen.get(0, Tissue::x_dim);
-        auto y = rnd_gen.get(0, Tissue::y_dim);
-        auto z = rnd_gen.get(0, Tissue::z_dim);
-        SLOG("  ", x, ", ", y, ", ", z, "\n");
-        set_infection(x, y, z, 1.0);
-      }
+    int local_num_infections = ceil((double)num_infections / rank_n());
+    int64_t min_i = rank_me() * local_num_infections;
+    int64_t max_i = (rank_me() + 1) * local_num_infections;
+    if (max_i > num_infections) max_i = num_infections;
+    if (min_i > num_infections) min_i = num_infections;
+    barrier();
+    for (int i = min_i; i < max_i; i++) {
+      auto x = rnd_gen.get(0, Tissue::x_dim);
+      auto y = rnd_gen.get(0, Tissue::y_dim);
+      auto z = rnd_gen.get(0, Tissue::z_dim);
+      DBG("infection: ", x, ", ", y, ", ", z, "\n");
+      set_infection(x, y, z, 1.0);
+      upcxx::progress();
     }
     barrier();
+    SLOG("Starting with ", get_num_infected(), " infected cells\n");
   }
 
   int64_t get_num_infected() {
     return upcxx::reduce_one(num_infected, upcxx::op_fast_add, 0).wait();
   }
 
-  int64_t get_num_cells() {
-    return Tissue::x_dim * Tissue::y_dim * Tissue::z_dim;
+  void generate_tcells(int num_tcells) {
+    BarrierTimer timer(__FILEFUNC__, false, true);
+    Random rnd_gen;
+    // each rank generates a block of tcells
+    int local_num_tcells = ceil((double)num_tcells / rank_n());
+    int64_t min_tcell_id = rank_me() * local_num_tcells;
+    int64_t max_tcell_id = (rank_me() + 1) * local_num_tcells;
+    if (max_tcell_id > num_tcells) max_tcell_id = num_tcells;
+    if (min_tcell_id > num_tcells) min_tcell_id = num_tcells;
+    for (int64_t tcell_id = min_tcell_id; tcell_id < max_tcell_id; tcell_id++) {
+      auto x = rnd_gen.get(0, Tissue::x_dim);
+      auto y = rnd_gen.get(0, Tissue::y_dim);
+      auto z = rnd_gen.get(0, Tissue::z_dim);
+      DBG("tcell: ", x, ", ", y, ", ", z, "\n");
+      add_tcell(x, y, z, tcell_id);
+      upcxx::progress();
+    }
+    barrier();
+    SLOG("Starting with ", get_num_tcells(), " infected cells\n");
   }
+  
+  int64_t get_num_tcells() {
+    return upcxx::reduce_one(num_tcells, upcxx::op_fast_add, 0).wait();
+  }
+
 };
 
 inline int64_t Tissue::x_dim, Tissue::y_dim, Tissue::z_dim;
