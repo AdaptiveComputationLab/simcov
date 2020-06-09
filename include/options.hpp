@@ -113,7 +113,7 @@ public:
 	  ->capture_default_str();
     app.add_option("-i,--iterations", num_iters, "Number of iterations")
 	  ->capture_default_str() ->check(CLI::Range(1, 1000000));
-    app.add_option("-f,--infections", num_iters, "Number of starting infections")
+    app.add_option("-f,--infections", num_infections, "Number of starting infections")
 	  ->capture_default_str() ->check(CLI::Range(1, 1000));
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory")
                                           ->capture_default_str();

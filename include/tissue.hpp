@@ -17,7 +17,7 @@
 #include "utils.hpp"
 
 
-#define SANITY_CHECK_INDEXES
+//#define SANITY_CHECK_INDEXES
 
 
 using upcxx::rank_me;
@@ -50,6 +50,7 @@ class Tissue {
   int block_dim;
   int block_size;
   int64_t x_dim, y_dim, z_dim;
+  int64_t num_infected = 0;
 
   int64_t map_3d_to_1d(int64_t x, int64_t y, int64_t z) {
     return x + y * x_dim + z * x_dim * y_dim;
@@ -109,6 +110,8 @@ class Tissue {
       block_dim /= 2;
       block_size = block_dim * block_dim * block_dim;
     }
+    if (block_dim == 1)
+      WARN("Using a block size of 1: this will result in a lot of communication. You should change the dimensions.");
     int64_t x_blocks = x_dim / block_dim;
     int64_t y_blocks = y_dim / block_dim;
     int64_t z_blocks = z_dim / block_dim;
@@ -150,5 +153,23 @@ class Tissue {
   
   void infect(int num_infections) {
     BarrierTimer timer(__FILEFUNC__, false, true);
+    Random rnd_gen;
+    // rank 0 decides which spots to infect
+    // for large dimensions, the chance of repeat sampling for a few points is very small
+    if (!rank_me()) {
+      SLOG("Infection points: \n");
+      for (int i = 0; i < num_infections; i++) {
+        SLOG("  ", rnd_gen.get(0, x_dim), ", ", rnd_gen.get(0, y_dim), ", ", rnd_gen.get(0, z_dim), "\n");
+      }
+    }
+    barrier();
+  }
+
+  int64_t get_num_infected() {
+    return upcxx::reduce_one(num_infected, upcxx::op_fast_add, 0).wait();
+  }
+
+  int64_t get_num_cells() {
+    return x_dim * y_dim * z_dim;
   }
 };

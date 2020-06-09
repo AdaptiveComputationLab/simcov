@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <algorithm>
+#include <random>
 
 #include "upcxx_utils/log.hpp"
 using namespace upcxx_utils;
@@ -112,3 +113,14 @@ inline void dump_single_file(const string &fname, const string &out_str) {
   auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
   SLOG_VERBOSE("Successfully wrote ", get_size_str(tot_bytes_written), " to ", fname, "\n");
 }
+
+class Random {
+ private:
+  std::mt19937_64 generator;
+ public:
+  Random() : generator(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+  
+  int get(int64_t begin, int64_t end) {
+    return std::uniform_int_distribution<int64_t>(begin, end - 1)(generator);
+  }
+};
