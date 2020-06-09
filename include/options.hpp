@@ -91,7 +91,7 @@ class Options {
 
 public:
 
-  int64_t x_size = 100, y_size = 100, z_size = 100;
+  vector<int64_t> dimensions {100, 100, 100};
   int num_iters = 10;
   int num_tcells = 100;
   int num_infections = 1;
@@ -105,26 +105,20 @@ public:
     string full_version_str = "SimCov version " + string(SIMCOV_VERSION) + "-" + string(SIMCOV_BRANCH) + " built on " +
 	  string(SIMCOV_BUILD_DATE);
     CLI::App app(full_version_str);
-    app.add_option("-x,--xdim", x_size, "X dimension")
-	  ->capture_default_str();
-    app.add_option("-y,--ydim", y_size, "Y dimension")
-	  ->capture_default_str();
-    app.add_option("-z,--zdim", z_size, "Z dimension")
-	  ->capture_default_str();
+    app.add_option("-d,--dim", dimensions, "Dimensions: x y z")
+      ->capture_default_str() ->delimiter(',') ->expected(3);
     app.add_option("-i,--iterations", num_iters, "Number of iterations")
-	  ->capture_default_str() ->check(CLI::Range(1, 1000000));
+      ->capture_default_str() ->check(CLI::Range(1, 1000000));
     app.add_option("-f,--infections", num_infections, "Number of starting infections")
-	  ->capture_default_str() ->check(CLI::Range(1, 1000));
+      ->capture_default_str() ->check(CLI::Range(1, 1000));
     app.add_option("-t,--tcells", num_tcells, "Number of t-cells")
-	  ->capture_default_str();
+      ->capture_default_str();
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory")
-                                          ->capture_default_str();
-    app.add_flag("--progress", show_progress,
-                 "Show progress")
-                 ->capture_default_str();
-    app.add_flag("-v, --verbose", verbose,
-                 "Verbose output")
-                 ->capture_default_str();
+      ->capture_default_str();
+    app.add_flag("--progress", show_progress, "Show progress")
+      ->capture_default_str();
+    app.add_flag("-v, --verbose", verbose, "Verbose output")
+      ->capture_default_str();
 
     auto *cfg_opt = app.set_config("--config", "simcov.config", "Load options from a configuration file");
 

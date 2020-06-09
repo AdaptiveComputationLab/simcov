@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
   SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
 
   Tissue tissue;
-  tissue.construct(options->x_size, options->y_size, options->z_size);
+  tissue.construct({options->dimensions[0], options->dimensions[1], options->dimensions[2]});
   tissue.infect(options->num_infections);
   tissue.generate_tcells(options->num_tcells);
 
