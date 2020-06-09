@@ -45,28 +45,28 @@ struct EpiCell {
 
 class Tissue {
  private:
+  static int block_size;
+  static int64_t x_dim, y_dim, z_dim;
+  
   using epi_cells_t = upcxx::dist_object<vector<EpiCell>>;
   epi_cells_t epi_cells;
-  int block_dim;
-  int block_size;
-  int64_t x_dim, y_dim, z_dim;
   int64_t num_infected = 0;
 
   int64_t map_3d_to_1d(int64_t x, int64_t y, int64_t z) {
-    return x + y * x_dim + z * x_dim * y_dim;
+    return x + y * Tissue::x_dim + z * Tissue::x_dim * Tissue::y_dim;
   }
 
   std::tuple<int64_t, int64_t, int64_t> map_1d_to_3d(int64_t i) {
-    int64_t z = i / (x_dim * y_dim);
-    i = i % (x_dim * y_dim);
-    int64_t y = i / x_dim;
-    int64_t x = i % x_dim;
+    int64_t z = i / (Tissue::x_dim * Tissue::y_dim);
+    i = i % (Tissue::x_dim * Tissue::y_dim);
+    int64_t y = i / Tissue::x_dim;
+    int64_t x = i % Tissue::x_dim;
     return {x, y, z};
   }
 
   intrank_t get_rank_for_cell(int64_t x, int64_t y, int64_t z) {
     int64_t id = map_3d_to_1d(x, y, z);
-    int64_t block_i = id / block_size;
+    int64_t block_i = id / Tissue::block_size;
     return block_i % rank_n();
   }
   
@@ -77,18 +77,31 @@ class Tissue {
 #ifdef SANITY_CHECK_INDEXES
   void sanity_check_cell(int64_t id, int64_t x, int64_t y, int64_t z) {
     upcxx::rpc(get_rank_for_cell(x, y, z),
-               [](epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z, int block_size) {
+               [](epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z) {
                  // find the entry in our local epi_cells array and compare id, x, y and z
-                 int64_t block_i = id / block_size / rank_n();
-                 int64_t i = id % block_size + block_i * block_size;
+                 int64_t block_i = id / Tissue::block_size / rank_n();
+                 int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
                  EpiCell *epi_cell = &(*epi_cells)[i];
                  if (epi_cell->id != id) WARN("ID not equal ", id, " != ", epi_cell->id, "\n");
                  if (epi_cell->x != x) WARN("X not equal ", x, " != ", epi_cell->x, "\n");
                  if (epi_cell->y != y) WARN("Y not equal ", y, " != ", epi_cell->y, "\n");
                  if (epi_cell->z != z) WARN("Z not equal ", z, " != ", epi_cell->z, "\n");
-               }, epi_cells, id, x, y, z, block_size).wait();
+               }, epi_cells, id, x, y, z).wait();
   }
 #endif
+  
+  void set_infection(int64_t x, int64_t y, int64_t z, double concentration) {
+    int64_t id = map_3d_to_1d(x, y, z);
+    num_infected++;
+    upcxx::rpc(get_rank_for_cell(x, y, z),
+               [](epi_cells_t &epi_cells, int64_t id, int64_t x, int64_t y, int64_t z, double concentration) {
+                 // find the entry in our local epi_cells array and compare id, x, y and z
+                 int64_t block_i = id / Tissue::block_size / rank_n();
+                 int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
+                 EpiCell *epi_cell = &(*epi_cells)[i];
+                 epi_cell->virus = concentration;
+               }, epi_cells, id, x, y, z, concentration).wait();
+  }
   
  public:
   Tissue() : epi_cells({}) {}
@@ -97,36 +110,36 @@ class Tissue {
 
   void construct(int64_t x_dim, int64_t y_dim, int64_t z_dim) {
     BarrierTimer timer(__FILEFUNC__, false, true);
-    this->x_dim = x_dim;
-    this->y_dim = y_dim;
-    this->z_dim = z_dim;
-    int64_t num_cells = x_dim * y_dim * z_dim;
+    Tissue::x_dim = x_dim;
+    Tissue::y_dim = y_dim;
+    Tissue::z_dim = z_dim;
+    int64_t num_cells = Tissue::x_dim * Tissue::y_dim * Tissue::z_dim;
     int64_t max_block_size = num_cells / rank_n();
     // we want the blocks to be cubes, so find a size that divides all three dimensions
-    block_dim = gcd(gcd(x_dim, y_dim), z_dim);
-    block_size = block_dim * block_dim * block_dim;
+    auto block_dim = gcd(gcd(Tissue::x_dim, Tissue::y_dim), Tissue::z_dim);
+    Tissue::block_size = block_dim * block_dim * block_dim;
     // reduce block size until we can have at least one per process
-    while (block_size > max_block_size) {
+    while (Tissue::block_size > max_block_size) {
       block_dim /= 2;
-      block_size = block_dim * block_dim * block_dim;
+      Tissue::block_size = block_dim * block_dim * block_dim;
     }
     if (block_dim == 1)
       WARN("Using a block size of 1: this will result in a lot of communication. You should change the dimensions.");
-    int64_t x_blocks = x_dim / block_dim;
-    int64_t y_blocks = y_dim / block_dim;
-    int64_t z_blocks = z_dim / block_dim;
-    int64_t num_blocks = num_cells / block_size;
-    SLOG("Dividing ", num_cells, " cells into ", num_blocks, " blocks of size ", block_size, " (", block_dim, "^3)\n");
+    int64_t x_blocks = Tissue::x_dim / block_dim;
+    int64_t y_blocks = Tissue::y_dim / block_dim;
+    int64_t z_blocks = Tissue::z_dim / block_dim;
+    int64_t num_blocks = num_cells / Tissue::block_size;
+    SLOG("Dividing ", num_cells, " cells into ", num_blocks, " blocks of size ", Tissue::block_size, " (", block_dim, "^3)\n");
     int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-    epi_cells->reserve(blocks_per_rank * block_size);
-    auto mem_reqd = sizeof(EpiCell) * blocks_per_rank * block_size;
+    epi_cells->reserve(blocks_per_rank * Tissue::block_size);
+    auto mem_reqd = sizeof(EpiCell) * blocks_per_rank * Tissue::block_size;
     SLOG("Total initial memory required per process is ", get_size_str(mem_reqd), "\n");
     // FIXME: it may be more efficient (less communication) to have contiguous blocks
     // this is the quick & dirty approach
     for (int64_t i = 0; i < blocks_per_rank; i++) {
-      int64_t start_id = (i * rank_n() + rank_me()) * block_size;
+      int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
       if (start_id >= num_cells) break;
-      for (auto id = start_id; id < start_id + block_size; id++) {
+      for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
         auto [x, y, z] = map_1d_to_3d(id);
         epi_cells->push_back({.id = id, .x = x, .y = y, .z = z, .t_cells = {}, .cytokines = 0, .virus = 0});
       }
@@ -138,9 +151,9 @@ class Tissue {
 #endif
 #ifdef SANITY_CHECK_INDEXES
     if (!rank_me()) {
-      for (int xi = 0; xi < x_dim; xi++) {
-        for (int yi = 0; yi < y_dim; yi++) {
-          for (int zi = 0; zi < z_dim; zi++) {
+      for (int xi = 0; xi < Tissue::x_dim; xi++) {
+        for (int yi = 0; yi < Tissue::y_dim; yi++) {
+          for (int zi = 0; zi < Tissue::z_dim; zi++) {
             int64_t id = map_3d_to_1d(xi, yi, zi);
             sanity_check_cell(id, xi, yi, zi);
           }
@@ -159,7 +172,11 @@ class Tissue {
     if (!rank_me()) {
       SLOG("Infection points: \n");
       for (int i = 0; i < num_infections; i++) {
-        SLOG("  ", rnd_gen.get(0, x_dim), ", ", rnd_gen.get(0, y_dim), ", ", rnd_gen.get(0, z_dim), "\n");
+        auto x = rnd_gen.get(0, Tissue::x_dim);
+        auto y = rnd_gen.get(0, Tissue::y_dim);
+        auto z = rnd_gen.get(0, Tissue::z_dim);
+        SLOG("  ", x, ", ", y, ", ", z, "\n");
+        set_infection(x, y, z, 1.0);
       }
     }
     barrier();
@@ -170,6 +187,10 @@ class Tissue {
   }
 
   int64_t get_num_cells() {
-    return x_dim * y_dim * z_dim;
+    return Tissue::x_dim * Tissue::y_dim * Tissue::z_dim;
   }
 };
+
+inline int64_t Tissue::x_dim, Tissue::y_dim, Tissue::z_dim;
+inline int Tissue::block_size;
+
