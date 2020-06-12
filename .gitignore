@@ -2,3 +2,5 @@
 .dir-locals.el
 install
 data
+.vscode
+g

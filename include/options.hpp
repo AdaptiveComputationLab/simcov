@@ -43,7 +43,7 @@ class Options {
 
   void setup_output_dir() {
     if (!upcxx::rank_me()) {
-      // create the output directory and stripe it 
+      // create the output directory and stripe it
 	  if (mkdir(output_dir.c_str(), S_IRWXU) == -1) {
 		// could not create the directory
 		if (errno == EEXIST) {
@@ -95,6 +95,7 @@ public:
   int num_iters = 10;
   int num_tcells = 100;
   int num_infections = 1;
+  int incubation_period = 10;
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
     to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + get_current_time(true);
   bool show_progress = false;
@@ -112,6 +113,8 @@ public:
     app.add_option("-f,--infections", num_infections, "Number of starting infections")
       ->capture_default_str() ->check(CLI::Range(1, 1000));
     app.add_option("-t,--tcells", num_tcells, "Number of t-cells")
+      ->capture_default_str();
+    app.add_option("-p,--incubation-period", incubation_period, "Incubation period")
       ->capture_default_str();
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory")
       ->capture_default_str();
