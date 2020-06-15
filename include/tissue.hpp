@@ -25,6 +25,7 @@ struct TCell {
 };
 
 enum class EpiCellStatus { Healthy, Incubating, Dead };
+enum class InfectionResult { Success, AlreadyInfected, NotHealthy };
 
 struct EpiCell {
   int64_t id;
@@ -52,10 +53,14 @@ struct GridCoords {
   }
 
   // create a random grid point
-  GridCoords(Random rnd_gen, const GridCoords &grid_size) {
+  GridCoords(Random &rnd_gen, const GridCoords &grid_size) {
     x = rnd_gen.get(0, grid_size.x);
     y = rnd_gen.get(0, grid_size.y);
     z = rnd_gen.get(0, grid_size.z);
+  }
+
+  bool operator==(const GridCoords &coords) {
+    return x == coords.x && y == coords.y && z == coords.z;
   }
 
   int64_t to_1d(const GridCoords &grid_size) const {
@@ -124,23 +129,23 @@ class Tissue {
     return Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
   }
 
-  bool infect_epicell(const GridCoords &coords) {
+  InfectionResult infect_epicell(GridCoords coords) {
     int64_t id = coords.to_1d(Tissue::grid_size);
     return upcxx::rpc(
                get_rank_for_grid_point(coords),
                [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
                  auto grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-                 if (!grid_point->virus && grid_point->epicell->status == EpiCellStatus::Healthy) {
-                  grid_point->virus = true;
-                  return true;
-                 }
-                 return false;
+                 if (grid_point->virus) return InfectionResult::AlreadyInfected;
+                 if (grid_point->epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
+                 grid_point->virus = true;
+                 grid_point->epicell->status = EpiCellStatus::Incubating;
+                 return InfectionResult::Success;
                },
                grid_points, id, coords)
         .wait();
   }
 
-  void add_tcell(const GridCoords &coords, int64_t tcell_id) {
+  void add_tcell(GridCoords coords, int64_t tcell_id) {
     // FIXME: this should be an aggregating store
     int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
@@ -149,8 +154,7 @@ class Tissue {
           auto grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
           grid_point->tcells.push_back({.id = tcell_id});
         },
-        grid_points, id, coords, tcell_id)
-        .wait();
+        grid_points, id, coords, tcell_id).wait();
   }
 
   void construct(GridCoords grid_size) {
@@ -191,11 +195,13 @@ class Tissue {
              .epicell = new EpiCell({.id = id, .status = EpiCellStatus::Healthy, .infection_steps = 0}), .tcells = {}});
       }
     }
+/*
 #ifdef DEBUG
     for (auto &grid_point : (*grid_points)) {
       DBG("grid point ", grid_point.str(), "\n");
     }
 #endif
+*/
     barrier();
   }
 

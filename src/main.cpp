@@ -42,7 +42,7 @@ int64_t initial_infection(int num_infections, Tissue &tissue) {
   for (int i = min_i; i < max_i; i++) {
     GridCoords coords(rnd_gen, Tissue::grid_size);
     DBG("infection: ", coords.str() + "\n");
-    if (tissue.infect_epicell(coords)) num_infected++;
+    if (tissue.infect_epicell(coords) == InfectionResult::Success) num_infected++;
     upcxx::progress();
   }
   barrier();
@@ -50,7 +50,7 @@ int64_t initial_infection(int num_infections, Tissue &tissue) {
   return num_infected;
 }
 
-void generate_tcells(int num_tcells, Tissue &tissue) {
+int64_t generate_tcells(int num_tcells, Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__, false, true);
   Random rnd_gen;
   // each rank generates a block of tcells
@@ -68,7 +68,8 @@ void generate_tcells(int num_tcells, Tissue &tissue) {
     upcxx::progress();
   }
   barrier();
-  SLOG("Starting with ", reduce_one(num_tcells_added, op_fast_add, 0).wait(), " infected cells\n");
+  SLOG("Starting with ", reduce_one(num_tcells_added, op_fast_add, 0).wait(), " t-cells\n");
+  return num_tcells_added;
 }
 
 int64_t get_rnd_coord(Random &rnd_gen, int64_t x, int64_t max_x) {
@@ -78,7 +79,7 @@ int64_t get_rnd_coord(Random &rnd_gen, int64_t x, int64_t max_x) {
   return new_x;
 }
 
-void run_sim(Tissue &tissue, int64_t &num_infected, shared_ptr<Options> options) {
+void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_ptr<Options> options) {
   // this is a trivial test case:
   // when a virus first arrives in an epicell, it spends a period of time there
   // after the period has elapsed, the epicell dies and the virus spreads in all directions
@@ -99,17 +100,20 @@ void run_sim(Tissue &tissue, int64_t &num_infected, shared_ptr<Options> options)
           grid_point->virus = false;
           num_viral_kills++;
           it++;
+          DBG(step, ": tcell at ", grid_point->coords.str(), " killed virus\n");
         } else {
           GridCoords coords(get_rnd_coord(rnd_gen, grid_point->coords.x, Tissue::grid_size.x),
                             get_rnd_coord(rnd_gen, grid_point->coords.y, Tissue::grid_size.y),
                             get_rnd_coord(rnd_gen, grid_point->coords.z, Tissue::grid_size.z));
-          tissue.add_tcell(coords, tcell->id);
+          DBG(step, ": tcell at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
+
+          //tissue.add_tcell(coords, tcell->id);
           // remove tcell from this point
           it = grid_point->tcells.erase(it);
         }
       }
       if (grid_point->virus) {
-        grid_point->epicell->status = EpiCellStatus::Incubating;
+        assert(grid_point->epicell->status == EpiCellStatus::Incubating);
         grid_point->epicell->infection_steps++;
         if (grid_point->epicell->infection_steps > options->incubation_period) {
           grid_point->epicell->status == EpiCellStatus::Dead;
@@ -117,12 +121,24 @@ void run_sim(Tissue &tissue, int64_t &num_infected, shared_ptr<Options> options)
           num_dead_epicells++;
           // spread virus to healthy neighbors
           for (int64_t x = 0; x < 3; x++) {
-            if (x == 1) continue;
+            auto vx = grid_point->coords.x + x - 1;
+            if (vx < 0 || vx >= Tissue::grid_size.x) continue;
             for (int64_t y = 0; y < 3; y++) {
-              if (y == 1) continue;
+              auto vy = grid_point->coords.y + y - 1;
+              if (vy < 0 || vy >= Tissue::grid_size.y) continue;
               for (int64_t z = 0; z < 3; z++) {
-                if (z == 1) continue;
-                if (tissue.infect_epicell({x, y, z})) num_infected++;
+                auto vz = grid_point->coords.z + z - 1;
+                if (vz < 0 || vz >= Tissue::grid_size.z) continue;
+                GridCoords coords(vx, vy, vz);
+                if (coords == grid_point->coords) continue;
+                auto res = tissue.infect_epicell(coords);
+                if (res == InfectionResult::Success) {
+                  DBG(step, ": virus at ", grid_point->coords.str(), " spread to ", coords.str(), "\n");
+                  num_infected++;
+                } else {
+                  DBG(step, ": virus at ", grid_point->coords.str(), " could not spread to ", coords.str(),
+                      " (", (res == InfectionResult::NotHealthy ? " not healthy " : " already infected"), ")\n");
+                }
               }
             }
           }
@@ -130,9 +146,10 @@ void run_sim(Tissue &tissue, int64_t &num_infected, shared_ptr<Options> options)
       }
     }
     barrier();
-    SLOG("infections ", reduce_one(num_infected, op_fast_add, 0).wait(),
-         " viral kills ", reduce_one(num_viral_kills, op_fast_add, 0).wait(),
-         " dead epicells ", reduce_one(num_dead_epicells, op_fast_add, 0).wait(), "\n");
+    SLOG(step, ": ", "infections ", perc_str(reduce_one(num_infected, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
+         ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
+         ", viral kills ", reduce_one(num_viral_kills, op_fast_add, 0).wait(),
+         ", t-cells: ", reduce_one(num_tcells, op_fast_add, 0).wait(), "\n");
   }
 }
 
@@ -153,9 +170,9 @@ int main(int argc, char **argv) {
   Tissue tissue;
   tissue.construct({options->dimensions[0], options->dimensions[1], options->dimensions[2]});
   int64_t num_infected = initial_infection(options->num_infections, tissue);
-  generate_tcells(options->num_tcells, tissue);
+  int64_t num_tcells = generate_tcells(options->num_tcells, tissue);
 
-  run_sim(tissue, num_infected, options);
+  run_sim(tissue, num_tcells, num_infected, options);
 
   memory_tracker.stop();
   chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
