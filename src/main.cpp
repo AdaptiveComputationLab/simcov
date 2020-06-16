@@ -191,9 +191,10 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
     if (time_step >= time_step_ticks || time_step == options->num_iters - 1) {
       chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - curr_t;
       curr_t = chrono::high_resolution_clock::now();
+      // memory doesn't really change so don't report it every iteration
       SLOG(setw(5), left, time_step,
            " [", get_current_time(true), " ", setprecision(2), fixed, setw(5), right, t_elapsed.count(), "s ",
-           setw(9), left, get_size_str(get_free_mem()), "]: ",
+           /*setw(9), left, get_size_str(get_free_mem()),*/ "]: ",
            " infections ", reduce_one(tot_num_infected, op_fast_add, 0).wait(), "+",
            reduce_one(num_infected, op_fast_add, 0).wait(),
            ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
@@ -220,13 +221,14 @@ int main(int argc, char **argv) {
 
   MemoryTrackerThread memory_tracker;
   memory_tracker.start();
-  SLOG(KBLUE, "Starting with ", get_size_str(get_free_mem()), " free on node 0", KNORM, "\n");
-
+  auto start_free_mem = get_free_mem();
+  SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
   Tissue tissue;
   tissue.construct({options->dimensions[0], options->dimensions[1], options->dimensions[2]});
   Random rnd_gen(options->rnd_seed + rank_me());
   int64_t num_infected = initial_infection(options->num_infections, tissue, rnd_gen);
   int64_t num_tcells = generate_tcells(options->num_tcells, tissue, rnd_gen);
+  SLOG(KBLUE, "Memory used on node 0 after initialization is  ", get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");
 
   run_sim(tissue, num_tcells, num_infected, options, rnd_gen);
 
