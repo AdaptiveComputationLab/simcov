@@ -22,6 +22,7 @@ using upcxx::rank_n;
 
 struct TCell {
   int64_t id;
+  int step;
 };
 
 enum class EpiCellStatus { Healthy, Incubating, Dead };
@@ -106,15 +107,15 @@ class Tissue {
     return block_i % rank_n();
   }
 
-  static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t id, const GridCoords &coords) {
+  static GridPoint &get_local_grid_point(grid_points_t &grid_points, int64_t id, const GridCoords &coords) {
     int64_t block_i = id / Tissue::block_size / rank_n();
     int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
     assert(i < grid_points->size());
-    GridPoint *grid_point = &(*grid_points)[i];
-    assert(grid_point->id == id);
-    assert(grid_point->coords.x == coords.x);
-    assert(grid_point->coords.y == coords.y);
-    assert(grid_point->coords.z == coords.z);
+    GridPoint &grid_point = (*grid_points)[i];
+    assert(grid_point.id == id);
+    assert(grid_point.coords.x == coords.x);
+    assert(grid_point.coords.y == coords.y);
+    assert(grid_point.coords.z == coords.z);
     return grid_point;
   }
 
@@ -134,27 +135,30 @@ class Tissue {
     return upcxx::rpc(
                get_rank_for_grid_point(coords),
                [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
-                 auto grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-                 if (grid_point->virus) return InfectionResult::AlreadyInfected;
-                 if (grid_point->epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
-                 grid_point->virus = true;
-                 grid_point->epicell->status = EpiCellStatus::Incubating;
+                 GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+                 if (grid_point.virus) return InfectionResult::AlreadyInfected;
+                 if (grid_point.epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
+                 grid_point.virus = true;
+                 grid_point.epicell->status = EpiCellStatus::Incubating;
                  return InfectionResult::Success;
                },
                grid_points, id, coords)
         .wait();
   }
 
-  void add_tcell(GridCoords coords, int64_t tcell_id) {
+  void add_tcell(GridCoords coords, int64_t tcell_id, int step) {
     // FIXME: this should be an aggregating store
     int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
         get_rank_for_grid_point(coords),
-        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
-          auto grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          grid_point->tcells.push_back({.id = tcell_id});
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id, int step) {
+          //WARN("About to add tcell ", tcell_id, " at ", coords.str(), "\n");
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          //WARN("Got local grid point ", grid_point.id, "\n");
+          grid_point.tcells.push_back({.id = tcell_id, .step = step});
+          //WARN("Pushed back tcell ", grid_point.tcells.size(), "\n");
         },
-        grid_points, id, coords, tcell_id).wait();
+        grid_points, id, coords, tcell_id, step).wait();
   }
 
   void construct(GridCoords grid_size) {

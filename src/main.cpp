@@ -39,12 +39,16 @@ int64_t initial_infection(int num_infections, Tissue &tissue) {
   if (min_i > num_infections) min_i = num_infections;
   int64_t num_infected = 0;
   barrier();
+  DBG("Infecting ", (max_i - min_i), " cells from ", min_i, " to ", max_i, "\n");
+  ProgressBar progbar(max_i - min_i, "Setting initial infections");
   for (int i = min_i; i < max_i; i++) {
+    progbar.update();
     GridCoords coords(rnd_gen, Tissue::grid_size);
     DBG("infection: ", coords.str() + "\n");
     if (tissue.infect_epicell(coords) == InfectionResult::Success) num_infected++;
     upcxx::progress();
   }
+  progbar.done();
   barrier();
   SLOG("Starting with ", reduce_one(num_infected, op_fast_add, 0).wait(), " infected cells\n");
   return num_infected;
@@ -60,15 +64,20 @@ int64_t generate_tcells(int num_tcells, Tissue &tissue) {
   if (max_tcell_id > num_tcells) max_tcell_id = num_tcells;
   if (min_tcell_id > num_tcells) min_tcell_id = num_tcells;
   int64_t num_tcells_added = 0;
+  barrier();
+  DBG("Generating tcells from ", min_tcell_id, " to ", max_tcell_id, "\n");
+  ProgressBar progbar(max_tcell_id - min_tcell_id, "Generating t-cells");
   for (int64_t tcell_id = min_tcell_id; tcell_id < max_tcell_id; tcell_id++) {
+    progbar.update();
     GridCoords coords(rnd_gen, Tissue::grid_size);
     DBG("tcell: ", coords.str(), "\n");
-    tissue.add_tcell(coords, tcell_id);
+    tissue.add_tcell(coords, tcell_id, 0);
     num_tcells_added++;
     upcxx::progress();
   }
+  progbar.done();
   barrier();
-  SLOG("Starting with ", reduce_one(num_tcells_added, op_fast_add, 0).wait(), " t-cells\n");
+  SLOG("Generated ", reduce_one(num_tcells_added, op_fast_add, 0).wait(), " t-cells\n");
   return num_tcells_added;
 }
 
@@ -80,6 +89,7 @@ int64_t get_rnd_coord(Random &rnd_gen, int64_t x, int64_t max_x) {
 }
 
 void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_ptr<Options> options) {
+  BarrierTimer timer(__FILEFUNC__, false, true);
   // this is a trivial test case:
   // when a virus first arrives in an epicell, it spends a period of time there
   // after the period has elapsed, the epicell dies and the virus spreads in all directions
@@ -89,27 +99,41 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_
   Random rnd_gen;
   int64_t num_viral_kills = 0;
   int64_t num_dead_epicells = 0;
+  double step_ticks = (double)options->num_iters / 20;
   for (int step = 0; step < options->num_iters; step++) {
+    num_infected = 0;
     // iterate through all local grid points
     // FIXME: this should be iteration through the local active grid points only
     for (auto grid_point = tissue.get_first_local_grid_point(); grid_point; grid_point = tissue.get_next_local_grid_point()) {
-      for (auto it = grid_point->tcells.begin(); it != grid_point->tcells.end();) {
-        auto tcell = make_shared<TCell>(*it);
-        // could be killing an epicell (chemotaxing) or moving at random or following a gradient (circulating)
-        if (grid_point->virus) {
-          grid_point->virus = false;
-          num_viral_kills++;
-          it++;
-          DBG(step, ": tcell at ", grid_point->coords.str(), " killed virus\n");
-        } else {
-          GridCoords coords(get_rnd_coord(rnd_gen, grid_point->coords.x, Tissue::grid_size.x),
-                            get_rnd_coord(rnd_gen, grid_point->coords.y, Tissue::grid_size.y),
-                            get_rnd_coord(rnd_gen, grid_point->coords.z, Tissue::grid_size.z));
-          DBG(step, ": tcell at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
-
-          //tissue.add_tcell(coords, tcell->id);
-          // remove tcell from this point
-          it = grid_point->tcells.erase(it);
+      if (!grid_point->tcells.empty()) {
+        for (auto it = grid_point->tcells.begin(); it != grid_point->tcells.end();) {
+          auto tcell = make_shared<TCell>(*it);
+          // already processed this tcell
+          if (tcell->step == step) {
+            ++it;
+            continue;
+          }
+          tcell->step = step;
+          // could be killing an epicell (chemotaxing) or moving at random or following a gradient (circulating)
+          if (grid_point->virus) {
+            grid_point->virus = false;
+            num_viral_kills++;
+            ++it;
+            DBG(step, ": tcell at ", grid_point->coords.str(), " killed virus\n");
+          } else {
+            GridCoords coords(get_rnd_coord(rnd_gen, grid_point->coords.x, Tissue::grid_size.x),
+                              get_rnd_coord(rnd_gen, grid_point->coords.y, Tissue::grid_size.y),
+                              get_rnd_coord(rnd_gen, grid_point->coords.z, Tissue::grid_size.z));
+            if (coords == grid_point->coords) {
+              ++it;
+            } else {
+              DBG(step, ": tcell at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
+              tissue.add_tcell(coords, tcell->id, step);
+              // remove tcell from this point
+              it = grid_point->tcells.erase(it);
+            }
+          }
+          upcxx::progress();
         }
       }
       if (grid_point->virus) {
@@ -146,10 +170,14 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_
       }
     }
     barrier();
-    SLOG(step, ": ", "infections ", perc_str(reduce_one(num_infected, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
-         ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
-         ", viral kills ", reduce_one(num_viral_kills, op_fast_add, 0).wait(),
-         ", t-cells: ", reduce_one(num_tcells, op_fast_add, 0).wait(), "\n");
+    // print every 5% of the iterations
+    if (step >= step_ticks) {
+      SLOG(step, ": ", "infections ", perc_str(reduce_one(num_infected, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
+           ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
+           ", viral kills ", reduce_one(num_viral_kills, op_fast_add, 0).wait(),
+           ", t-cells: ", reduce_one(num_tcells, op_fast_add, 0).wait(), "\n");
+      step_ticks += (double)options->num_iters / 20;
+    }
   }
 }
 
