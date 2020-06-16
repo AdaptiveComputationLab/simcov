@@ -193,7 +193,7 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
       curr_t = chrono::high_resolution_clock::now();
       // memory doesn't really change so don't report it every iteration
       SLOG(setw(5), left, time_step,
-           " [", get_current_time(true), " ", setprecision(2), fixed, setw(5), right, t_elapsed.count(), "s ",
+           " [", get_current_time(true), " ", setprecision(2), fixed, setw(5), right, t_elapsed.count(), "s",
            /*setw(9), left, get_size_str(get_free_mem()),*/ "]: ",
            " infections ", reduce_one(tot_num_infected, op_fast_add, 0).wait(), "+",
            reduce_one(num_infected, op_fast_add, 0).wait(),
