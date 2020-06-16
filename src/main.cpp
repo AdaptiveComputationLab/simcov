@@ -70,12 +70,15 @@ int64_t generate_tcells(int num_tcells, Tissue &tissue) {
   for (int64_t tcell_id = min_tcell_id; tcell_id < max_tcell_id; tcell_id++) {
     progbar.update();
     GridCoords coords(rnd_gen, Tissue::grid_size);
-    DBG("tcell: ", coords.str(), "\n");
-    tissue.add_tcell(coords, tcell_id, 0);
+    DBG("tcell ", tcell_id, " starting at ", coords.str(), "\n");
+    tissue.add_tcell(coords, tcell_id);
     num_tcells_added++;
     upcxx::progress();
   }
   progbar.done();
+  barrier();
+  // now set all tcells to be current
+  tissue.update_tcells(/*check_switch=*/false);
   barrier();
   SLOG("Generated ", reduce_one(num_tcells_added, op_fast_add, 0).wait(), " t-cells\n");
   return num_tcells_added;
@@ -99,46 +102,37 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_
   Random rnd_gen;
   int64_t num_viral_kills = 0;
   int64_t num_dead_epicells = 0;
-  double step_ticks = (double)options->num_iters / 20;
-  for (int step = 0; step < options->num_iters; step++) {
+  double time_step_ticks = (double)options->num_iters / 20;
+  for (int time_step = 0; time_step < options->num_iters; time_step++) {
     num_infected = 0;
     // iterate through all local grid points
     // FIXME: this should be iteration through the local active grid points only
     for (auto grid_point = tissue.get_first_local_grid_point(); grid_point; grid_point = tissue.get_next_local_grid_point()) {
-      // first iterate through all the tcells, killing viruses and moving the tcells
-      // note that we move the tcell to the destination, but don't remove from the target because we don't want to modify the
-      // tcell vectors while they are being iterated
-      // And because t-cells can be added during this loop, we iterate explicitly through the cell indexes, so we don't process
-      // the added cells
-      int num_tcells = grid_point->tcells.size();
-      for (int i = 0; i < num_tcells; i++) {
-        TCell &tcell = grid_point->tcells[i];
-        // tcell is not processed yet
-        if (tcell.step != step) {
-          tcell.step = step;
+      // the tcells are moved (added to the new list, but only cleared out at the end of all updates)
+      if (grid_point->tcells) {
+        for (auto &tcell : *grid_point->tcells) {
           if (grid_point->virus) {
             // kill the virus
-            DBG(step, ": tcell at ", grid_point->coords.str(), " killed virus\n");
+            DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " killed virus\n");
             grid_point->virus = false;
             num_viral_kills++;
+            // need to add here to ensure it gets to the next time step in the vector swap
+            tissue.add_tcell(grid_point->coords, tcell.id);
           } else {
-            // move to a random neighbor
+            // move to a random neighbor (or don't move)
             GridCoords coords(get_rnd_coord(rnd_gen, grid_point->coords.x, Tissue::grid_size.x),
                               get_rnd_coord(rnd_gen, grid_point->coords.y, Tissue::grid_size.y),
                               get_rnd_coord(rnd_gen, grid_point->coords.z, Tissue::grid_size.z));
-            if (coords != grid_point->coords) {
-              DBG(step, ": tcell at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
-              tcell.coords = coords;
-              tissue.add_tcell(coords, tcell.id, step);
-            }
+            DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
+            tissue.add_tcell(coords, tcell.id);
           }
           upcxx::progress();
         }
       }
       if (grid_point->virus) {
         assert(grid_point->epicell->status == EpiCellStatus::Incubating);
-        grid_point->epicell->infection_steps++;
-        if (grid_point->epicell->infection_steps > options->incubation_period) {
+        grid_point->epicell->num_steps_infected++;
+        if (grid_point->epicell->num_steps_infected > options->incubation_period) {
           grid_point->epicell->status == EpiCellStatus::Dead;
           grid_point->virus = 0;
           num_dead_epicells++;
@@ -156,10 +150,10 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_
                 if (coords == grid_point->coords) continue;
                 auto res = tissue.infect_epicell(coords);
                 if (res == InfectionResult::Success) {
-                  DBG(step, ": virus at ", grid_point->coords.str(), " spread to ", coords.str(), "\n");
+                  DBG(time_step, ": virus at ", grid_point->coords.str(), " spread to ", coords.str(), "\n");
                   num_infected++;
                 } else {
-                  DBG(step, ": virus at ", grid_point->coords.str(), " could not spread to ", coords.str(),
+                  DBG(time_step, ": virus at ", grid_point->coords.str(), " could not spread to ", coords.str(),
                       " (", (res == InfectionResult::NotHealthy ? " not healthy " : " already infected"), ")\n");
                 }
               }
@@ -170,35 +164,15 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &num_infected, shared_
       upcxx::progress();
     }
     barrier();
-    auto all_num_tcells = reduce_one(num_tcells, op_fast_add, 0).wait();
-    int64_t num_found_tcells = 0, num_deleted_tcells = 0;
-    // when every rank has finished processing, remove tcells from old grid points
-    for (auto grid_point = tissue.get_first_local_grid_point(); grid_point; grid_point = tissue.get_next_local_grid_point()) {
-      for (auto it = grid_point->tcells.begin(); it != grid_point->tcells.end(); ) {
-        auto tcell = make_shared<TCell>(*it);
-        if (tcell->coords != grid_point->coords) {
-          it = grid_point->tcells.erase(it);
-          num_deleted_tcells++;
-        } else {
-          ++it;
-          num_found_tcells++;
-        }
-      }
-    }
-    DBG("Deleted ", num_deleted_tcells, " tcells that have moved\n");
+    num_tcells = tissue.update_tcells();
     barrier();
-#ifdef DEBUG
-    auto all_num_found_tcells = reduce_one(num_found_tcells, op_fast_add, 0).wait();
-    if (!rank_me() && all_num_found_tcells != all_num_tcells)
-      SDIE("Found ", all_num_found_tcells, " but expected ", all_num_tcells);
-#endif
     // print every 5% of the iterations
-    if (step >= step_ticks) {
-      SLOG(step, ": ", "infections ", perc_str(reduce_one(num_infected, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
+    if (time_step >= time_step_ticks) {
+      SLOG(time_step, ": ", "infections ", perc_str(reduce_one(num_infected, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
            ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
            ", viral kills ", reduce_one(num_viral_kills, op_fast_add, 0).wait(),
-           ", t-cells: ", all_num_tcells, "\n");
-      step_ticks += (double)options->num_iters / 20;
+           ", t-cells: ", reduce_one(num_tcells, op_fast_add, 0).wait(), "\n");
+      time_step_ticks += (double)options->num_iters / 20;
     }
   }
 }

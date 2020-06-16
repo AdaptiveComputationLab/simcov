@@ -61,8 +61,6 @@ struct GridCoords {
 
 struct TCell {
   int64_t id;
-  int step;
-  GridCoords coords;
 };
 
 enum class EpiCellStatus { Healthy, Incubating, Dead };
@@ -71,7 +69,7 @@ enum class InfectionResult { Success, AlreadyInfected, NotHealthy };
 struct EpiCell {
   int64_t id;
   EpiCellStatus status = EpiCellStatus::Healthy;
-  int64_t infection_steps;
+  int64_t num_steps_infected;
 
   string str() {
     return std::to_string(id);
@@ -83,7 +81,12 @@ struct GridPoint {
   GridCoords coords;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
-  vector<TCell> tcells = {};
+  // there are two vectors of tcells, one of which contains tcells for the current round,
+  // and one of which contains tcells for the next round
+  vector<TCell> tcells_backing_1 = {};
+  vector<TCell> tcells_backing_2 = {};
+  // a pointer to the currently active tcells vector
+  vector<TCell> *tcells = nullptr;
   bool virus = false;
 
   string str() {
@@ -151,16 +154,49 @@ class Tissue {
         .wait();
   }
 
-  void add_tcell(GridCoords coords, int64_t tcell_id, int step) {
+  void add_tcell(GridCoords coords, int64_t tcell_id) {
     // FIXME: this should be an aggregating store
     int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
         get_rank_for_grid_point(coords),
-        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id, int step) {
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          grid_point.tcells.push_back({.id = tcell_id, .step = step, .coords = coords});
+          if (grid_point.tcells == nullptr) grid_point.tcells = &grid_point.tcells_backing_1;
+          // add the tcell to the future tcells vector, i.e. not the one pointed to by tcells
+          auto next_tcells =
+              (grid_point.tcells == &grid_point.tcells_backing_1 ? &grid_point.tcells_backing_2 : &grid_point.tcells_backing_1);
+          next_tcells->push_back({.id = tcell_id});
         },
-        grid_points, id, coords, tcell_id, step).wait();
+        grid_points, id, coords, tcell_id).wait();
+  }
+
+  int64_t update_tcells(bool check_switch=false) {
+    auto switch_tcells_vectors = [](vector<TCell> *tcells_backing_new, vector<TCell> *tcells_backing_old) -> vector<TCell>* {
+      tcells_backing_old->clear();
+      return tcells_backing_new;
+    };
+    int64_t num_old = 0, num_new = 0;
+    // switch all the non-empty tcells vectors and clear the old ones
+    for (GridPoint &grid_point : *grid_points) {
+      if (grid_point.tcells) {
+        num_old += grid_point.tcells->size();
+        if (grid_point.tcells == &grid_point.tcells_backing_1)
+          grid_point.tcells = switch_tcells_vectors(&grid_point.tcells_backing_2, &grid_point.tcells_backing_1);
+        else
+          grid_point.tcells = switch_tcells_vectors(&grid_point.tcells_backing_1, &grid_point.tcells_backing_2);
+        num_new += grid_point.tcells->size();
+      }
+    }
+#ifdef DEBUG
+    if (check_switch) {
+      auto all_num_old = upcxx::reduce_one(num_old, upcxx::op_fast_add, 0).wait();
+      auto all_num_new = upcxx::reduce_one(num_new, upcxx::op_fast_add, 0).wait();
+      // FIXME: this only applies if the number of tcells overall never changes
+      if (!upcxx::rank_me() && all_num_new != all_num_old) DIE("tcell counts don't match, old ", all_num_old, " new ", all_num_new);
+      barrier();
+    }
+#endif
+    return num_new;
   }
 
   void construct(GridCoords grid_size) {
@@ -198,7 +234,8 @@ class Tissue {
         // FIXME: this is an epicall on every grid point.
         // They should be placed according to the underlying lung structure (gaps, etc)
         grid_points->push_back({.id = id, .coords = coords,
-             .epicell = new EpiCell({.id = id, .status = EpiCellStatus::Healthy, .infection_steps = 0}), .tcells = {}});
+             .epicell = new EpiCell({.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}),
+             .tcells_backing_1 = {}, .tcells_backing_2 = {}, .tcells = nullptr});
       }
     }
 /*
