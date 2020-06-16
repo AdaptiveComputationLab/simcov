@@ -190,7 +190,7 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
     if (time_step >= time_step_ticks) {
       chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
       start_t = chrono::high_resolution_clock::now();
-      SLOG(get_current_time(), " (", setprecision(2), fixed, t_elapsed.count(), "s) <", time_step, "> ",
+      SLOG(get_current_time(/*time_of_day_only*/true), " (", setprecision(2), fixed, t_elapsed.count(), "s) <", time_step, "> ",
            " infections ", reduce_one(tot_num_infected, op_fast_add, 0).wait(), "+",
            reduce_one(num_infected, op_fast_add, 0).wait(),
            ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
