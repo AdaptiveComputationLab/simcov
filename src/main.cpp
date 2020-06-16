@@ -108,6 +108,7 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
   int64_t num_dead_epicells = 0;
   int64_t tot_num_viral_kills = 0;
   double time_step_ticks = (double)options->num_iters / 20;
+  auto start_t = chrono::high_resolution_clock::now();
   for (int time_step = 0; time_step < options->num_iters; time_step++) {
     int64_t num_infected = 0;
     int64_t num_viral_kills = 0;
@@ -187,8 +188,10 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
     tot_num_viral_kills += num_viral_kills;
     // print every 5% of the iterations
     if (time_step >= time_step_ticks) {
-      SLOG(time_step,
-           ": ", "infections ", reduce_one(tot_num_infected, op_fast_add, 0).wait(), "+",
+      chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
+      start_t = chrono::high_resolution_clock::now();
+      SLOG(get_current_time(), " (", setprecision(2), fixed, t_elapsed.count(), "s) <", time_step, "> ",
+           " infections ", reduce_one(tot_num_infected, op_fast_add, 0).wait(), "+",
            reduce_one(num_infected, op_fast_add, 0).wait(),
            ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
            ", viral kills ", reduce_one(tot_num_viral_kills, op_fast_add, 0).wait(), "+",
