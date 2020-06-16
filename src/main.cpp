@@ -109,6 +109,7 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
   int64_t tot_num_viral_kills = 0;
   double time_step_ticks = (double)options->num_iters / 20;
   auto start_t = chrono::high_resolution_clock::now();
+  auto curr_t = start_t;
   for (int time_step = 0; time_step < options->num_iters; time_step++) {
     int64_t num_infected = 0;
     int64_t num_viral_kills = 0;
@@ -187,10 +188,12 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
     tot_num_infected += num_infected;
     tot_num_viral_kills += num_viral_kills;
     // print every 5% of the iterations
-    if (time_step >= time_step_ticks) {
-      chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
-      start_t = chrono::high_resolution_clock::now();
-      SLOG(get_current_time(/*time_of_day_only*/true), " (", setprecision(2), fixed, t_elapsed.count(), "s) <", time_step, "> ",
+    if (time_step >= time_step_ticks || time_step == options->num_iters - 1) {
+      chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - curr_t;
+      curr_t = chrono::high_resolution_clock::now();
+      SLOG(setw(5), left, time_step,
+           " [", get_current_time(true), " ", setprecision(2), fixed, setw(5), right, t_elapsed.count(), "s ",
+           setw(9), left, get_size_str(get_free_mem()), "]: ",
            " infections ", reduce_one(tot_num_infected, op_fast_add, 0).wait(), "+",
            reduce_one(num_infected, op_fast_add, 0).wait(),
            ", dead epicells ", perc_str(reduce_one(num_dead_epicells, op_fast_add, 0).wait(), tissue.get_num_grid_points()),
@@ -200,6 +203,9 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
       time_step_ticks += (double)options->num_iters / 20;
     }
   }
+  chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
+  SLOG("Finished ", options->num_iters, " time steps in ", setprecision(4), fixed, t_elapsed.count(), " s (",
+       (double)t_elapsed.count() / options->num_iters, " s per step)\n");
 }
 
 int main(int argc, char **argv) {
