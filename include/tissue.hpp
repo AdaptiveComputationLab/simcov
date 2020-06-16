@@ -20,24 +20,6 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-struct TCell {
-  int64_t id;
-  int step;
-};
-
-enum class EpiCellStatus { Healthy, Incubating, Dead };
-enum class InfectionResult { Success, AlreadyInfected, NotHealthy };
-
-struct EpiCell {
-  int64_t id;
-  EpiCellStatus status = EpiCellStatus::Healthy;
-  int64_t infection_steps;
-
-  string str() {
-    return std::to_string(id);
-  }
-};
-
 struct GridCoords {
   int64_t x, y, z;
 
@@ -64,12 +46,35 @@ struct GridCoords {
     return x == coords.x && y == coords.y && z == coords.z;
   }
 
+  bool operator!=(const GridCoords &coords) {
+    return x != coords.x || y != coords.y || z != coords.z;
+  }
+
   int64_t to_1d(const GridCoords &grid_size) const {
     return x + y * grid_size.x + z * grid_size.x * grid_size.y;
   }
 
   string str() {
     return "(" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")";
+  }
+};
+
+struct TCell {
+  int64_t id;
+  int step;
+  GridCoords coords;
+};
+
+enum class EpiCellStatus { Healthy, Incubating, Dead };
+enum class InfectionResult { Success, AlreadyInfected, NotHealthy };
+
+struct EpiCell {
+  int64_t id;
+  EpiCellStatus status = EpiCellStatus::Healthy;
+  int64_t infection_steps;
+
+  string str() {
+    return std::to_string(id);
   }
 };
 
@@ -152,11 +157,8 @@ class Tissue {
     upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id, int step) {
-          //WARN("About to add tcell ", tcell_id, " at ", coords.str(), "\n");
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          //WARN("Got local grid point ", grid_point.id, "\n");
-          grid_point.tcells.push_back({.id = tcell_id, .step = step});
-          //WARN("Pushed back tcell ", grid_point.tcells.size(), "\n");
+          grid_point.tcells.push_back({.id = tcell_id, .step = step, .coords = coords});
         },
         grid_points, id, coords, tcell_id, step).wait();
   }
