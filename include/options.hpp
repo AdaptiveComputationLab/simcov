@@ -96,6 +96,8 @@ public:
   int num_tcells = 100;
   int num_infections = 1;
   int incubation_period = 10;
+  double spread_prob = 0.5;
+  unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
     to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + get_current_time(true);
   bool show_progress = false;
@@ -116,6 +118,11 @@ public:
       ->capture_default_str();
     app.add_option("-p,--incubation-period", incubation_period, "Incubation period")
       ->capture_default_str();
+    app.add_option("-s,--spread-probability", spread_prob, "Probability of virus spreading to a neighbor")
+      ->capture_default_str();
+    app.add_option("-r,--seed", rnd_seed, "Random seed")
+      ->capture_default_str();
+
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory")
       ->capture_default_str();
     app.add_flag("--progress", show_progress, "Show progress")

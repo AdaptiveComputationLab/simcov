@@ -138,26 +138,26 @@ class Tissue {
     return Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
   }
 
-  InfectionResult infect_epicell(GridCoords coords) {
+  upcxx::future<InfectionResult> infect_epicell(GridCoords coords) {
     int64_t id = coords.to_1d(Tissue::grid_size);
     return upcxx::rpc(
-               get_rank_for_grid_point(coords),
-               [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
-                 GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-                 if (grid_point.virus) return InfectionResult::AlreadyInfected;
-                 if (grid_point.epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
-                 grid_point.virus = true;
-                 grid_point.epicell->status = EpiCellStatus::Incubating;
-                 return InfectionResult::Success;
-               },
-               grid_points, id, coords)
-        .wait();
+        get_rank_for_grid_point(coords),
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          if (grid_point.virus) return InfectionResult::AlreadyInfected;
+          if (grid_point.epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
+          grid_point.virus = true;
+          grid_point.epicell->num_steps_infected = 0;
+          grid_point.epicell->status = EpiCellStatus::Incubating;
+          return InfectionResult::Success;
+        },
+        grid_points, id, coords);
   }
 
-  void add_tcell(GridCoords coords, int64_t tcell_id) {
+  upcxx::future<> add_tcell(GridCoords coords, int64_t tcell_id) {
     // FIXME: this should be an aggregating store
     int64_t id = coords.to_1d(Tissue::grid_size);
-    upcxx::rpc(
+    return upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
@@ -167,7 +167,7 @@ class Tissue {
               (grid_point.tcells == &grid_point.tcells_backing_1 ? &grid_point.tcells_backing_2 : &grid_point.tcells_backing_1);
           next_tcells->push_back({.id = tcell_id});
         },
-        grid_points, id, coords, tcell_id).wait();
+        grid_points, id, coords, tcell_id);
   }
 
   int64_t update_tcells(bool check_switch=false) {

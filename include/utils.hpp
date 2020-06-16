@@ -67,10 +67,14 @@ class Random {
  private:
   std::mt19937_64 generator;
  public:
-  Random() : generator(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
-  
+  Random(unsigned seed) : generator(seed) {}
+
   int get(int64_t begin, int64_t end) {
     return std::uniform_int_distribution<int64_t>(begin, end - 1)(generator);
+  }
+
+  double get_prob() {
+    return std::uniform_real_distribution<>(0, 1)(generator);
   }
 };
 
