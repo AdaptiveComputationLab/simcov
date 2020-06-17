@@ -44,27 +44,29 @@ class Options {
   void setup_output_dir() {
     if (!upcxx::rank_me()) {
       // create the output directory and stripe it
-	  if (mkdir(output_dir.c_str(), S_IRWXU) == -1) {
-		// could not create the directory
-		if (errno == EEXIST) {
-		  cerr << KLRED << "WARNING: " << KNORM << "Output directory " << output_dir
-			   << " already exists. May overwrite existing files\n";
-		} else {
-		  ostringstream oss;
-		  oss << KLRED << "ERROR: " << KNORM  << " Could not create output directory " << output_dir
-			  << ": " << strerror(errno) << endl;
-		  throw std::runtime_error(oss.str());
-		}
-	  } else {
-		// created the directory - now stripe it if possible
-		auto status = std::system("which lfs 2>&1 > /dev/null");
-		if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-		  string cmd = "lfs setstripe -c -1 " + output_dir;
-		  auto status = std::system(cmd.c_str());
-		  if (WIFEXITED(status) && WEXITSTATUS(status) == 0) cout << "Set Lustre striping on the output directory\n";
-		  else cout << "Failed to set Lustre striping on output directory: " << WEXITSTATUS(status) << endl;
-		}
-	  }
+      if (mkdir(output_dir.c_str(), S_IRWXU) == -1) {
+        // could not create the directory
+        if (errno == EEXIST) {
+          cerr << KLRED << "WARNING: " << KNORM << "Output directory " << output_dir
+               << " already exists. May overwrite existing files\n";
+        } else {
+          ostringstream oss;
+          oss << KLRED << "ERROR: " << KNORM << " Could not create output directory " << output_dir << ": " << strerror(errno)
+              << endl;
+          throw std::runtime_error(oss.str());
+        }
+      } else {
+        // created the directory - now stripe it if possible
+        auto status = std::system("which lfs 2>&1 > /dev/null");
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+          string cmd = "lfs setstripe -c -1 " + output_dir;
+          auto status = std::system(cmd.c_str());
+          if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+            cout << "Set Lustre striping on the output directory\n";
+          else
+            cout << "Failed to set Lustre striping on output directory: " << WEXITSTATUS(status) << endl;
+        }
+      }
     }
     upcxx::barrier();
     // all change to the output directory

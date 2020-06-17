@@ -208,7 +208,7 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected, sha
   SLOG("Finished ", options->num_iters, " time steps in ", setprecision(4), fixed, t_elapsed.count(), " s (",
        (double)t_elapsed.count() / options->num_iters, " s per step)\n");
 }
-
+  
 int main(int argc, char **argv) {
   upcxx::init();
   auto start_t = chrono::high_resolution_clock::now();
