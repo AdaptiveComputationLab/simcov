@@ -101,7 +101,9 @@ public:
   double spread_prob = 0.5;
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
-    to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + get_current_time(true);
+                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" + get_current_time(true);
+  int sample_period = 1;
+  double sample_resolution = 1.0;
   bool show_progress = false;
   bool verbose = false;
 
@@ -110,20 +112,17 @@ public:
     string full_version_str = "SimCov version " + string(SIMCOV_VERSION) + "-" + string(SIMCOV_BRANCH) + " built on " +
 	  string(SIMCOV_BUILD_DATE);
     CLI::App app(full_version_str);
-    app.add_option("-d,--dim", dimensions, "Dimensions: x y z")
-      ->capture_default_str() ->delimiter(',') ->expected(3);
-    app.add_option("-i,--iterations", num_iters, "Number of iterations")
-      ->capture_default_str() ->check(CLI::Range(1, 1000000));
-    app.add_option("-f,--infections", num_infections, "Number of starting infections")
-      ->capture_default_str() ->check(CLI::Range(1, 1000));
-    app.add_option("-t,--tcells", num_tcells, "Number of t-cells")
-      ->capture_default_str();
-    app.add_option("-p,--incubation-period", incubation_period, "Incubation period")
-      ->capture_default_str();
-    app.add_option("-s,--spread-probability", spread_prob, "Probability of virus spreading to a neighbor")
-      ->capture_default_str();
-    app.add_option("-r,--seed", rnd_seed, "Random seed")
-      ->capture_default_str();
+    app.add_option("-d,--dim", dimensions, "Dimensions: x y z")->capture_default_str()->delimiter(',')->expected(3);
+    app.add_option("-i,--iterations", num_iters, "Number of iterations")->capture_default_str()->check(CLI::Range(1, 1000000));
+    app.add_option("-f,--infections", num_infections, "Number of starting infections")->capture_default_str();
+    app.add_option("-t,--tcells", num_tcells, "Number of t-cells")->capture_default_str();
+    app.add_option("-p,--incubation-period", incubation_period, "Incubation period")->capture_default_str();
+    app.add_option("-s,--spread-probability", spread_prob, "Probability of virus spreading to a neighbor")->capture_default_str();
+    app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
+    app.add_option("--sample-period", sample_period, "Number of timesteps between samples")->capture_default_str();
+    app.add_option("--sample-resolution", sample_resolution, "Resolution for sampling")
+        ->capture_default_str()
+        ->check(CLI::Range(0.0, 1.0));
 
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory")
       ->capture_default_str();

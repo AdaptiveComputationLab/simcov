@@ -36,10 +36,10 @@ struct GridCoords {
   }
 
   // create a random grid point
-  GridCoords(Random &rnd_gen, const GridCoords &grid_size) {
-    x = rnd_gen.get(0, grid_size.x);
-    y = rnd_gen.get(0, grid_size.y);
-    z = rnd_gen.get(0, grid_size.z);
+  GridCoords(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
+    x = rnd_gen->get(0, grid_size.x);
+    y = rnd_gen->get(0, grid_size.y);
+    z = rnd_gen->get(0, grid_size.z);
   }
 
   bool operator==(const GridCoords &coords) {
