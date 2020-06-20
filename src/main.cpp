@@ -147,12 +147,14 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point, int64_t 
           GridCoords coords(vx, vy, vz);
           if (coords == grid_point->coords) continue;
           if (_rnd_gen->get_prob() >= _options->spread_prob) continue;
-          auto f = tissue.infect_epicell(coords).then([&](InfectionResult result) {
+          auto grid_point_coords = grid_point->coords;
+          auto f = tissue.infect_epicell(coords).then([&num_infected, time_step, coords,
+                                                       grid_point_coords](InfectionResult result) {
             if (result == InfectionResult::Success) {
-              DBG(time_step, ": virus at ", grid_point->coords.str(), " spread to ", coords.str(), "\n");
+              DBG(time_step, ": virus at ", grid_point_coords.str(), " spread to ", coords.str(), "\n");
               num_infected++;
             } else {
-              DBG(time_step, ": virus at ", grid_point->coords.str(), " could not spread to ", coords.str(), " (",
+              DBG(time_step, ": virus at ", grid_point_coords.str(), " could not spread to ", coords.str(), " (",
                   (result == InfectionResult::NotHealthy ? " not healthy " : " already infected"), ")\n");
             }
           });
@@ -181,9 +183,10 @@ void sample(int time_step, Tissue &tissue) {
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 2.0\n"
              << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step << "\n"
-             << "ASCII\n"
+             //<< "ASCII\n"
+             << "BINARY\n"
              << "DATASET STRUCTURED_POINTS\n"
-             << "DIMENSIONS " << x_dim << " " << " " << y_dim << " " << z_dim << "\n"
+             << "DIMENSIONS " << x_dim << " " << y_dim << " " << z_dim << "\n"
              << "ASPECT_RATIO 1 1 1\n"
              << "ORIGIN 0 0 0\n"
              << "POINT_DATA " << (x_dim * y_dim * z_dim) << "\n"

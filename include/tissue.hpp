@@ -54,7 +54,7 @@ struct GridCoords {
     return x + y * grid_size.x + z * grid_size.x * grid_size.y;
   }
 
-  string str() {
+  string str() const {
     return "(" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")";
   }
 };
@@ -87,9 +87,9 @@ struct GridPoint {
   vector<TCell> tcells_backing_2 = {};
   // a pointer to the currently active tcells vector
   vector<TCell> *tcells = nullptr;
-  uint8_t virus = 0;
+  bool virus = false;
 
-  string str() {
+  string str() const {
     ostringstream oss;
     oss << id << " " << coords.str() << " " << epicell->str() << " " << virus;
     return oss.str();
@@ -146,7 +146,7 @@ class Tissue {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
           if (grid_point.virus) return InfectionResult::AlreadyInfected;
           if (grid_point.epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
-          grid_point.virus = 255;
+          grid_point.virus = true;
           grid_point.epicell->num_steps_infected = 0;
           grid_point.epicell->status = EpiCellStatus::Incubating;
           return InfectionResult::Success;
@@ -236,7 +236,7 @@ class Tissue {
         // They should be placed according to the underlying lung structure (gaps, etc)
         grid_points->push_back({.id = id, .coords = coords,
              .epicell = new EpiCell({.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}),
-             .tcells_backing_1 = {}, .tcells_backing_2 = {}, .tcells = nullptr});
+             .tcells_backing_1 = {}, .tcells_backing_2 = {}, .tcells = nullptr, .virus = false});
         DBG("adding grid point ", id, " at ", coords.str(), "\n");
       }
     }
@@ -260,14 +260,11 @@ class Tissue {
     }
     DBG("Writing samples to ", fname, "\n");
     DBG("header size is ", header_str.length(), "\n");
-    string checkit = "";
     size_t tot_bytes_written = 0;
     int64_t num_grid_points = get_num_grid_points();
     int64_t num_blocks = num_grid_points / Tissue::block_size;
     int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-    size_t buf_sz = Tissue::block_size * 4;
-    char *buf = new char[buf_sz + 1];
-    char scalar_buf[5];
+    unsigned char *buf = new unsigned char[Tissue::block_size + 1];
     for (int64_t i = 0; i < blocks_per_rank; i++) {
       int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
       if (start_id >= num_grid_points) break;
@@ -276,22 +273,23 @@ class Tissue {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
         int val = 127;
         if (grid_point.tcells && grid_point.tcells->size()) val = 50 - std::max(50, (int)grid_point.tcells->size());
-        else if (grid_point.virus) val = std::max(255, grid_point.virus + 200);
-
-        val = id;
-
-        checkit += to_string(val) + " ";
-        sprintf(scalar_buf, "%4d", val);
-        memcpy(buf + (id - start_id) * 4, scalar_buf, 4);
+        else if (grid_point.virus) val = 200;
+        else if (grid_point.epicell->status == EpiCellStatus::Dead) val = 255;
+        /*
+        val = 127;
+        if (coords.x == 5 && coords.y == 3 && coords.z == 0) val = 255;
+        if (coords.x == 2 && coords.y == 1 && coords.z == 3) val = 0;
+        */
+        buf[id - start_id] = (unsigned char)val;
       }
-      buf[buf_sz] = 0;
+      buf[Tissue::block_size] = 0;
       DBG("buf: ", buf, "\n");
-      size_t fpos = start_id * 4 + header_str.length();
-      auto bytes_written = pwrite(fileno, buf, buf_sz, fpos);
-      if (bytes_written != buf_sz) DIE("Could not write all ", buf_sz, " bytes; only wrote ", bytes_written, "\n");
+      size_t fpos = start_id + header_str.length();
+      auto bytes_written = pwrite(fileno, buf, Tissue::block_size, fpos);
+      if (bytes_written != Tissue::block_size)
+        DIE("Could not write all ", Tissue::block_size, " bytes; only wrote ", bytes_written, "\n");
       tot_bytes_written += bytes_written;
       DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
-      DBG(checkit, "\n");
     }
     delete[] buf;
     close(fileno);
