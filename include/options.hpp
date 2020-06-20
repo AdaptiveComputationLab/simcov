@@ -76,6 +76,21 @@ class Options {
       throw std::runtime_error(oss.str());
     }
     upcxx::barrier();
+    // now setup a samples subdirectory
+    if (!upcxx::rank_me()) {
+      // create the output directory and stripe it
+      if (mkdir("samples", S_IRWXU) == -1) {
+        // could not create the directory
+        if (errno == EEXIST) {
+          cerr << KLRED << "WARNING: " << KNORM << "Samples directory already exists. May overwrite existing files\n";
+        } else {
+          ostringstream oss;
+          oss << KLRED << "ERROR: " << KNORM << " Could not create samples directory : " << strerror(errno) << endl;
+          throw std::runtime_error(oss.str());
+        }
+      }
+    }
+    upcxx::barrier();
   }
 
   void setup_log_file() {

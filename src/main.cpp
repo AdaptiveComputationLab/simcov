@@ -29,6 +29,10 @@ bool _verbose = false;
 shared_ptr<Options> _options;
 shared_ptr<Random> _rnd_gen;
 
+IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell");
+IntermittentTimer _update_virus_timer(__FILENAME__ + string(":") + "update_virus");
+IntermittentTimer _sample_timer(__FILENAME__ + string(":") + "sample");
+
 
 int64_t initial_infection(int num_infections, Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__, false, true);
@@ -101,6 +105,7 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 }
 
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell, int64_t &num_viral_kills, future<> &fchain) {
+  _update_tcell_timer.start();
   if (grid_point->virus) {
     // kill the virus
     DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " killed virus\n");
@@ -117,17 +122,19 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
     tissue.add_tcell(coords, tcell.id);
   }
+  _update_tcell_timer.stop();
 }
 
 void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point, int64_t &num_infected, int64_t &num_dead_epicells,
                   future<> &fchain) {
+  _update_virus_timer.start();
   assert(grid_point->epicell->status == EpiCellStatus::Incubating);
   grid_point->epicell->num_steps_infected++;
   if (grid_point->epicell->num_steps_infected > _options->incubation_period) {
     grid_point->epicell->status == EpiCellStatus::Dead;
     grid_point->virus = false;
     num_dead_epicells++;
-    // spread virus to healthy neighbors
+    // spread virus to healthy neighbors with probability _options->spread_prob
     for (int64_t x = 0; x < 3; x++) {
       auto vx = grid_point->coords.x + x - 1;
       if (vx < 0 || vx >= Tissue::grid_size.x) continue;
@@ -154,10 +161,51 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point, int64_t 
       }
     }
   }
+  _update_virus_timer.stop();
 }
 
-void sample() {
-
+void sample(int time_step, Tissue &tissue) {
+  // each rank writes its own blocks into the file at the appropriate locations. We compute the location knowing that
+  // each position takes exactly 4 characters (up to 3 numbers and a space), so we can work out how much space a block
+  // takes up, in order to position the data correctly.
+  // Each point is represented by a scalar char. From 1-127 are used to indicate viral load, with a color
+  // of red, going from faint to strong. From -127 to -1 are used to indicate tcell count, with a color of blue,
+  // going from faint to strong. The last color (0) is used to indicate a dead epicell (how do we make this a separate color?)
+  _sample_timer.start();
+  // each grid point will take up 4 chars (includes 1 space)
+  size_t tot_sz = tissue.get_num_grid_points() * 4;
+  string fname = "samples/sample_" + to_string(time_step) + ".vtk";
+  int x_dim = _options->dimensions[0];
+  int y_dim = _options->dimensions[1];
+  int z_dim = _options->dimensions[2];
+  ostringstream header_oss;
+  header_oss << "# vtk DataFile Version 2.0\n"
+             << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step << "\n"
+             << "ASCII\n"
+             << "DATASET STRUCTURED_POINTS\n"
+             << "DIMENSIONS " << x_dim << " " << " " << y_dim << " " << z_dim << "\n"
+             << "ASPECT_RATIO 1 1 1\n"
+             << "ORIGIN 0 0 0\n"
+             << "POINT_DATA " << (x_dim * y_dim * z_dim) << "\n"
+             << "SCALARS volume_scalars unsigned_char 1\n"
+             << "LOOKUP_TABLE default\n";
+  if (!rank_me()) {
+    // all ranks have the same size since we zero pad ASCII chars to ensure we always write out 3 chars per point
+    tot_sz += header_oss.str().size();
+    // rank 0 creates the file and truncates it to the correct length
+    auto fileno = open(fname.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fileno == -1) SDIE("Cannot create file ", fname, ": ", strerror(errno), "\n");
+    if (ftruncate(fileno, tot_sz) == -1) DIE("Could not truncate ", fname, " to ", tot_sz, " bytes\n");
+    close(fileno);
+    DBG("Truncated sample file ", fname, " to ", tot_sz, " bytes\n");
+  }
+  upcxx::barrier();
+  // wait until rank 0 has finished setting up the file
+  auto bytes_written = tissue.dump_blocks(fname, header_oss.str());
+  upcxx::barrier();
+  auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
+  SLOG_VERBOSE("Successfully wrote ", get_size_str(tot_bytes_written), " to ", fname, "\n");
+  _sample_timer.stop();
 }
 
 void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
@@ -220,9 +268,12 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
     }
     // sample
     if (time_step % _options->sample_period == 0) {
-      sample();
+      sample(time_step, tissue);
     }
   }
+  _update_tcell_timer.done_all();
+  _update_virus_timer.done_all();
+  _sample_timer.done_all();
   chrono::duration<double> t_elapsed = chrono::high_resolution_clock::now() - start_t;
   SLOG("Finished ", _options->num_iters, " time steps in ", setprecision(4), fixed, t_elapsed.count(), " s (",
        (double)t_elapsed.count() / _options->num_iters, " s per step)\n");

@@ -33,12 +33,14 @@ inline int pin_thread(pid_t pid, int cid) {
 }
 
 inline void dump_single_file(const string &fname, const string &out_str) {
+  auto sz = out_str.length();
   upcxx::atomic_domain<size_t> ad({upcxx::atomic_op::fetch_add, upcxx::atomic_op::load});
   upcxx::global_ptr<size_t> fpos = nullptr;
-  if (!upcxx::rank_me()) fpos = upcxx::new_<size_t>(0);
+  // always give rank 0 the first chunk so it can write header info if needed
+  if (!upcxx::rank_me()) fpos = upcxx::new_<size_t>(sz);
   fpos = upcxx::broadcast(fpos, 0).wait();
-  auto sz = out_str.length();
-  size_t my_fpos = ad.fetch_add(fpos, sz, std::memory_order_relaxed).wait();
+  size_t my_fpos = 0;
+  if (upcxx::rank_me()) my_fpos = ad.fetch_add(fpos, sz, std::memory_order_relaxed).wait();
   // wait until all ranks have updated the global counter
   upcxx::barrier();
   int fileno = -1;

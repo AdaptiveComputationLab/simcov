@@ -87,7 +87,7 @@ struct GridPoint {
   vector<TCell> tcells_backing_2 = {};
   // a pointer to the currently active tcells vector
   vector<TCell> *tcells = nullptr;
-  bool virus = false;
+  uint8_t virus = 0;
 
   string str() {
     ostringstream oss;
@@ -146,7 +146,7 @@ class Tissue {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
           if (grid_point.virus) return InfectionResult::AlreadyInfected;
           if (grid_point.epicell->status != EpiCellStatus::Healthy) return InfectionResult::NotHealthy;
-          grid_point.virus = true;
+          grid_point.virus = 255;
           grid_point.epicell->num_steps_infected = 0;
           grid_point.epicell->status = EpiCellStatus::Incubating;
           return InfectionResult::Success;
@@ -221,9 +221,10 @@ class Tissue {
     SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " blocks of size ", Tissue::block_size,
          " (", block_dim, "^3)\n");
     int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
+    SLOG_VERBOSE("Each process has ", blocks_per_rank, " blocks\n");
     grid_points->reserve(blocks_per_rank * Tissue::block_size);
     auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * Tissue::block_size;
-    SLOG("Total initial memory required per process is ", get_size_str(mem_reqd), "\n");
+    SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
     // FIXME: it may be more efficient (less communication) to have contiguous blocks
     // this is the quick & dirty approach
     for (int64_t i = 0; i < blocks_per_rank; i++) {
@@ -236,6 +237,7 @@ class Tissue {
         grid_points->push_back({.id = id, .coords = coords,
              .epicell = new EpiCell({.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}),
              .tcells_backing_1 = {}, .tcells_backing_2 = {}, .tcells = nullptr});
+        DBG("adding grid point ", id, " at ", coords.str(), "\n");
       }
     }
 /*
@@ -247,6 +249,54 @@ class Tissue {
 */
     barrier();
   }
+
+  size_t dump_blocks(const string &fname, const string &header_str) {
+    auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
+    if (!upcxx::rank_me()) {
+      auto bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
+      if (bytes_written != header_str.length())
+        DIE("Could not write all ", header_str.length(), " bytes: only wrote ", bytes_written);
+    }
+    DBG("Writing samples to ", fname, "\n");
+    DBG("header size is ", header_str.length(), "\n");
+    string checkit = "";
+    size_t tot_bytes_written = 0;
+    int64_t num_grid_points = get_num_grid_points();
+    int64_t num_blocks = num_grid_points / Tissue::block_size;
+    int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
+    size_t buf_sz = Tissue::block_size * 4;
+    char *buf = new char[buf_sz + 1];
+    char scalar_buf[5];
+    for (int64_t i = 0; i < blocks_per_rank; i++) {
+      int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
+      if (start_id >= num_grid_points) break;
+      for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
+        GridCoords coords(id, Tissue::grid_size);
+        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        int val = 127;
+        if (grid_point.tcells && grid_point.tcells->size()) val = 50 - std::max(50, (int)grid_point.tcells->size());
+        else if (grid_point.virus) val = std::max(255, grid_point.virus + 200);
+
+        val = id;
+
+        checkit += to_string(val) + " ";
+        sprintf(scalar_buf, "%4d", val);
+        memcpy(buf + (id - start_id) * 4, scalar_buf, 4);
+      }
+      buf[buf_sz] = 0;
+      DBG("buf: ", buf, "\n");
+      size_t fpos = start_id * 4 + header_str.length();
+      auto bytes_written = pwrite(fileno, buf, buf_sz, fpos);
+      if (bytes_written != buf_sz) DIE("Could not write all ", buf_sz, " bytes; only wrote ", bytes_written, "\n");
+      tot_bytes_written += bytes_written;
+      DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
+      DBG(checkit, "\n");
+    }
+    delete[] buf;
+    close(fileno);
+    return tot_bytes_written;
+                                      }
 
   GridPoint *get_first_local_grid_point() {
     grid_point_iter = grid_points->begin();
