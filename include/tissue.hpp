@@ -273,8 +273,8 @@ class Tissue {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
         int val = 127;
         if (grid_point.tcells && grid_point.tcells->size()) val = 50 - std::max(50, (int)grid_point.tcells->size());
-        else if (grid_point.virus) val = 200;
-        else if (grid_point.epicell->status == EpiCellStatus::Dead) val = 255;
+        else if (grid_point.virus) val = 255;
+        else if (grid_point.epicell->status == EpiCellStatus::Dead) val = 200;
         /*
         val = 127;
         if (coords.x == 5 && coords.y == 3 && coords.z == 0) val = 255;
@@ -283,7 +283,6 @@ class Tissue {
         buf[id - start_id] = (unsigned char)val;
       }
       buf[Tissue::block_size] = 0;
-      DBG("buf: ", buf, "\n");
       size_t fpos = start_id + header_str.length();
       auto bytes_written = pwrite(fileno, buf, Tissue::block_size, fpos);
       if (bytes_written != Tissue::block_size)

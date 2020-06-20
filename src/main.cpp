@@ -131,7 +131,7 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point, int64_t 
   assert(grid_point->epicell->status == EpiCellStatus::Incubating);
   grid_point->epicell->num_steps_infected++;
   if (grid_point->epicell->num_steps_infected > _options->incubation_period) {
-    grid_point->epicell->status == EpiCellStatus::Dead;
+    grid_point->epicell->status = EpiCellStatus::Dead;
     grid_point->virus = false;
     num_dead_epicells++;
     // spread virus to healthy neighbors with probability _options->spread_prob
