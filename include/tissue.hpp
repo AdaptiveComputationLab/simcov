@@ -200,18 +200,43 @@ class Tissue {
   }
 
   void construct(GridCoords grid_size) {
+    auto remainder = [](int64_t numerator, int64_t denominator) -> bool {
+      return ((double)numerator / denominator - (numerator / denominator) != 0);
+    };
     BarrierTimer timer(__FILEFUNC__, false, true);
     Tissue::grid_size = grid_size;
     int64_t num_grid_points = get_num_grid_points();
-    int64_t max_block_size = num_grid_points / rank_n();
-    // we want the blocks to be cubes, so find a size that divides all three dimensions
-    auto block_dim = gcd(gcd(Tissue::grid_size.x, Tissue::grid_size.y), Tissue::grid_size.z);
-    Tissue::block_size = block_dim * block_dim * block_dim;
-    // reduce block size until we can have at least one per process
-    while (Tissue::block_size > max_block_size) {
-      block_dim /= 2;
-      Tissue::block_size = block_dim * block_dim * block_dim;
+    // find the biggest cube that perfectly divides the grid and gives enough data for at least two cubes per rank (for load
+    // balance)
+    // This is a trade-off: the more data is blocked, the better the locality, but load balance could be a problem if not all
+    // ranks get the same number of cubes. Also, having bigger cubes could lead to load imbalance if all of the computation is
+    // happening within a cube.
+    int min_cubes_per_rank = 2;
+    int block_dim = 1;
+    int min_dim = std::min(std::min(Tissue::grid_size.x, Tissue::grid_size.y), Tissue::grid_size.z);
+    for (int i = 1; i < min_dim; i++) {
+      // only allow dims that divide each main dimension perfectly
+      if (remainder(Tissue::grid_size.x, i) || remainder(Tissue::grid_size.y, i) || remainder(Tissue::grid_size.z, i)) {
+        DBG("dim ", i, " does not divide all main dimensions cleanly\n");
+        continue;
+      }
+      size_t cube = (size_t)pow((double)i, 3.0);
+      size_t num_cubes = num_grid_points / cube;
+      DBG("cube size ", cube, " num cubes ", num_cubes, "\n");
+      if (num_cubes < rank_n() * min_cubes_per_rank) {
+        DBG("not enough cubes ", num_cubes, " < ", rank_n() * min_cubes_per_rank, "\n");
+        break;
+      }
+      // there is a remainder - this is not a perfect division
+      if (remainder(num_grid_points, cube)) {
+        DBG("there is a remainder - don't use\n");
+        continue;
+      } else {
+        DBG("selected dim ", i, "\n");
+        block_dim = i;
+      }
     }
+    Tissue::block_size = block_dim * block_dim * block_dim;
     if (block_dim == 1)
       WARN("Using a block size of 1: this will result in a lot of communication. You should change the dimensions.");
     int64_t x_blocks = Tissue::grid_size.x / block_dim;
@@ -231,6 +256,7 @@ class Tissue {
       int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
       if (start_id >= num_grid_points) break;
       for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
+        assert(id < num_grid_points);
         GridCoords coords(id, Tissue::grid_size);
         // FIXME: this is an epicall on every grid point.
         // They should be placed according to the underlying lung structure (gaps, etc)
@@ -250,7 +276,7 @@ class Tissue {
     barrier();
   }
 
-  size_t dump_blocks(const string &fname, const string &header_str) {
+  std::pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str) {
     auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
     if (!upcxx::rank_me()) {
@@ -261,6 +287,7 @@ class Tissue {
     DBG("Writing samples to ", fname, "\n");
     DBG("header size is ", header_str.length(), "\n");
     size_t tot_bytes_written = 0;
+    size_t grid_points_written = 0;
     int64_t num_grid_points = get_num_grid_points();
     int64_t num_blocks = num_grid_points / Tissue::block_size;
     int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
@@ -269,6 +296,7 @@ class Tissue {
       int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
       if (start_id >= num_grid_points) break;
       for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
+        assert(id < num_grid_points);
         GridCoords coords(id, Tissue::grid_size);
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
         int val = 127;
@@ -281,6 +309,7 @@ class Tissue {
         if (coords.x == 2 && coords.y == 1 && coords.z == 3) val = 0;
         */
         buf[id - start_id] = (unsigned char)val;
+        grid_points_written++;
       }
       buf[Tissue::block_size] = 0;
       size_t fpos = start_id + header_str.length();
@@ -292,7 +321,7 @@ class Tissue {
     }
     delete[] buf;
     close(fileno);
-    return tot_bytes_written;
+    return {tot_bytes_written, grid_points_written};
                                       }
 
   GridPoint *get_first_local_grid_point() {

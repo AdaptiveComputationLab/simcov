@@ -186,10 +186,12 @@ void sample(int time_step, Tissue &tissue) {
              //<< "ASCII\n"
              << "BINARY\n"
              << "DATASET STRUCTURED_POINTS\n"
-             << "DIMENSIONS " << x_dim << " " << y_dim << " " << z_dim << "\n"
+             // we add one in each dimension because these are for drawing the visualization points, and our visualization
+             // entities are cells
+             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1) << "\n"
              << "ASPECT_RATIO 1 1 1\n"
              << "ORIGIN 0 0 0\n"
-             << "POINT_DATA " << (x_dim * y_dim * z_dim) << "\n"
+             << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
              << "SCALARS volume_scalars unsigned_char 1\n"
              << "LOOKUP_TABLE default\n";
   if (!rank_me()) {
@@ -204,10 +206,12 @@ void sample(int time_step, Tissue &tissue) {
   }
   upcxx::barrier();
   // wait until rank 0 has finished setting up the file
-  auto bytes_written = tissue.dump_blocks(fname, header_oss.str());
+  auto [bytes_written, grid_points_written] = tissue.dump_blocks(fname, header_oss.str());
   upcxx::barrier();
   auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
-  SLOG_VERBOSE("Successfully wrote ", get_size_str(tot_bytes_written), " to ", fname, "\n");
+  auto tot_grid_points_written = upcxx::reduce_one(grid_points_written, upcxx::op_fast_add, 0).wait();
+  SLOG_VERBOSE("Successfully wrote ", tot_grid_points_written, " grid points, with size ", get_size_str(tot_bytes_written), " to ",
+               fname, "\n");
   _sample_timer.stop();
 }
 
