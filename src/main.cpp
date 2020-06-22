@@ -174,8 +174,8 @@ void sample(int time_step, Tissue &tissue) {
   // of red, going from faint to strong. From -127 to -1 are used to indicate tcell count, with a color of blue,
   // going from faint to strong. The last color (0) is used to indicate a dead epicell (how do we make this a separate color?)
   _sample_timer.start();
-  // each grid point will take up 4 chars (includes 1 space)
-  size_t tot_sz = tissue.get_num_grid_points() * 4;
+  // each grid point takes up a single char
+  size_t tot_sz = tissue.get_num_grid_points() * 1;
   string fname = "samples/sample_" + to_string(time_step) + ".vtk";
   int x_dim = _options->dimensions[0];
   int y_dim = _options->dimensions[1];
@@ -210,6 +210,7 @@ void sample(int time_step, Tissue &tissue) {
   upcxx::barrier();
   auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
   auto tot_grid_points_written = upcxx::reduce_one(grid_points_written, upcxx::op_fast_add, 0).wait();
+  if (!rank_me()) assert(tot_grid_points_written == tissue.get_num_grid_points());
   SLOG_VERBOSE("Successfully wrote ", tot_grid_points_written, " grid points, with size ", get_size_str(tot_bytes_written), " to ",
                fname, "\n");
   _sample_timer.stop();

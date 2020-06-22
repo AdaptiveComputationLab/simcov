@@ -238,7 +238,7 @@ class Tissue {
     }
     Tissue::block_size = block_dim * block_dim * block_dim;
     if (block_dim == 1)
-      WARN("Using a block size of 1: this will result in a lot of communication. You should change the dimensions.");
+      SWARN("Using a block size of 1: this will result in a lot of communication. You should change the dimensions.");
     int64_t x_blocks = Tissue::grid_size.x / block_dim;
     int64_t y_blocks = Tissue::grid_size.y / block_dim;
     int64_t z_blocks = Tissue::grid_size.z / block_dim;
