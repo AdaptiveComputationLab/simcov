@@ -181,7 +181,7 @@ void sample(int time_step, Tissue &tissue) {
   int y_dim = _options->dimensions[1];
   int z_dim = _options->dimensions[2];
   ostringstream header_oss;
-  header_oss << "# vtk DataFile Version 2.0\n"
+  header_oss << "# vtk DataFile Version 4.2\n"
              << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step << "\n"
              //<< "ASCII\n"
              << "BINARY\n"
@@ -189,10 +189,10 @@ void sample(int time_step, Tissue &tissue) {
              // we add one in each dimension because these are for drawing the visualization points, and our visualization
              // entities are cells
              << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1) << "\n"
-             << "ASPECT_RATIO 1 1 1\n"
+             << "SPACING 1 1 1\n"
              << "ORIGIN 0 0 0\n"
              << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
-             << "SCALARS volume_scalars unsigned_char 1\n"
+             << "SCALARS virus_or_tcell unsigned_char 1\n"
              << "LOOKUP_TABLE default\n";
   if (!rank_me()) {
     // all ranks have the same size since we zero pad ASCII chars to ensure we always write out 3 chars per point
