@@ -234,6 +234,29 @@ void sample(int time_step, Tissue &tissue) {
   _sample_timer.stop();
 }
 
+void sample_csv(int time_step, Tissue &tissue) {
+  _sample_timer.start();
+  // each grid point takes up a line
+  size_t tot_sz = tissue.get_num_grid_points() * 1;
+  string fname = "samples/sample_" + to_string(time_step) + ".csv";
+  int x_dim = _options->dimensions[0];
+  int y_dim = _options->dimensions[1];
+  int z_dim = _options->dimensions[2];
+  std::string header = "x coord, y coord, z coord, t_cell_count, virus_conc\n";
+  if (!rank_me()) {
+    //rank 0 creates the file with the header
+    std::ofstream output_file;
+    output_file.open(fname.c_str(), ios::out | ios::app);
+    output_file << header;
+    output_file.close();
+  }
+  upcxx::barrier();
+  // wait until rank 0 has finished setting up the file
+  tissue.dump_blocks_csv(fname);
+  upcxx::barrier();
+  _sample_timer.stop();
+}
+
 void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
   BarrierTimer timer(__FILEFUNC__, false, true);
   // this is a trivial test case:
@@ -294,7 +317,9 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
     }
     // sample
     if (time_step % _options->sample_period == 0) {
-      sample(time_step, tissue);
+      // sample(time_step, tissue);
+      //testing csv outout
+      sample_csv(time_step, tissue);
     }
   }
   _update_tcell_timer.done_all();

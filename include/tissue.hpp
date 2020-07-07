@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <map>
+#include <string>
 #include <math.h>
 #include <numeric>
 #include <stdarg.h>
@@ -396,6 +398,46 @@ public:
     close(fileno);
     return {tot_bytes_written, grid_points_written};
   }
+
+  //kleyba: for saving csv files
+  void dump_blocks_csv(const string &fname) {
+
+    //open output file
+    std::ofstream output_file;
+    output_file.open(fname.c_str(), ios::out | ios::app);
+    size_t grid_points_written = 0;
+
+    int64_t num_grid_points = get_num_grid_points();
+    int64_t num_blocks = num_grid_points / Tissue::block_size;
+    int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
+    for (int64_t i = 0; i < blocks_per_rank; i++) {
+      int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
+      if (start_id >= num_grid_points)
+        break;
+      for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
+        assert(id < num_grid_points);
+        GridCoords coords(id, Tissue::grid_size);
+        GridPoint &grid_point =
+            Tissue::get_local_grid_point(grid_points, id, coords);
+
+        std::ostringstream output_stream;
+        float vir = 0.0;
+        int64_t tcells = 0;
+        if(grid_point.tcells){tcells = grid_point.tcells->size();}
+        if(grid_point.virus){vir=1.0;}
+        output_stream << coords.x << ", "
+          << coords.y << ", "
+          << coords.z << ", "
+          << tcells << ", "
+          << vir << "\n";
+        std::string output(output_stream.str());
+        output_file << output;
+
+        grid_points_written++;
+      }
+    }
+  }
+
 
   GridPoint *get_first_local_grid_point() {
     grid_point_iter = grid_points->begin();
