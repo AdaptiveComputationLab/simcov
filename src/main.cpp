@@ -116,9 +116,10 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     fchain = when_all(fchain, f);
   } else {
     // move to a random neighbor (or don't move)
-    GridCoords coords(get_rnd_coord(grid_point->coords.x, Tissue::grid_size.x),
-                      get_rnd_coord(grid_point->coords.y, Tissue::grid_size.y),
-                      get_rnd_coord(grid_point->coords.z, Tissue::grid_size.z));
+    // GridCoords coords(get_rnd_coord(grid_point->coords.x, Tissue::grid_size.x),
+    //                   get_rnd_coord(grid_point->coords.y, Tissue::grid_size.y),
+    //                   get_rnd_coord(grid_point->coords.z, Tissue::grid_size.z));
+    GridCoords coords = grid_point->neighbors[_rnd_gen->get(0, int64_t(grid_point->neighbors.size()))];
     DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ", coords.str(), "\n");
     tissue.add_tcell(coords, tcell.id);
   }
@@ -135,33 +136,50 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point, int64_t 
     grid_point->virus = false;
     num_dead_epicells++;
     // spread virus to healthy neighbors with probability _options->spread_prob
-    for (int64_t x = 0; x < 3; x++) {
-      auto vx = grid_point->coords.x + x - 1;
-      if (vx < 0 || vx >= Tissue::grid_size.x) continue;
-      for (int64_t y = 0; y < 3; y++) {
-        auto vy = grid_point->coords.y + y - 1;
-        if (vy < 0 || vy >= Tissue::grid_size.y) continue;
-        for (int64_t z = 0; z < 3; z++) {
-          auto vz = grid_point->coords.z + z - 1;
-          if (vz < 0 || vz >= Tissue::grid_size.z) continue;
-          GridCoords coords(vx, vy, vz);
-          if (coords == grid_point->coords) continue;
-          if (_rnd_gen->get_prob() >= _options->spread_prob) continue;
-          auto grid_point_coords = grid_point->coords;
-          auto f = tissue.infect_epicell(coords).then([&num_infected, time_step, coords,
-                                                       grid_point_coords](InfectionResult result) {
-            if (result == InfectionResult::Success) {
-              DBG(time_step, ": virus at ", grid_point_coords.str(), " spread to ", coords.str(), "\n");
-              num_infected++;
-            } else {
-              DBG(time_step, ": virus at ", grid_point_coords.str(), " could not spread to ", coords.str(), " (",
-                  (result == InfectionResult::NotHealthy ? " not healthy " : " already infected"), ")\n");
-            }
-          });
-          fchain = when_all(fchain, f);
+    for (int64_t i = 0; i < grid_point->neighbors.size(); i++) {
+      GridCoords coords = grid_point->neighbors[i];
+      if (coords == grid_point->coords) continue;
+      if (_rnd_gen->get_prob() >= _options->spread_prob) continue;
+      auto grid_point_coords = grid_point->coords;
+      auto f = tissue.infect_epicell(coords).then([&num_infected, time_step, coords,
+                                                   grid_point_coords](InfectionResult result) {
+        if (result == InfectionResult::Success) {
+          DBG(time_step, ": virus at ", grid_point_coords.str(), " spread to ", coords.str(), "\n");
+          num_infected++;
+        } else {
+          DBG(time_step, ": virus at ", grid_point_coords.str(), " could not spread to ", coords.str(), " (",
+              (result == InfectionResult::NotHealthy ? " not healthy " : " already infected"), ")\n");
         }
-      }
+      });
+      fchain = when_all(fchain, f);
     }
+    // for (int64_t x = 0; x < 3; x++) {
+    //   auto vx = grid_point->coords.x + x - 1;
+    //   if (vx < 0 || vx >= Tissue::grid_size.x) continue;
+    //   for (int64_t y = 0; y < 3; y++) {
+    //     auto vy = grid_point->coords.y + y - 1;
+    //     if (vy < 0 || vy >= Tissue::grid_size.y) continue;
+    //     for (int64_t z = 0; z < 3; z++) {
+    //       auto vz = grid_point->coords.z + z - 1;
+    //       if (vz < 0 || vz >= Tissue::grid_size.z) continue;
+    //       GridCoords coords(vx, vy, vz);
+    //       if (coords == grid_point->coords) continue;
+    //       if (_rnd_gen->get_prob() >= _options->spread_prob) continue;
+    //       auto grid_point_coords = grid_point->coords;
+    //       auto f = tissue.infect_epicell(coords).then([&num_infected, time_step, coords,
+    //                                                    grid_point_coords](InfectionResult result) {
+    //         if (result == InfectionResult::Success) {
+    //           DBG(time_step, ": virus at ", grid_point_coords.str(), " spread to ", coords.str(), "\n");
+    //           num_infected++;
+    //         } else {
+    //           DBG(time_step, ": virus at ", grid_point_coords.str(), " could not spread to ", coords.str(), " (",
+    //               (result == InfectionResult::NotHealthy ? " not healthy " : " already infected"), ")\n");
+    //         }
+    //       });
+    //       fchain = when_all(fchain, f);
+    //     }
+    //   }
+    // }
   }
   _update_virus_timer.stop();
 }
@@ -213,6 +231,29 @@ void sample(int time_step, Tissue &tissue) {
   if (!rank_me()) assert(tot_grid_points_written == tissue.get_num_grid_points());
   SLOG_VERBOSE("Successfully wrote ", tot_grid_points_written, " grid points, with size ", get_size_str(tot_bytes_written), " to ",
                fname, "\n");
+  _sample_timer.stop();
+}
+
+void sample_csv(int time_step, Tissue &tissue) {
+  _sample_timer.start();
+  // each grid point takes up a line
+  size_t tot_sz = tissue.get_num_grid_points() * 1;
+  string fname = "samples/sample_" + to_string(time_step) + ".csv";
+  int x_dim = _options->dimensions[0];
+  int y_dim = _options->dimensions[1];
+  int z_dim = _options->dimensions[2];
+  std::string header = "x coord, y coord, z coord, t_cell_count, virus_conc\n";
+  if (!rank_me()) {
+    //rank 0 creates the file with the header
+    std::ofstream output_file;
+    output_file.open(fname.c_str(), ios::out | ios::app);
+    output_file << header;
+    output_file.close();
+  }
+  upcxx::barrier();
+  // wait until rank 0 has finished setting up the file
+  tissue.dump_blocks_csv(fname);
+  upcxx::barrier();
   _sample_timer.stop();
 }
 
@@ -276,7 +317,9 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
     }
     // sample
     if (time_step % _options->sample_period == 0) {
-      sample(time_step, tissue);
+      // sample(time_step, tissue);
+      //testing csv outout
+      sample_csv(time_step, tissue);
     }
   }
   _update_tcell_timer.done_all();
