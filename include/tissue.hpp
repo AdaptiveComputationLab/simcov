@@ -21,6 +21,17 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
+enum class ViewObject { VIRUS, TCELL };
+
+inline string view_object_str(ViewObject view_object) {
+  switch (view_object) {
+    case ViewObject::TCELL: return "tcell";
+    case ViewObject::VIRUS: return "virus";
+    default: DIE("Unknown view object");
+  }
+  return "";
+}
+
 struct GridCoords {
   int64_t x, y, z;
 
@@ -306,8 +317,7 @@ public:
     // this is the quick & dirty approach
     for (int64_t i = 0; i < blocks_per_rank; i++) {
       int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
-      if (start_id >= num_grid_points)
-        break;
+      if (start_id >= num_grid_points) break;
       for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
         assert(id < num_grid_points);
         GridCoords coords(id, Tissue::grid_size);
@@ -340,7 +350,8 @@ public:
   }
 
   std::pair<size_t, size_t> dump_blocks(const string &fname,
-                                        const string &header_str) {
+                                        const string &header_str,
+                                        ViewObject view_object) {
     auto fileno =
         open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (fileno == -1)
@@ -369,18 +380,16 @@ public:
         GridCoords coords(id, Tissue::grid_size);
         GridPoint &grid_point =
             Tissue::get_local_grid_point(grid_points, id, coords);
-        int val = 127;
-        if (grid_point.tcells && grid_point.tcells->size())
-          val = 50 - std::max(50, (int)grid_point.tcells->size());
-        else if (grid_point.virus)
-          val = 255;
-        else if (grid_point.epicell->status == EpiCellStatus::Dead)
-          val = 200;
-        /*
-        val = 127;
-        if (coords.x == 5 && coords.y == 3 && coords.z == 0) val = 255;
-        if (coords.x == 2 && coords.y == 1 && coords.z == 3) val = 0;
-        */
+        int val = (grid_point.epicell->status == EpiCellStatus::Dead ? 127 : 0);
+        switch (view_object) {
+          case ViewObject::TCELL:
+            if (grid_point.tcells && grid_point.tcells->size())
+              val = (int)grid_point.tcells->size();
+            break;
+          case ViewObject::VIRUS:
+            if (grid_point.virus) val = 255;
+            break;
+        }
         buf[id - start_id] = (unsigned char)val;
         grid_points_written++;
       }

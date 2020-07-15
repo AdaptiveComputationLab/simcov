@@ -184,7 +184,7 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point, int64_t 
   _update_virus_timer.stop();
 }
 
-void sample(int time_step, Tissue &tissue) {
+void sample(int time_step, Tissue &tissue, ViewObject view_object) {
   // each rank writes its own blocks into the file at the appropriate locations. We compute the location knowing that
   // each position takes exactly 4 characters (up to 3 numbers and a space), so we can work out how much space a block
   // takes up, in order to position the data correctly.
@@ -194,43 +194,63 @@ void sample(int time_step, Tissue &tissue) {
   _sample_timer.start();
   // each grid point takes up a single char
   size_t tot_sz = tissue.get_num_grid_points() * 1;
-  string fname = "samples/sample_" + to_string(time_step) + ".vtk";
+  string fname = "samples/sample_" + view_object_str(view_object) + "_" +
+                 to_string(time_step) + ".vtk";
   int x_dim = _options->dimensions[0];
   int y_dim = _options->dimensions[1];
   int z_dim = _options->dimensions[2];
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
-             << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step << "\n"
+             << "SimCov sample " << basename(_options->output_dir.c_str())
+             << time_step << "\n"
              //<< "ASCII\n"
              << "BINARY\n"
              << "DATASET STRUCTURED_POINTS\n"
-             // we add one in each dimension because these are for drawing the visualization points, and our visualization
-             // entities are cells
-             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1) << "\n"
+             // we add one in each dimension because these are for drawing the
+             // visualization points, and our visualization entities are cells
+             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " "
+             << (z_dim + 1) << "\n"
              << "SPACING 1 1 1\n"
              << "ORIGIN 0 0 0\n"
-             << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
-             << "SCALARS virus_or_tcell unsigned_char 1\n"
-             << "LOOKUP_TABLE default\n";
+             << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n";
+  switch (view_object) {
+    case ViewObject::VIRUS:
+      // FIXME: this should be a double or float
+      header_oss << "SCALARS virus unsigned_char 1\n";
+      break;
+    case ViewObject::TCELL:
+      header_oss << "SCALARS t-cell unsigned_char 1\n";
+      break;
+  }
+  header_oss << "LOOKUP_TABLE default\n";
   if (!rank_me()) {
-    // all ranks have the same size since we zero pad ASCII chars to ensure we always write out 3 chars per point
+    // all ranks have the same size since we zero pad ASCII chars to ensure we
+    // always write out 3 chars per point
     tot_sz += header_oss.str().size();
     // rank 0 creates the file and truncates it to the correct length
-    auto fileno = open(fname.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (fileno == -1) SDIE("Cannot create file ", fname, ": ", strerror(errno), "\n");
-    if (ftruncate(fileno, tot_sz) == -1) DIE("Could not truncate ", fname, " to ", tot_sz, " bytes\n");
+    auto fileno = open(fname.c_str(), O_WRONLY | O_CREAT,
+                       S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fileno == -1)
+      SDIE("Cannot create file ", fname, ": ", strerror(errno), "\n");
+    if (ftruncate(fileno, tot_sz) == -1)
+      DIE("Could not truncate ", fname, " to ", tot_sz, " bytes\n");
     close(fileno);
     DBG("Truncated sample file ", fname, " to ", tot_sz, " bytes\n");
   }
   upcxx::barrier();
   // wait until rank 0 has finished setting up the file
-  auto [bytes_written, grid_points_written] = tissue.dump_blocks(fname, header_oss.str());
+  auto [bytes_written, grid_points_written] =
+      tissue.dump_blocks(fname, header_oss.str(), view_object);
   upcxx::barrier();
-  auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
-  auto tot_grid_points_written = upcxx::reduce_one(grid_points_written, upcxx::op_fast_add, 0).wait();
-  if (!rank_me()) assert(tot_grid_points_written == tissue.get_num_grid_points());
-  SLOG_VERBOSE("Successfully wrote ", tot_grid_points_written, " grid points, with size ", get_size_str(tot_bytes_written), " to ",
-               fname, "\n");
+  auto tot_bytes_written =
+      upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
+  auto tot_grid_points_written =
+      upcxx::reduce_one(grid_points_written, upcxx::op_fast_add, 0).wait();
+  if (!rank_me())
+    assert(tot_grid_points_written == tissue.get_num_grid_points());
+  SLOG_VERBOSE("Successfully wrote ", tot_grid_points_written,
+               " grid points, with size ", get_size_str(tot_bytes_written),
+               " to ", fname, "\n");
   _sample_timer.stop();
 }
 
@@ -258,7 +278,7 @@ void sample_csv(int time_step, Tissue &tissue) {
 }
 
 void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
-  BarrierTimer timer(__FILEFUNC__, false, true);
+  BarrierTimer timer(__FILEFUNC__);
   // this is a trivial test case:
   // when a virus first arrives in an epicell, it spends a period of time there
   // after the period has elapsed, the epicell dies and the virus spreads in all directions
@@ -317,9 +337,10 @@ void run_sim(Tissue &tissue, int64_t &num_tcells, int64_t &tot_num_infected) {
     }
     // sample
     if (time_step % _options->sample_period == 0) {
-      // sample(time_step, tissue);
+      sample(time_step, tissue, ViewObject::TCELL);
+      sample(time_step, tissue, ViewObject::VIRUS);
       //testing csv outout
-      sample_csv(time_step, tissue);
+      //sample_csv(time_step, tissue);
     }
   }
   _update_tcell_timer.done_all();
