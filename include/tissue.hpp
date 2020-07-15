@@ -1,32 +1,33 @@
 #pragma once
 
+#include <math.h>
+#include <stdarg.h>
+
 #include <algorithm>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <map>
-#include <string>
-#include <math.h>
 #include <numeric>
-#include <stdarg.h>
+#include <sstream>
+#include <string>
 #include <upcxx/upcxx.hpp>
 
 #include "upcxx_utils/flat_aggr_store.hpp"
 #include "upcxx_utils/log.hpp"
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/timers.hpp"
-
 #include "utils.hpp"
 
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-enum class ViewObject { VIRUS, TCELL };
+enum class ViewObject { VIRUS, TCELL, EPICELL };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
     case ViewObject::TCELL: return "tcell";
     case ViewObject::VIRUS: return "virus";
+    case ViewObject::EPICELL: return "epicell";
     default: DIE("Unknown view object");
   }
   return "";
@@ -67,8 +68,7 @@ struct GridCoords {
   }
 
   string str() const {
-    return "(" + std::to_string(x) + ", " + std::to_string(y) + ", " +
-           std::to_string(z) + ")";
+    return "(" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")";
   }
 };
 
@@ -111,7 +111,7 @@ struct GridPoint {
 };
 
 class Tissue {
-private:
+ private:
   // these are static so they don't have to be passed in RPCs
   static int block_size;
 
@@ -144,7 +144,7 @@ private:
     return grid_point;
   }
 
-public:
+ public:
   static GridCoords grid_size;
 
   Tissue() : grid_points({}) {}
@@ -160,10 +160,8 @@ public:
     return upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
-          GridPoint &grid_point =
-              Tissue::get_local_grid_point(grid_points, id, coords);
-          if (grid_point.virus)
-            return InfectionResult::AlreadyInfected;
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          if (grid_point.virus) return InfectionResult::AlreadyInfected;
           if (grid_point.epicell->status != EpiCellStatus::Healthy)
             return InfectionResult::NotHealthy;
           grid_point.virus = true;
@@ -177,28 +175,24 @@ public:
   upcxx::future<> add_tcell(GridCoords coords, int64_t tcell_id) {
     // FIXME: this should be an aggregating store
     int64_t id = coords.to_1d(Tissue::grid_size);
-    return upcxx::rpc(get_rank_for_grid_point(coords),
-                      [](grid_points_t &grid_points, int64_t id,
-                         GridCoords coords, int64_t tcell_id) {
-                        GridPoint &grid_point = Tissue::get_local_grid_point(
-                            grid_points, id, coords);
-                        if (grid_point.tcells == nullptr)
-                          grid_point.tcells = &grid_point.tcells_backing_1;
-                        // add the tcell to the future tcells vector, i.e. not
-                        // the one pointed to by tcells
-                        auto next_tcells =
-                            (grid_point.tcells == &grid_point.tcells_backing_1
-                                 ? &grid_point.tcells_backing_2
-                                 : &grid_point.tcells_backing_1);
-                        next_tcells->push_back({.id = tcell_id});
-                      },
-                      grid_points, id, coords, tcell_id);
+    return upcxx::rpc(
+        get_rank_for_grid_point(coords),
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          if (grid_point.tcells == nullptr) grid_point.tcells = &grid_point.tcells_backing_1;
+          // add the tcell to the future tcells vector, i.e. not
+          // the one pointed to by tcells
+          auto next_tcells = (grid_point.tcells == &grid_point.tcells_backing_1 ?
+                                  &grid_point.tcells_backing_2 :
+                                  &grid_point.tcells_backing_1);
+          next_tcells->push_back({.id = tcell_id});
+        },
+        grid_points, id, coords, tcell_id);
   }
 
   int64_t update_tcells(bool check_switch = false) {
-    auto switch_tcells_vectors =
-        [](vector<TCell> *tcells_backing_new,
-           vector<TCell> *tcells_backing_old) -> vector<TCell> * {
+    auto switch_tcells_vectors = [](vector<TCell> *tcells_backing_new,
+                                    vector<TCell> *tcells_backing_old) -> vector<TCell> * {
       tcells_backing_old->clear();
       return tcells_backing_new;
     };
@@ -208,24 +202,21 @@ public:
       if (grid_point.tcells) {
         num_old += grid_point.tcells->size();
         if (grid_point.tcells == &grid_point.tcells_backing_1)
-          grid_point.tcells = switch_tcells_vectors(
-              &grid_point.tcells_backing_2, &grid_point.tcells_backing_1);
+          grid_point.tcells = switch_tcells_vectors(&grid_point.tcells_backing_2,
+                                                    &grid_point.tcells_backing_1);
         else
-          grid_point.tcells = switch_tcells_vectors(
-              &grid_point.tcells_backing_1, &grid_point.tcells_backing_2);
+          grid_point.tcells = switch_tcells_vectors(&grid_point.tcells_backing_1,
+                                                    &grid_point.tcells_backing_2);
         num_new += grid_point.tcells->size();
       }
     }
 #ifdef DEBUG
     if (check_switch) {
-      auto all_num_old =
-          upcxx::reduce_one(num_old, upcxx::op_fast_add, 0).wait();
-      auto all_num_new =
-          upcxx::reduce_one(num_new, upcxx::op_fast_add, 0).wait();
+      auto all_num_old = upcxx::reduce_one(num_old, upcxx::op_fast_add, 0).wait();
+      auto all_num_new = upcxx::reduce_one(num_new, upcxx::op_fast_add, 0).wait();
       // FIXME: this only applies if the number of tcells overall never changes
       if (!upcxx::rank_me() && all_num_new != all_num_old)
-        DIE("tcell counts don't match, old ", all_num_old, " new ",
-            all_num_new);
+        DIE("tcell counts don't match, old ", all_num_old, " new ", all_num_new);
       barrier();
     }
 #endif
@@ -241,8 +232,7 @@ public:
           newx = c.x + i;
           newy = c.y + j;
           newz = c.z + k;
-          if ((newx >= 0 && newx < grid_size.x) &&
-              (newy >= 0 && newy < grid_size.y) &&
+          if ((newx >= 0 && newx < grid_size.x) && (newy >= 0 && newy < grid_size.y) &&
               (newz >= 0 && newz < grid_size.z)) {
             n.push_back(GridCoords(newx, newy, newz));
           }
@@ -269,12 +259,10 @@ public:
     // happening within a cube.
     int min_cubes_per_rank = 2;
     int block_dim = 1;
-    int min_dim = std::min(std::min(Tissue::grid_size.x, Tissue::grid_size.y),
-                           Tissue::grid_size.z);
+    int min_dim = std::min(std::min(Tissue::grid_size.x, Tissue::grid_size.y), Tissue::grid_size.z);
     for (int i = 1; i < min_dim; i++) {
       // only allow dims that divide each main dimension perfectly
-      if (remainder(Tissue::grid_size.x, i) ||
-          remainder(Tissue::grid_size.y, i) ||
+      if (remainder(Tissue::grid_size.x, i) || remainder(Tissue::grid_size.y, i) ||
           remainder(Tissue::grid_size.z, i)) {
         DBG("dim ", i, " does not divide all main dimensions cleanly\n");
         continue;
@@ -283,8 +271,7 @@ public:
       size_t num_cubes = num_grid_points / cube;
       DBG("cube size ", cube, " num cubes ", num_cubes, "\n");
       if (num_cubes < rank_n() * min_cubes_per_rank) {
-        DBG("not enough cubes ", num_cubes, " < ",
-            rank_n() * min_cubes_per_rank, "\n");
+        DBG("not enough cubes ", num_cubes, " < ", rank_n() * min_cubes_per_rank, "\n");
         break;
       }
       // there is a remainder - this is not a perfect division
@@ -304,14 +291,13 @@ public:
     int64_t y_blocks = Tissue::grid_size.y / block_dim;
     int64_t z_blocks = Tissue::grid_size.z / block_dim;
     int64_t num_blocks = num_grid_points / Tissue::block_size;
-    SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
-         " blocks of size ", Tissue::block_size, " (", block_dim, "^3)\n");
+    SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " blocks of size ",
+         Tissue::block_size, " (", block_dim, "^3)\n");
     int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
     SLOG_VERBOSE("Each process has ", blocks_per_rank, " blocks\n");
     grid_points->reserve(blocks_per_rank * Tissue::block_size);
     auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * Tissue::block_size;
-    SLOG("Total initial memory required per process is a max of ",
-         get_size_str(mem_reqd), "\n");
+    SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
     // FIXME: it may be more efficient (less communication) to have contiguous
     // blocks
     // this is the quick & dirty approach
@@ -329,9 +315,8 @@ public:
             {.id = id,
              .coords = coords,
              .neighbors = neighbors,
-             .epicell = new EpiCell({.id = id,
-                                     .status = EpiCellStatus::Healthy,
-                                     .num_steps_infected = 0}),
+             .epicell = new EpiCell(
+                 {.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}),
              .tcells_backing_1 = {},
              .tcells_backing_2 = {},
              .tcells = nullptr,
@@ -349,19 +334,14 @@ public:
     barrier();
   }
 
-  std::pair<size_t, size_t> dump_blocks(const string &fname,
-                                        const string &header_str,
+  std::pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str,
                                         ViewObject view_object) {
-    auto fileno =
-        open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (fileno == -1)
-      DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
+    auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
     if (!upcxx::rank_me()) {
-      auto bytes_written =
-          pwrite(fileno, header_str.c_str(), header_str.length(), 0);
+      auto bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
       if (bytes_written != header_str.length())
-        DIE("Could not write all ", header_str.length(), " bytes: only wrote ",
-            bytes_written);
+        DIE("Could not write all ", header_str.length(), " bytes: only wrote ", bytes_written);
     }
     DBG("Writing samples to ", fname, "\n");
     DBG("header size is ", header_str.length(), "\n");
@@ -373,21 +353,28 @@ public:
     unsigned char *buf = new unsigned char[Tissue::block_size + 1];
     for (int64_t i = 0; i < blocks_per_rank; i++) {
       int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
-      if (start_id >= num_grid_points)
-        break;
+      if (start_id >= num_grid_points) break;
       for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
         assert(id < num_grid_points);
         GridCoords coords(id, Tissue::grid_size);
-        GridPoint &grid_point =
-            Tissue::get_local_grid_point(grid_points, id, coords);
-        int val = (grid_point.epicell->status == EpiCellStatus::Dead ? 127 : 0);
+        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        // a dead cell is 0 value (blue), otherwise a normal cell is 127, which
+        // is grey. The view objects add to the 127 color.
+        int val = 0;
         switch (view_object) {
           case ViewObject::TCELL:
             if (grid_point.tcells && grid_point.tcells->size())
-              val = (int)grid_point.tcells->size();
+              val = std::min(255, (int)grid_point.tcells->size());
             break;
           case ViewObject::VIRUS:
-            if (grid_point.virus) val = 255;
+            if (grid_point.virus) val = 1;
+            break;
+          case ViewObject::EPICELL:
+            switch (grid_point.epicell->status) {
+              case EpiCellStatus::Incubating: val = 1; break;
+              case EpiCellStatus::Dead: val = 2; break;
+              default: val = 0;
+            }
             break;
         }
         buf[id - start_id] = (unsigned char)val;
@@ -397,21 +384,18 @@ public:
       size_t fpos = start_id + header_str.length();
       auto bytes_written = pwrite(fileno, buf, Tissue::block_size, fpos);
       if (bytes_written != Tissue::block_size)
-        DIE("Could not write all ", Tissue::block_size, " bytes; only wrote ",
-            bytes_written, "\n");
+        DIE("Could not write all ", Tissue::block_size, " bytes; only wrote ", bytes_written, "\n");
       tot_bytes_written += bytes_written;
-      DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos,
-          "\n");
+      DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
     }
     delete[] buf;
     close(fileno);
     return {tot_bytes_written, grid_points_written};
   }
 
-  //kleyba: for saving csv files
+  // kleyba: for saving csv files
   void dump_blocks_csv(const string &fname) {
-
-    //open output file
+    // open output file
     std::ofstream output_file;
     output_file.open(fname.c_str(), ios::out | ios::app);
     size_t grid_points_written = 0;
@@ -421,24 +405,23 @@ public:
     int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
     for (int64_t i = 0; i < blocks_per_rank; i++) {
       int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
-      if (start_id >= num_grid_points)
-        break;
+      if (start_id >= num_grid_points) break;
       for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
         assert(id < num_grid_points);
         GridCoords coords(id, Tissue::grid_size);
-        GridPoint &grid_point =
-            Tissue::get_local_grid_point(grid_points, id, coords);
+        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
 
         std::ostringstream output_stream;
         float vir = 0.0;
         int64_t tcells = 0;
-        if(grid_point.tcells){tcells = grid_point.tcells->size();}
-        if(grid_point.virus){vir=1.0;}
-        output_stream << coords.x << ", "
-          << coords.y << ", "
-          << coords.z << ", "
-          << tcells << ", "
-          << vir << "\n";
+        if (grid_point.tcells) {
+          tcells = grid_point.tcells->size();
+        }
+        if (grid_point.virus) {
+          vir = 1.0;
+        }
+        output_stream << coords.x << ", " << coords.y << ", " << coords.z << ", " << tcells << ", "
+                      << vir << "\n";
         std::string output(output_stream.str());
         output_file << output;
 
@@ -447,19 +430,16 @@ public:
     }
   }
 
-
   GridPoint *get_first_local_grid_point() {
     grid_point_iter = grid_points->begin();
-    if (grid_point_iter == grid_points->end())
-      return nullptr;
+    if (grid_point_iter == grid_points->end()) return nullptr;
     auto grid_point = &(*grid_point_iter);
     ++grid_point_iter;
     return grid_point;
   }
 
   GridPoint *get_next_local_grid_point() {
-    if (grid_point_iter == grid_points->end())
-      return nullptr;
+    if (grid_point_iter == grid_points->end()) return nullptr;
     auto grid_point = &(*grid_point_iter);
     ++grid_point_iter;
     return grid_point;
