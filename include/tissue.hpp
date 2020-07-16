@@ -76,7 +76,7 @@ struct TCell {
   int64_t id;
 };
 
-enum class EpiCellStatus { Healthy, Incubating, Dead };
+enum class EpiCellStatus { Healthy, Incubating, Secreting, Apoptotic, Dead };
 enum class InfectionResult { Success, AlreadyInfected, NotHealthy };
 
 struct EpiCell {
@@ -101,7 +101,7 @@ struct GridPoint {
   vector<TCell> tcells_backing_2 = {};
   // a pointer to the currently active tcells vector
   vector<TCell> *tcells = nullptr;
-  bool virus = false;
+  double virus = 0;
 
   string str() const {
     ostringstream oss;
@@ -155,21 +155,21 @@ class Tissue {
     return Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
   }
 
-  upcxx::future<InfectionResult> infect_epicell(GridCoords coords) {
+  upcxx::future<InfectionResult> infect_epicell(GridCoords coords, double virus_conc) {
     int64_t id = coords.to_1d(Tissue::grid_size);
     return upcxx::rpc(
         get_rank_for_grid_point(coords),
-        [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, double virus_conc) {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          if (grid_point.virus) return InfectionResult::AlreadyInfected;
+          if (grid_point.virus > 0) return InfectionResult::AlreadyInfected;
           if (grid_point.epicell->status != EpiCellStatus::Healthy)
             return InfectionResult::NotHealthy;
-          grid_point.virus = true;
+          grid_point.virus = virus_conc;
           grid_point.epicell->num_steps_infected = 0;
           grid_point.epicell->status = EpiCellStatus::Incubating;
           return InfectionResult::Success;
         },
-        grid_points, id, coords);
+        grid_points, id, coords, virus_conc);
   }
 
   upcxx::future<> add_tcell(GridCoords coords, int64_t tcell_id) {
@@ -320,7 +320,7 @@ class Tissue {
              .tcells_backing_1 = {},
              .tcells_backing_2 = {},
              .tcells = nullptr,
-             .virus = false});
+             .virus = 0});
         DBG("adding grid point ", id, " at ", coords.str(), "\n");
       }
     }
@@ -367,12 +367,14 @@ class Tissue {
               val = std::min(255, (int)grid_point.tcells->size());
             break;
           case ViewObject::VIRUS:
-            if (grid_point.virus) val = 1;
+            if (grid_point.virus <= 0) val = 0;
+            else val = 255 * grid_point.virus;
             break;
           case ViewObject::EPICELL:
             switch (grid_point.epicell->status) {
               case EpiCellStatus::Incubating: val = 1; break;
-              case EpiCellStatus::Dead: val = 2; break;
+              case EpiCellStatus::Secreting: val = 2; break;
+              case EpiCellStatus::Dead: val = 3; break;
               default: val = 0;
             }
             break;
