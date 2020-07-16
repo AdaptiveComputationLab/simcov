@@ -116,7 +116,6 @@ class Options {
   int num_infections = 5;
   int incubation_period = 10;
   int secreting_period = 10;
-  double initial_virus_conc = 0.2;
   double virus_infection_prob = 0.5;
   double virus_secreting_decay_rate = 0.1;
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -151,10 +150,6 @@ class Options {
                    "Probability of virus spreading to a neighbor")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--initial-virus-conc", initial_virus_conc,
-                   "Initial concentration of virus in a location")
-        ->check(CLI::Range(0.0, 1.0))
-        ->capture_default_str();
     app.add_option("--virus-secreting-decay-rate", virus_secreting_decay_rate,
                    "Virus secreting decay rate")
         ->check(CLI::Range(0.0, 1.0))
@@ -170,8 +165,7 @@ class Options {
     app.add_flag("--progress", show_progress, "Show progress");
     app.add_flag("-v, --verbose", verbose, "Verbose output");
 
-    auto *cfg_opt = app.set_config("--config", "simcov.config",
-                                   "Load options from a configuration file");
+    auto *cfg_opt = app.set_config("--config", "", "Load options from a configuration file");
 
     try {
       app.parse(argc, argv);

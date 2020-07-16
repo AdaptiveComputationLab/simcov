@@ -21,13 +21,14 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-enum class ViewObject { VIRUS, TCELL, EPICELL };
+enum class ViewObject { VIRUS, TCELL, EPICELL, CHEMOKINE };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
     case ViewObject::TCELL: return "tcell";
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";
+    case ViewObject::CHEMOKINE: return "chemokine";
     default: DIE("Unknown view object");
   }
   return "";
@@ -77,7 +78,6 @@ struct TCell {
 };
 
 enum class EpiCellStatus { Healthy, Incubating, Secreting, Apoptotic, Dead };
-enum class InfectionResult { Success, AlreadyInfected, NotHealthy };
 
 struct EpiCell {
   int64_t id;
@@ -87,26 +87,51 @@ struct EpiCell {
   string str() { return std::to_string(id); }
 };
 
-struct GridPoint {
+class GridPoint {
+ private:
+  // there are two vectors of tcells, one of which contains tcells for the
+  // current round,
+  // and one of which contains tcells for the next round
+  vector<TCell> tcells_backing_1 = {};
+  vector<TCell> tcells_backing_2 = {};
+ public:
   int64_t id;
   GridCoords coords;
   // vector for connectivity
   vector<GridCoords> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
-  // there are two vectors of tcells, one of which contains tcells for the
-  // current round,
-  // and one of which contains tcells for the next round
-  vector<TCell> tcells_backing_1 = {};
-  vector<TCell> tcells_backing_2 = {};
   // a pointer to the currently active tcells vector
-  vector<TCell> *tcells = nullptr;
-  double virus = 0;
+  vector<TCell> *tcells = &tcells_backing_1;
+  // we have incoming values for the concentrations so that we can update at the end of the round
+  // without being subject to the vagaries of multiprocess collisions
+  double virus = 0, incoming_virus = 0;
+  double chemokine = 0, incoming_chemokine = 0;
+
+  GridPoint(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell)
+      : id(id), coords(coords), neighbors(neighbors), epicell(epicell) {}
 
   string str() const {
     ostringstream oss;
     oss << id << " " << coords.str() << " " << epicell->str() << " " << virus;
     return oss.str();
+  }
+
+  void switch_tcells_vector() {
+    auto switch_vectors = [](vector<TCell> *tcells_backing_new,
+                             vector<TCell> *tcells_backing_old) -> vector<TCell> * {
+      tcells_backing_old->clear();
+      return tcells_backing_new;
+    };
+    if (tcells == &tcells_backing_1)
+      tcells = switch_vectors(&tcells_backing_2, &tcells_backing_1);
+    else
+      tcells = switch_vectors(&tcells_backing_1, &tcells_backing_2);
+  }
+
+  void add_tcell(TCell tcell) {
+    auto next_tcells = (tcells == &tcells_backing_1 ? &tcells_backing_2 : &tcells_backing_1);
+    next_tcells->push_back(tcell);
   }
 };
 
@@ -144,85 +169,6 @@ class Tissue {
     return grid_point;
   }
 
- public:
-  static GridCoords grid_size;
-
-  Tissue() : grid_points({}) {}
-
-  ~Tissue() {}
-
-  int64_t get_num_grid_points() {
-    return Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
-  }
-
-  upcxx::future<InfectionResult> infect_epicell(GridCoords coords, double virus_conc) {
-    int64_t id = coords.to_1d(Tissue::grid_size);
-    return upcxx::rpc(
-        get_rank_for_grid_point(coords),
-        [](grid_points_t &grid_points, int64_t id, GridCoords coords, double virus_conc) {
-          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          if (grid_point.virus > 0) return InfectionResult::AlreadyInfected;
-          if (grid_point.epicell->status != EpiCellStatus::Healthy)
-            return InfectionResult::NotHealthy;
-          grid_point.virus = virus_conc;
-          grid_point.epicell->num_steps_infected = 0;
-          grid_point.epicell->status = EpiCellStatus::Incubating;
-          return InfectionResult::Success;
-        },
-        grid_points, id, coords, virus_conc);
-  }
-
-  upcxx::future<> add_tcell(GridCoords coords, int64_t tcell_id) {
-    // FIXME: this should be an aggregating store
-    int64_t id = coords.to_1d(Tissue::grid_size);
-    return upcxx::rpc(
-        get_rank_for_grid_point(coords),
-        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
-          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          if (grid_point.tcells == nullptr) grid_point.tcells = &grid_point.tcells_backing_1;
-          // add the tcell to the future tcells vector, i.e. not
-          // the one pointed to by tcells
-          auto next_tcells = (grid_point.tcells == &grid_point.tcells_backing_1 ?
-                                  &grid_point.tcells_backing_2 :
-                                  &grid_point.tcells_backing_1);
-          next_tcells->push_back({.id = tcell_id});
-        },
-        grid_points, id, coords, tcell_id);
-  }
-
-  int64_t update_tcells(bool check_switch = false) {
-    auto switch_tcells_vectors = [](vector<TCell> *tcells_backing_new,
-                                    vector<TCell> *tcells_backing_old) -> vector<TCell> * {
-      tcells_backing_old->clear();
-      return tcells_backing_new;
-    };
-    int64_t num_old = 0, num_new = 0;
-    // switch all the non-empty tcells vectors and clear the old ones
-    for (GridPoint &grid_point : *grid_points) {
-      if (grid_point.tcells) {
-        num_old += grid_point.tcells->size();
-        if (grid_point.tcells == &grid_point.tcells_backing_1)
-          grid_point.tcells = switch_tcells_vectors(&grid_point.tcells_backing_2,
-                                                    &grid_point.tcells_backing_1);
-        else
-          grid_point.tcells = switch_tcells_vectors(&grid_point.tcells_backing_1,
-                                                    &grid_point.tcells_backing_2);
-        num_new += grid_point.tcells->size();
-      }
-    }
-#ifdef DEBUG
-    if (check_switch) {
-      auto all_num_old = upcxx::reduce_one(num_old, upcxx::op_fast_add, 0).wait();
-      auto all_num_new = upcxx::reduce_one(num_new, upcxx::op_fast_add, 0).wait();
-      // FIXME: this only applies if the number of tcells overall never changes
-      if (!upcxx::rank_me() && all_num_new != all_num_old)
-        DIE("tcell counts don't match, old ", all_num_old, " new ", all_num_new);
-      barrier();
-    }
-#endif
-    return num_new;
-  }
-
   vector<GridCoords> get_neighbors(GridCoords c, GridCoords grid_size) {
     vector<GridCoords> n = {};
     int64_t newx, newy, newz;
@@ -240,6 +186,48 @@ class Tissue {
       }
     }
     return n;
+  }
+
+ public:
+  static GridCoords grid_size;
+
+  Tissue() : grid_points({}) {}
+
+  ~Tissue() {}
+
+  int64_t get_num_grid_points() {
+    return Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
+  }
+
+  void inc_incoming_virus(GridCoords coords, double virus) {
+    int64_t id = coords.to_1d(Tissue::grid_size);
+    upcxx::rpc(
+        get_rank_for_grid_point(coords),
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, double virus) {
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          if (grid_point.virus == 0 && grid_point.epicell->status == EpiCellStatus::Healthy) {
+            grid_point.incoming_virus += virus;
+            if (grid_point.incoming_virus > 1) grid_point.incoming_virus = 1;
+          }
+        },
+        grid_points, id, coords, virus)
+        .wait();
+  }
+
+  void add_tcell(GridCoords coords, int64_t tcell_id) {
+    // FIXME: this should be an aggregating store
+    int64_t id = coords.to_1d(Tissue::grid_size);
+    upcxx::rpc(
+        get_rank_for_grid_point(coords),
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          assert(grid_point.tcells != nullptr);
+          // add the tcell to the future tcells vector, i.e. not
+          // the one pointed to by tcells
+          grid_point.add_tcell({.id = tcell_id});
+        },
+        grid_points, id, coords, tcell_id)
+        .wait();
   }
 
   void construct(GridCoords grid_size) {
@@ -311,16 +299,21 @@ class Tissue {
         // FIXME: this is an epicall on every grid point.
         // They should be placed according to the underlying lung structure
         // (gaps, etc)
-        grid_points->push_back(
+        GridPoint grid_point(id, coords, neighbors, new EpiCell(
+                 {.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}));
+        grid_points->push_back(grid_point);
+        /*
             {.id = id,
              .coords = coords,
              .neighbors = neighbors,
              .epicell = new EpiCell(
                  {.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}),
-             .tcells_backing_1 = {},
-             .tcells_backing_2 = {},
-             .tcells = nullptr,
-             .virus = 0});
+             //.tcells_backing_1 = {},
+             //.tcells_backing_2 = {},
+             //.tcells = nullptr,
+             //.virus = 0
+             });
+        */
         DBG("adding grid point ", id, " at ", coords.str(), "\n");
       }
     }
@@ -378,6 +371,7 @@ class Tissue {
               default: val = 0;
             }
             break;
+          case ViewObject::CHEMOKINE: break;
         }
         buf[id - start_id] = (unsigned char)val;
         grid_points_written++;
@@ -395,43 +389,6 @@ class Tissue {
     return {tot_bytes_written, grid_points_written};
   }
 
-  // kleyba: for saving csv files
-  void dump_blocks_csv(const string &fname) {
-    // open output file
-    std::ofstream output_file;
-    output_file.open(fname.c_str(), ios::out | ios::app);
-    size_t grid_points_written = 0;
-
-    int64_t num_grid_points = get_num_grid_points();
-    int64_t num_blocks = num_grid_points / Tissue::block_size;
-    int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-    for (int64_t i = 0; i < blocks_per_rank; i++) {
-      int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
-      if (start_id >= num_grid_points) break;
-      for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
-        assert(id < num_grid_points);
-        GridCoords coords(id, Tissue::grid_size);
-        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-
-        std::ostringstream output_stream;
-        float vir = 0.0;
-        int64_t tcells = 0;
-        if (grid_point.tcells) {
-          tcells = grid_point.tcells->size();
-        }
-        if (grid_point.virus) {
-          vir = 1.0;
-        }
-        output_stream << coords.x << ", " << coords.y << ", " << coords.z << ", " << tcells << ", "
-                      << vir << "\n";
-        std::string output(output_stream.str());
-        output_file << output;
-
-        grid_points_written++;
-      }
-    }
-  }
-
   GridPoint *get_first_local_grid_point() {
     grid_point_iter = grid_points->begin();
     if (grid_point_iter == grid_points->end()) return nullptr;
@@ -446,6 +403,7 @@ class Tissue {
     ++grid_point_iter;
     return grid_point;
   }
+
 };
 
 inline GridCoords Tissue::grid_size;
