@@ -83,7 +83,8 @@ enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 struct EpiCell {
   int64_t id;
   EpiCellStatus status = EpiCellStatus::HEALTHY;
-  int64_t num_steps_infected;
+  int64_t num_steps_infected = 0;
+  int64_t start_apoptosis = 0;
 
   string str() { return std::to_string(id); }
 };
@@ -202,7 +203,6 @@ class Tissue {
   }
 
   void inc_incoming_virus(GridCoords coords, double virus) {
-    int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, double virus) {
@@ -212,12 +212,11 @@ class Tissue {
             if (grid_point.incoming_virus > 1) grid_point.incoming_virus = 1;
           }
         },
-        grid_points, id, coords, virus)
+        grid_points, coords.to_1d(Tissue::grid_size), coords, virus)
         .wait();
   }
 
   void inc_incoming_chemokines(GridCoords coords, double chemokine) {
-    int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, double chemokine) {
@@ -227,12 +226,11 @@ class Tissue {
             if (grid_point.incoming_chemokine > 1) grid_point.incoming_chemokine = 1;
           }
         },
-        grid_points, id, coords, chemokine)
+        grid_points, coords.to_1d(Tissue::grid_size), coords, chemokine)
         .wait();
   }
 
   void inc_incoming_icytokines(GridCoords coords, double icytokine) {
-    int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, double icytokine) {
@@ -242,13 +240,24 @@ class Tissue {
             if (grid_point.incoming_icytokine > 1) grid_point.incoming_icytokine = 1;
           }
         },
-        grid_points, id, coords, icytokine)
+        grid_points, coords.to_1d(Tissue::grid_size), coords, icytokine)
+        .wait();
+  }
+
+  double get_chemokine(GridCoords coords) {
+    return upcxx::rpc(
+               get_rank_for_grid_point(coords),
+               [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
+                 GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+                 if (grid_point.epicell->status != EpiCellStatus::DEAD) return 0.0;
+                 return grid_point.chemokine;
+               },
+               grid_points, coords.to_1d(Tissue::grid_size), coords)
         .wait();
   }
 
   void add_tcell(GridCoords coords, int64_t tcell_id) {
     // FIXME: this should be an aggregating store
-    int64_t id = coords.to_1d(Tissue::grid_size);
     upcxx::rpc(
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
@@ -258,7 +267,7 @@ class Tissue {
           // the one pointed to by tcells
           grid_point.add_tcell({.id = tcell_id});
         },
-        grid_points, id, coords, tcell_id)
+        grid_points, coords.to_1d(Tissue::grid_size), coords, tcell_id)
         .wait();
   }
 

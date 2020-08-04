@@ -116,11 +116,12 @@ class Options {
   int num_infections = 10;
   int incubation_period = 10;
   int expressing_period = 10;
+  int apoptosis_period = 2;
   double virus_infection_prob = 0.2;
-  double chemokine_decay_rate = 0.05;
-  double icytokine_decay_rate = 0.05;
-  double chemokine_diffusion_rate = 0.1;
-  double icytokine_diffusion_rate = 0.1;
+  double chemokine_decay_rate = 0.01;
+  double icytokine_decay_rate = 0.01;
+  double chemokine_diffusion_rate = 1.0;
+  double icytokine_diffusion_rate = 1.0;
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
@@ -148,6 +149,8 @@ class Options {
     app.add_option("--incubation-period", incubation_period, "Incubation period")
         ->capture_default_str();
     app.add_option("--expressing-period", expressing_period, "Expressing period")
+        ->capture_default_str();
+    app.add_option("--apoptosis-period", apoptosis_period, "Apoptosis period")
         ->capture_default_str();
     app.add_option("--virus-infection-prob", virus_infection_prob,
                    "Probability of virus spreading to a neighbor")

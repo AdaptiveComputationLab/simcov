@@ -128,20 +128,36 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell) {
   _update_tcell_timer.start();
   if (grid_point->virus > 0) {
-    // kill the virus and the cell too
-    DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " killed virus\n");
-    grid_point->epicell->status = EpiCellStatus::DEAD;
-    grid_point->virus = 0;
-    grid_point->incoming_virus = 0;
-    _sim_stats.tot_num_viral_kills++;
+    // induce apoptosis
+    DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " induced apoptosis\n");
+    if (grid_point->epicell->status != EpiCellStatus::APOPTOTIC) {
+      grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
+      grid_point->epicell->start_apoptosis = time_step;
+    }
     // need to add here to ensure it gets to the next time step in the vector swap
     tissue.add_tcell(grid_point->coords, tcell.id);
   } else {
-    auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-    GridCoords coords = grid_point->neighbors[rnd_nb_i];
+    GridCoords selected_coords;
+    double highest_chemokine = 0;
+    for (auto &nb_coords : grid_point->neighbors) {
+      if (nb_coords == grid_point->coords) continue;
+      double chemokine = tissue.get_chemokine(nb_coords);
+      if (chemokine > highest_chemokine) {
+        highest_chemokine = chemokine;
+        selected_coords = nb_coords;
+      }
+    }
+    if (highest_chemokine == 0) {
+      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
+      selected_coords = grid_point->neighbors[rnd_nb_i];
+    } else {
+      DBG(time_step, ": highest nb chemokine for tcell ", tcell.id, " at ",
+          grid_point->coords.str(), " is at ", selected_coords.str(), " with ", highest_chemokine,
+          "\n");
+    }
     DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
-        coords.str(), "\n");
-    tissue.add_tcell(coords, tcell.id);
+        selected_coords.str(), "\n");
+    tissue.add_tcell(selected_coords, tcell.id);
   }
   _update_tcell_timer.stop();
 }
@@ -155,20 +171,28 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->epicell->num_steps_infected > _options->incubation_period) {
         grid_point->epicell->status = EpiCellStatus::EXPRESSING;
         grid_point->virus = 1.0;
+        grid_point->chemokine = 1.0;
+        grid_point->icytokine = 1.0;
       }
       break;
+    case EpiCellStatus::APOPTOTIC:
+      if (time_step - grid_point->epicell->start_apoptosis > _options->apoptosis_period) {
+        grid_point->epicell->status = EpiCellStatus::DEAD;
+        grid_point->virus = 0;
+        _sim_stats.tot_num_viral_kills++;
+        break;
+      }
+      // otherwise it's the same as expressing, so no break here
     case EpiCellStatus::EXPRESSING:
       if (grid_point->epicell->num_steps_infected >
           _options->incubation_period + _options->expressing_period) {
         grid_point->epicell->status = EpiCellStatus::DEAD;
         grid_point->virus = 0;
-      } else {
-        for (auto &nb_coords : grid_point->neighbors) {
-          if (nb_coords == grid_point->coords) continue;
-          tissue.inc_incoming_virus(nb_coords, grid_point->virus);
-        }
-        grid_point->chemokine = 1.0;
-        grid_point->icytokine = 1.0;
+        break;
+      }
+      for (auto &nb_coords : grid_point->neighbors) {
+        if (nb_coords == grid_point->coords) continue;
+        tissue.inc_incoming_virus(nb_coords, grid_point->virus);
       }
       break;
     default: DIE("Invalid state ", (int)grid_point->epicell->status, " for infected cell");
@@ -184,10 +208,11 @@ void update_cytokines(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->chemokine < 0) grid_point->chemokine = 0;
     }
     if (grid_point->chemokine > 0) {
+      double chemokine_to_nb = grid_point->chemokine * _options->chemokine_diffusion_rate /
+                               grid_point->neighbors.size();
       for (auto &nb_coords : grid_point->neighbors) {
         if (nb_coords == grid_point->coords) continue;
-        tissue.inc_incoming_chemokines(nb_coords,
-                                       grid_point->chemokine * _options->chemokine_diffusion_rate);
+        tissue.inc_incoming_chemokines(nb_coords, chemokine_to_nb);
       }
     }
   }
@@ -197,10 +222,11 @@ void update_cytokines(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->icytokine < 0) grid_point->icytokine = 0;
     }
     if (grid_point->incoming_icytokine > 0) {
+      double icytokine_to_nb = grid_point->incoming_virus * _options->icytokine_diffusion_rate /
+                               grid_point->neighbors.size();
       for (auto &nb_coords : grid_point->neighbors) {
         if (nb_coords == grid_point->coords) continue;
-        tissue.inc_incoming_icytokines(nb_coords,
-                                       grid_point->icytokine * _options->icytokine_diffusion_rate);
+        tissue.inc_incoming_icytokines(nb_coords, icytokine_to_nb);
       }
     }
   }
@@ -235,10 +261,13 @@ void finish_round(Tissue &tissue) {
       grid_point->icytokine = grid_point->incoming_icytokine;
       grid_point->incoming_icytokine = 0;
     }
-    if (grid_point->epicell->status == EpiCellStatus::INCUBATING ||
-        grid_point->epicell->status == EpiCellStatus::EXPRESSING)
-      _sim_stats.num_infected++;
-    if (grid_point->epicell->status == EpiCellStatus::DEAD) _sim_stats.num_dead_epicells++;
+    switch (grid_point->epicell->status) {
+      case EpiCellStatus::INCUBATING:
+      case EpiCellStatus::EXPRESSING:
+      case EpiCellStatus::APOPTOTIC: _sim_stats.num_infected++; break;
+      case EpiCellStatus::DEAD: _sim_stats.num_dead_epicells++; break;
+      case EpiCellStatus::HEALTHY: break;
+    }
   }
   barrier();
 }
