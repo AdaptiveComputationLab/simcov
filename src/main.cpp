@@ -64,6 +64,7 @@ SimStats _sim_stats;
 
 IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell");
 IntermittentTimer _update_virus_timer(__FILENAME__ + string(":") + "update_virus");
+IntermittentTimer _update_cytokines_timer(__FILENAME__ + string(":") + "update_cytokines");
 IntermittentTimer _sample_timer(__FILENAME__ + string(":") + "sample");
 
 void initial_infection(Tissue &tissue) {
@@ -129,7 +130,7 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
   if (grid_point->virus > 0) {
     // kill the virus and the cell too
     DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " killed virus\n");
-    grid_point->epicell->status = EpiCellStatus::Dead;
+    grid_point->epicell->status = EpiCellStatus::DEAD;
     grid_point->virus = 0;
     grid_point->incoming_virus = 0;
     _sim_stats.tot_num_viral_kills++;
@@ -146,28 +147,64 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
 }
 
 void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point) {
+  if (grid_point->virus == 0) return;
   _update_virus_timer.start();
   grid_point->epicell->num_steps_infected++;
   switch (grid_point->epicell->status) {
-    case EpiCellStatus::Incubating:
+    case EpiCellStatus::INCUBATING:
       if (grid_point->epicell->num_steps_infected > _options->incubation_period) {
-        grid_point->epicell->status = EpiCellStatus::Secreting;
+        grid_point->epicell->status = EpiCellStatus::EXPRESSING;
         grid_point->virus = 1.0;
-        grid_point->chemokine = 1.0;
       }
       break;
-    case EpiCellStatus::Secreting:
-      for (auto &nb_coords : grid_point->neighbors) {
-        if (nb_coords == grid_point->coords) continue;
-        tissue.inc_incoming_virus(nb_coords, grid_point->virus);
+    case EpiCellStatus::EXPRESSING:
+      if (grid_point->epicell->num_steps_infected >
+          _options->incubation_period + _options->expressing_period) {
+        grid_point->epicell->status = EpiCellStatus::DEAD;
+        grid_point->virus = 0;
+      } else {
+        for (auto &nb_coords : grid_point->neighbors) {
+          if (nb_coords == grid_point->coords) continue;
+          tissue.inc_incoming_virus(nb_coords, grid_point->virus);
+        }
+        grid_point->chemokine = 1.0;
+        grid_point->icytokine = 1.0;
       }
-      grid_point->virus -= _options->virus_secreting_decay_rate;
-      if (grid_point->virus < 0) grid_point->virus = 0;
-      if (grid_point->virus == 0) grid_point->epicell->status = EpiCellStatus::Dead;
       break;
     default: DIE("Invalid state ", (int)grid_point->epicell->status, " for infected cell");
   }
   _update_virus_timer.stop();
+}
+
+void update_cytokines(int time_step, Tissue &tissue, GridPoint *grid_point) {
+  _update_cytokines_timer.start();
+  if (grid_point->chemokine > 0) {
+    if (grid_point->epicell->status != EpiCellStatus::EXPRESSING) {
+      grid_point->chemokine -= _options->chemokine_decay_rate;
+      if (grid_point->chemokine < 0) grid_point->chemokine = 0;
+    }
+    if (grid_point->chemokine > 0) {
+      for (auto &nb_coords : grid_point->neighbors) {
+        if (nb_coords == grid_point->coords) continue;
+        tissue.inc_incoming_chemokines(nb_coords,
+                                       grid_point->chemokine * _options->chemokine_diffusion_rate);
+      }
+    }
+  }
+  if (grid_point->icytokine > 0) {
+    if (grid_point->epicell->status != EpiCellStatus::EXPRESSING) {
+      grid_point->icytokine -= _options->icytokine_decay_rate;
+      if (grid_point->icytokine < 0) grid_point->icytokine = 0;
+    }
+    if (grid_point->incoming_icytokine > 0) {
+      for (auto &nb_coords : grid_point->neighbors) {
+        if (nb_coords == grid_point->coords) continue;
+        tissue.inc_incoming_icytokines(nb_coords,
+                                       grid_point->icytokine * _options->icytokine_diffusion_rate);
+      }
+    }
+  }
+  _update_cytokines_timer.stop();
 }
 
 void finish_round(Tissue &tissue) {
@@ -179,7 +216,7 @@ void finish_round(Tissue &tissue) {
       grid_point->switch_tcells_vector();
       _sim_stats.num_tcells += grid_point->tcells->size();
     }
-    if (grid_point->incoming_virus > 0 && grid_point->epicell->status == EpiCellStatus::Healthy) {
+    if (grid_point->incoming_virus > 0 && grid_point->epicell->status == EpiCellStatus::HEALTHY) {
       double infection_prob = grid_point->incoming_virus * _options->virus_infection_prob;
       if (_rnd_gen->get_prob() >= infection_prob) {
         grid_point->incoming_virus = 0;
@@ -187,13 +224,21 @@ void finish_round(Tissue &tissue) {
         grid_point->virus = grid_point->incoming_virus;
         grid_point->incoming_virus = 0;
         grid_point->epicell->num_steps_infected = 0;
-        grid_point->epicell->status = EpiCellStatus::Incubating;
+        grid_point->epicell->status = EpiCellStatus::INCUBATING;
       }
     }
-    if (grid_point->epicell->status == EpiCellStatus::Incubating ||
-        grid_point->epicell->status == EpiCellStatus::Secreting)
+    if (grid_point->incoming_chemokine) {
+      grid_point->chemokine = grid_point->incoming_chemokine;
+      grid_point->incoming_chemokine = 0;
+    }
+    if (grid_point->incoming_icytokine) {
+      grid_point->icytokine = grid_point->incoming_icytokine;
+      grid_point->incoming_icytokine = 0;
+    }
+    if (grid_point->epicell->status == EpiCellStatus::INCUBATING ||
+        grid_point->epicell->status == EpiCellStatus::EXPRESSING)
       _sim_stats.num_infected++;
-    if (grid_point->epicell->status == EpiCellStatus::Dead) _sim_stats.num_dead_epicells++;
+    if (grid_point->epicell->status == EpiCellStatus::DEAD) _sim_stats.num_dead_epicells++;
   }
   barrier();
 }
@@ -231,6 +276,8 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
     case ViewObject::VIRUS: header_oss << "SCALARS virus unsigned_char 1\n"; break;
     case ViewObject::TCELL: header_oss << "SCALARS t-cell unsigned_char 1\n"; break;
     case ViewObject::EPICELL: header_oss << "SCALARS epicell unsigned_char 1\n"; break;
+    case ViewObject::ICYTOKINE: header_oss << "SCALARS icytokine unsigned_char 1\n"; break;
+    case ViewObject::CHEMOKINE: header_oss << "SCALARS chemokine unsigned_char 1\n"; break;
     default: SDIE("unknown view object");
   }
   header_oss << "LOOKUP_TABLE default\n";
@@ -277,8 +324,8 @@ void run_sim(Tissue &tissue) {
           update_tcell(time_step, tissue, grid_point, tcell);
         }
       }
-      if (grid_point->virus > 0) update_virus(time_step, tissue, grid_point);
-      // if (grid_point->chemokine > 0) update_chemokine(time_step, tissue, grid_point);
+      update_virus(time_step, tissue, grid_point);
+      update_cytokines(time_step, tissue, grid_point);
     }
     finish_round(tissue);
     // print every 5% of the iterations
@@ -299,6 +346,8 @@ void run_sim(Tissue &tissue) {
       sample(time_step, tissue, ViewObject::TCELL);
       sample(time_step, tissue, ViewObject::VIRUS);
       sample(time_step, tissue, ViewObject::EPICELL);
+      sample(time_step, tissue, ViewObject::ICYTOKINE);
+      sample(time_step, tissue, ViewObject::CHEMOKINE);
     }
   }
   _update_tcell_timer.done_all();

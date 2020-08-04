@@ -110,14 +110,17 @@ class Options {
   }
 
  public:
-  vector<int64_t> dimensions{20, 20, 20};
+  vector<int64_t> dimensions{50, 50, 1};
   int num_iters = 100;
-  int num_tcells = 500;
-  int num_infections = 5;
+  int num_tcells = 20;
+  int num_infections = 10;
   int incubation_period = 10;
-  int secreting_period = 10;
-  double virus_infection_prob = 0.5;
-  double virus_secreting_decay_rate = 0.1;
+  int expressing_period = 10;
+  double virus_infection_prob = 0.2;
+  double chemokine_decay_rate = 0.05;
+  double icytokine_decay_rate = 0.05;
+  double chemokine_diffusion_rate = 0.1;
+  double icytokine_diffusion_rate = 0.1;
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
@@ -144,14 +147,26 @@ class Options {
     app.add_option("-t,--tcells", num_tcells, "Number of t-cells")->capture_default_str();
     app.add_option("--incubation-period", incubation_period, "Incubation period")
         ->capture_default_str();
-    app.add_option("--secreting-period", secreting_period, "Secreting period")
+    app.add_option("--expressing-period", expressing_period, "Expressing period")
         ->capture_default_str();
     app.add_option("--virus-infection-prob", virus_infection_prob,
                    "Probability of virus spreading to a neighbor")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--virus-secreting-decay-rate", virus_secreting_decay_rate,
-                   "Virus secreting decay rate")
+    app.add_option("--chemokine-decay-rate", chemokine_decay_rate,
+                   "Chemokine decay rate")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--icytokine-decay-rate", icytokine_decay_rate,
+                   "Inflammatory cytokine decay rate")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--chemokine-diffusion-rate", chemokine_diffusion_rate,
+                   "Chemokine diffusion rate")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--icytokine-diffusion-rate", icytokine_diffusion_rate,
+                   "Inflammatory cytokine diffusion rate")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();

@@ -21,7 +21,7 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-enum class ViewObject { VIRUS, TCELL, EPICELL, CHEMOKINE };
+enum class ViewObject { VIRUS, TCELL, EPICELL, CHEMOKINE, ICYTOKINE };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
@@ -29,6 +29,7 @@ inline string view_object_str(ViewObject view_object) {
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";
     case ViewObject::CHEMOKINE: return "chemokine";
+    case ViewObject::ICYTOKINE: return "icytokine";
     default: DIE("Unknown view object");
   }
   return "";
@@ -77,11 +78,11 @@ struct TCell {
   int64_t id;
 };
 
-enum class EpiCellStatus { Healthy, Incubating, Secreting, Apoptotic, Dead };
+enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 
 struct EpiCell {
   int64_t id;
-  EpiCellStatus status = EpiCellStatus::Healthy;
+  EpiCellStatus status = EpiCellStatus::HEALTHY;
   int64_t num_steps_infected;
 
   string str() { return std::to_string(id); }
@@ -107,6 +108,7 @@ class GridPoint {
   // without being subject to the vagaries of multiprocess collisions
   double virus = 0, incoming_virus = 0;
   double chemokine = 0, incoming_chemokine = 0;
+  double icytokine = 0, incoming_icytokine = 0;
 
   GridPoint(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell)
       : id(id), coords(coords), neighbors(neighbors), epicell(epicell) {}
@@ -205,12 +207,42 @@ class Tissue {
         get_rank_for_grid_point(coords),
         [](grid_points_t &grid_points, int64_t id, GridCoords coords, double virus) {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-          if (grid_point.virus == 0 && grid_point.epicell->status == EpiCellStatus::Healthy) {
+          if (grid_point.virus == 0 && grid_point.epicell->status == EpiCellStatus::HEALTHY) {
             grid_point.incoming_virus += virus;
             if (grid_point.incoming_virus > 1) grid_point.incoming_virus = 1;
           }
         },
         grid_points, id, coords, virus)
+        .wait();
+  }
+
+  void inc_incoming_chemokines(GridCoords coords, double chemokine) {
+    int64_t id = coords.to_1d(Tissue::grid_size);
+    upcxx::rpc(
+        get_rank_for_grid_point(coords),
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, double chemokine) {
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          if (grid_point.epicell->status != EpiCellStatus::EXPRESSING) {
+            grid_point.incoming_chemokine += chemokine;
+            if (grid_point.incoming_chemokine > 1) grid_point.incoming_chemokine = 1;
+          }
+        },
+        grid_points, id, coords, chemokine)
+        .wait();
+  }
+
+  void inc_incoming_icytokines(GridCoords coords, double icytokine) {
+    int64_t id = coords.to_1d(Tissue::grid_size);
+    upcxx::rpc(
+        get_rank_for_grid_point(coords),
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, double icytokine) {
+          GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+          if (grid_point.epicell->status != EpiCellStatus::EXPRESSING) {
+            grid_point.incoming_icytokine += icytokine;
+            if (grid_point.incoming_icytokine > 1) grid_point.incoming_icytokine = 1;
+          }
+        },
+        grid_points, id, coords, icytokine)
         .wait();
   }
 
@@ -300,7 +332,7 @@ class Tissue {
         // They should be placed according to the underlying lung structure
         // (gaps, etc)
         GridPoint grid_point(id, coords, neighbors, new EpiCell(
-                 {.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}));
+                 {.id = id, .status = EpiCellStatus::HEALTHY, .num_steps_infected = 0}));
         grid_points->push_back(grid_point);
         /*
             {.id = id,
@@ -360,18 +392,26 @@ class Tissue {
               val = std::min(255, (int)grid_point.tcells->size());
             break;
           case ViewObject::VIRUS:
-            if (grid_point.virus <= 0) val = 0;
+            if (grid_point.virus < 0) val = 0;
             else val = 255 * grid_point.virus;
             break;
           case ViewObject::EPICELL:
             switch (grid_point.epicell->status) {
-              case EpiCellStatus::Incubating: val = 1; break;
-              case EpiCellStatus::Secreting: val = 2; break;
-              case EpiCellStatus::Dead: val = 3; break;
+              case EpiCellStatus::INCUBATING: val = 1; break;
+              case EpiCellStatus::EXPRESSING: val = 2; break;
+              case EpiCellStatus::APOPTOTIC: val = 3; break;
+              case EpiCellStatus::DEAD: val = 4; break;
               default: val = 0;
             }
             break;
-          case ViewObject::CHEMOKINE: break;
+          case ViewObject::CHEMOKINE:
+            if (grid_point.chemokine < 0) val = 0;
+            else val = 255 * grid_point.chemokine;
+            break;
+          case ViewObject::ICYTOKINE:
+            if (grid_point.icytokine < 0) val = 0;
+            else val = 255 * grid_point.icytokine;
+            break;
         }
         buf[id - start_id] = (unsigned char)val;
         grid_points_written++;
