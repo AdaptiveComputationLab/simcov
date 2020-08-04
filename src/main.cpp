@@ -30,12 +30,14 @@ struct SimStats {
   int64_t num_infected = 0;
   int64_t num_dead_epicells = 0;
   int64_t num_tcells = 0;
+  int64_t num_tcells_extravasated = 0;
   int64_t tot_num_viral_kills = 0;
 
   void clear() {
     num_infected = 0;
     num_dead_epicells = 0;
     num_tcells = 0;
+    num_tcells_extravasated = 0;
   }
 
   int64_t get_all_num_infected() {
@@ -44,6 +46,10 @@ struct SimStats {
 
   int64_t get_all_num_tcells() {
     return upcxx::reduce_one(num_tcells, upcxx::op_fast_add, 0).wait();
+  }
+
+  int64_t get_all_num_tcells_extravasated() {
+    return upcxx::reduce_one(num_tcells_extravasated, upcxx::op_fast_add, 0).wait();
   }
 
   int64_t get_all_num_dead_epicells() {
@@ -62,6 +68,7 @@ shared_ptr<Options> _options;
 shared_ptr<Random> _rnd_gen;
 SimStats _sim_stats;
 
+IntermittentTimer _generate_tcell_timer(__FILENAME__ + string(":") + "generate_tcells");
 IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell");
 IntermittentTimer _update_virus_timer(__FILENAME__ + string(":") + "update_virus");
 IntermittentTimer _update_cytokines_timer(__FILENAME__ + string(":") + "update_cytokines");
@@ -94,28 +101,24 @@ void initial_infection(Tissue &tissue) {
 }
 
 void generate_tcells(Tissue &tissue) {
-  BarrierTimer timer(__FILEFUNC__);
-  // each rank generates a block of tcells
-  int local_num_tcells = ceil((double)_options->num_tcells / rank_n());
-  int64_t min_tcell_id = rank_me() * local_num_tcells;
-  int64_t max_tcell_id = (rank_me() + 1) * local_num_tcells;
-  if (max_tcell_id > _options->num_tcells) max_tcell_id = _options->num_tcells;
-  if (min_tcell_id > _options->num_tcells) min_tcell_id = _options->num_tcells;
-  int64_t num_tcells_added = 0;
-  barrier();
-  DBG("Generating tcells from ", min_tcell_id, " to ", max_tcell_id, "\n");
-  ProgressBar progbar(max_tcell_id - min_tcell_id, "Generating t-cells");
-  for (int64_t tcell_id = min_tcell_id; tcell_id < max_tcell_id; tcell_id++) {
-    progbar.update();
-    GridCoords coords(_rnd_gen, Tissue::grid_size);
-    DBG("tcell ", tcell_id, " starting at ", coords.str(), "\n");
-    tissue.add_tcell(coords, tcell_id);
-    num_tcells_added++;
-    upcxx::progress();
+  _generate_tcell_timer.start();
+  // each rank could generate some t-cells
+  int local_num_tcells = _options->tcell_generation / rank_n();
+  int remaining_tcells = _options->tcell_generation - local_num_tcells * rank_n();
+  if (rank_me() < remaining_tcells) local_num_tcells++;
+  if (local_num_tcells) {
+    for (int i = 0; i < local_num_tcells; i++) {
+      GridCoords coords(_rnd_gen, Tissue::grid_size);
+      string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
+      tissue.tcells_generated++;
+      DBG("tcell ", tcell_id, " starting at ", coords.str(), "\n");
+      tissue.add_tcell(coords, {.id = tcell_id, .in_vasculature = true});
+      upcxx::progress();
+    }
   }
-  progbar.done();
+  _generate_tcell_timer.stop();
   barrier();
-  SLOG("Generated ", reduce_one(num_tcells_added, op_fast_add, 0).wait(), " t-cells\n");
+  SLOG_VERBOSE("Generated ", reduce_one(local_num_tcells, op_fast_add, 0).wait(), " t-cells\n");
 }
 
 int64_t get_rnd_coord(int64_t x, int64_t max_x) {
@@ -127,37 +130,45 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell) {
   _update_tcell_timer.start();
-  if (grid_point->virus > 0) {
-    // induce apoptosis
-    DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " induced apoptosis\n");
-    if (grid_point->epicell->status != EpiCellStatus::APOPTOTIC) {
-      grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
-      grid_point->epicell->start_apoptosis = time_step;
-    }
-    // need to add here to ensure it gets to the next time step in the vector swap
-    tissue.add_tcell(grid_point->coords, tcell.id);
+  if (tcell.in_vasculature && grid_point->icytokine > 0) tcell.in_vasculature = false;
+  if (tcell.in_vasculature) {
+    auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
+    GridCoords selected_coords = grid_point->neighbors[rnd_nb_i];
+    tissue.add_tcell(selected_coords, tcell);
   } else {
-    GridCoords selected_coords;
-    double highest_chemokine = 0;
-    for (auto &nb_coords : grid_point->neighbors) {
-      if (nb_coords == grid_point->coords) continue;
-      double chemokine = tissue.get_chemokine(nb_coords);
-      if (chemokine > highest_chemokine) {
-        highest_chemokine = chemokine;
-        selected_coords = nb_coords;
+    if (grid_point->virus > 0) {
+      // induce apoptosis
+      DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(),
+          " induced apoptosis\n");
+      if (grid_point->epicell->status != EpiCellStatus::APOPTOTIC) {
+        grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
+        grid_point->epicell->start_apoptosis = time_step;
       }
-    }
-    if (highest_chemokine == 0) {
-      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-      selected_coords = grid_point->neighbors[rnd_nb_i];
+      // need to add here to ensure it gets to the next time step in the vector swap
+      tissue.add_tcell(grid_point->coords, tcell);
     } else {
-      DBG(time_step, ": highest nb chemokine for tcell ", tcell.id, " at ",
-          grid_point->coords.str(), " is at ", selected_coords.str(), " with ", highest_chemokine,
-          "\n");
+      GridCoords selected_coords;
+      double highest_chemokine = 0;
+      for (auto &nb_coords : grid_point->neighbors) {
+        if (nb_coords == grid_point->coords) continue;
+        double chemokine = tissue.get_chemokine(nb_coords);
+        if (chemokine > highest_chemokine) {
+          highest_chemokine = chemokine;
+          selected_coords = nb_coords;
+        }
+      }
+      if (highest_chemokine == 0) {
+        auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
+        selected_coords = grid_point->neighbors[rnd_nb_i];
+      } else {
+        DBG(time_step, ": highest nb chemokine for tcell ", tcell.id, " at ",
+            grid_point->coords.str(), " is at ", selected_coords.str(), " with ", highest_chemokine,
+            "\n");
+      }
+      DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
+          selected_coords.str(), "\n");
+      tissue.add_tcell(selected_coords, tcell);
     }
-    DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
-        selected_coords.str(), "\n");
-    tissue.add_tcell(selected_coords, tcell.id);
   }
   _update_tcell_timer.stop();
 }
@@ -303,7 +314,8 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
              << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n";
   switch (view_object) {
     case ViewObject::VIRUS: header_oss << "SCALARS virus unsigned_char 1\n"; break;
-    case ViewObject::TCELL: header_oss << "SCALARS t-cell unsigned_char 1\n"; break;
+    case ViewObject::TCELL_VAS: header_oss << "SCALARS t-cell-vas unsigned_char 1\n"; break;
+    case ViewObject::TCELL_XVAS: header_oss << "SCALARS t-cell-exvas unsigned_char 1\n"; break;
     case ViewObject::EPICELL: header_oss << "SCALARS epicell unsigned_char 1\n"; break;
     case ViewObject::ICYTOKINE: header_oss << "SCALARS icytokine unsigned_char 1\n"; break;
     case ViewObject::CHEMOKINE: header_oss << "SCALARS chemokine unsigned_char 1\n"; break;
@@ -337,10 +349,11 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
 
 void run_sim(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
-  double time_step_ticks = (double)_options->num_iters / 20;
+  double time_step_ticks = (double)_options->num_timesteps / 20;
   auto start_t = NOW();
   auto curr_t = start_t;
-  for (int time_step = 0; time_step < _options->num_iters; time_step++) {
+  for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
+    generate_tcells(tissue);
     // iterate through all local grid points
     // FIXME: this should be iteration through the local active grid points only
     for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
@@ -358,7 +371,7 @@ void run_sim(Tissue &tissue) {
     }
     finish_round(tissue);
     // print every 5% of the iterations
-    if (time_step >= time_step_ticks || time_step == _options->num_iters - 1) {
+    if (time_step >= time_step_ticks || time_step == _options->num_timesteps - 1) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       // memory doesn't really change so don't report it every iteration
@@ -368,11 +381,12 @@ void run_sim(Tissue &tissue) {
            perc_str(_sim_stats.get_all_num_dead_epicells(), tissue.get_num_grid_points()),
            ", viral kills ", _sim_stats.get_all_num_viral_kills(),
            ", t-cells: ", _sim_stats.get_all_num_tcells(), "\n");
-      time_step_ticks += (double)_options->num_iters / 20;
+      time_step_ticks += (double)_options->num_timesteps / 20;
     }
     // sample
     if (time_step % _options->sample_period == 0) {
-      sample(time_step, tissue, ViewObject::TCELL);
+      sample(time_step, tissue, ViewObject::TCELL_VAS);
+      sample(time_step, tissue, ViewObject::TCELL_XVAS);
       sample(time_step, tissue, ViewObject::VIRUS);
       sample(time_step, tissue, ViewObject::EPICELL);
       sample(time_step, tissue, ViewObject::ICYTOKINE);
@@ -383,8 +397,8 @@ void run_sim(Tissue &tissue) {
   _update_virus_timer.done_all();
   _sample_timer.done_all();
   chrono::duration<double> t_elapsed = NOW() - start_t;
-  SLOG("Finished ", _options->num_iters, " time steps in ", setprecision(4), fixed,
-       t_elapsed.count(), " s (", (double)t_elapsed.count() / _options->num_iters,
+  SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
+       t_elapsed.count(), " s (", (double)t_elapsed.count() / _options->num_timesteps,
        " s per step)\n");
 }
 
@@ -410,7 +424,6 @@ int main(int argc, char **argv) {
   Tissue tissue;
   tissue.construct({_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]});
   initial_infection(tissue);
-  generate_tcells(tissue);
   finish_round(tissue);
   SLOG(KBLUE, "Memory used on node 0 after initialization is  ",
        get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");

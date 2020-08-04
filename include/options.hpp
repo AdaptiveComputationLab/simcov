@@ -111,13 +111,13 @@ class Options {
 
  public:
   vector<int64_t> dimensions{50, 50, 1};
-  int num_iters = 100;
-  int num_tcells = 20;
+  int num_timesteps = 200;
   int num_infections = 10;
   int incubation_period = 10;
   int expressing_period = 10;
   int apoptosis_period = 2;
   double virus_infection_prob = 0.2;
+  int tcell_generation = 1;
   double chemokine_decay_rate = 0.01;
   double icytokine_decay_rate = 0.01;
   double chemokine_diffusion_rate = 1.0;
@@ -140,12 +140,11 @@ class Options {
         ->delimiter(',')
         ->expected(3)
         ->capture_default_str();
-    app.add_option("-i,--iterations", num_iters, "Number of iterations")
+    app.add_option("-t,--timestep", num_timesteps, "Number of timesteps")
         ->check(CLI::Range(1, 1000000))
         ->capture_default_str();
-    app.add_option("-f,--infections", num_infections, "Number of starting infections")
+    app.add_option("--infections", num_infections, "Number of starting infections")
         ->capture_default_str();
-    app.add_option("-t,--tcells", num_tcells, "Number of t-cells")->capture_default_str();
     app.add_option("--incubation-period", incubation_period, "Incubation period")
         ->capture_default_str();
     app.add_option("--expressing-period", expressing_period, "Expressing period")
@@ -171,6 +170,9 @@ class Options {
     app.add_option("--icytokine-diffusion-rate", icytokine_diffusion_rate,
                    "Inflammatory cytokine diffusion rate")
         ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--tcell-generation", tcell_generation,
+                   "Number of tcells generated at each timestep")
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
     app.add_option("--sample-period", sample_period, "Number of timesteps between samples")

@@ -21,11 +21,12 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-enum class ViewObject { VIRUS, TCELL, EPICELL, CHEMOKINE, ICYTOKINE };
+enum class ViewObject { VIRUS, TCELL_VAS, TCELL_XVAS, EPICELL, CHEMOKINE, ICYTOKINE };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
-    case ViewObject::TCELL: return "tcell";
+    case ViewObject::TCELL_VAS: return "tcellvas";
+    case ViewObject::TCELL_XVAS: return "tcellextravas";
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";
     case ViewObject::CHEMOKINE: return "chemokine";
@@ -75,7 +76,10 @@ struct GridCoords {
 };
 
 struct TCell {
-  int64_t id;
+  string id;
+  bool in_vasculature = true;
+
+  UPCXX_SERIALIZED_FIELDS(id, in_vasculature);
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
@@ -194,6 +198,8 @@ class Tissue {
  public:
   static GridCoords grid_size;
 
+  int64_t tcells_generated = 0;
+
   Tissue() : grid_points({}) {}
 
   ~Tissue() {}
@@ -256,18 +262,18 @@ class Tissue {
         .wait();
   }
 
-  void add_tcell(GridCoords coords, int64_t tcell_id) {
+  void add_tcell(GridCoords coords, TCell tcell) {
     // FIXME: this should be an aggregating store
     upcxx::rpc(
         get_rank_for_grid_point(coords),
-        [](grid_points_t &grid_points, int64_t id, GridCoords coords, int64_t tcell_id) {
+        [](grid_points_t &grid_points, int64_t id, GridCoords coords, TCell tcell) {
           GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
           assert(grid_point.tcells != nullptr);
           // add the tcell to the future tcells vector, i.e. not
           // the one pointed to by tcells
-          grid_point.add_tcell({.id = tcell_id});
+          grid_point.add_tcell(tcell);
         },
-        grid_points, coords.to_1d(Tissue::grid_size), coords, tcell_id)
+        grid_points, coords.to_1d(Tissue::grid_size), coords, tcell)
         .wait();
   }
 
@@ -396,9 +402,21 @@ class Tissue {
         // is grey. The view objects add to the 127 color.
         int val = 0;
         switch (view_object) {
-          case ViewObject::TCELL:
-            if (grid_point.tcells && grid_point.tcells->size())
-              val = std::min(255, (int)grid_point.tcells->size());
+          case ViewObject::TCELL_VAS:
+            for (auto tcell : *grid_point.tcells) {
+              if (tcell.in_vasculature) {
+                val++;
+                if (val == 255) break;
+              }
+            }
+            break;
+          case ViewObject::TCELL_XVAS:
+            for (auto tcell : *grid_point.tcells) {
+              if (!tcell.in_vasculature) {
+                val++;
+                if (val == 255) break;
+              }
+            }
             break;
           case ViewObject::VIRUS:
             if (grid_point.virus < 0) val = 0;
