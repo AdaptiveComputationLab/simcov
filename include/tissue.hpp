@@ -21,12 +21,12 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-enum class ViewObject { VIRUS, TCELL_VAS, TCELL_XVAS, EPICELL, CHEMOKINE, ICYTOKINE };
+enum class ViewObject { VIRUS, TCELL_VAS, TCELL_TISSUE, EPICELL, CHEMOKINE, ICYTOKINE };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
     case ViewObject::TCELL_VAS: return "tcellvas";
-    case ViewObject::TCELL_XVAS: return "tcellextravas";
+    case ViewObject::TCELL_TISSUE: return "tcelltissue";
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";
     case ViewObject::CHEMOKINE: return "chemokine";
@@ -78,8 +78,9 @@ struct GridCoords {
 struct TCell {
   string id;
   bool in_vasculature = true;
+  int64_t birth_timestep = 0;
 
-  UPCXX_SERIALIZED_FIELDS(id, in_vasculature);
+  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, birth_timestep);
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
@@ -410,7 +411,7 @@ class Tissue {
               }
             }
             break;
-          case ViewObject::TCELL_XVAS:
+          case ViewObject::TCELL_TISSUE:
             for (auto tcell : *grid_point.tcells) {
               if (!tcell.in_vasculature) {
                 val++;

@@ -117,7 +117,9 @@ class Options {
   int expressing_period = 10;
   int apoptosis_period = 2;
   double virus_infection_prob = 0.2;
-  int tcell_generation = 1;
+  int tcell_generation_rate = 2;
+  int tcell_circulating_lifespan = 30;
+  int tcell_tissue_lifespan = 10;
   double chemokine_decay_rate = 0.01;
   double icytokine_decay_rate = 0.01;
   double chemokine_diffusion_rate = 1.0;
@@ -171,8 +173,14 @@ class Options {
                    "Inflammatory cytokine diffusion rate")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--tcell-generation", tcell_generation,
+    app.add_option("--tcell-generation-rate", tcell_generation_rate,
                    "Number of tcells generated at each timestep")
+        ->capture_default_str();
+    app.add_option("--tcell-circulating-lifespan", tcell_circulating_lifespan,
+                   "Number of timesteps that circulating tcells last")
+        ->capture_default_str();
+    app.add_option("--tcell-tissue-lifespan", tcell_tissue_lifespan,
+                   "Number of timesteps that tcells in the tissue last")
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
     app.add_option("--sample-period", sample_period, "Number of timesteps between samples")
