@@ -30,8 +30,7 @@ endforeach()
 
 add_definitions(-DALL_DEFNS=\"${all_defs}\")
 
-add_executable(simcov
-    main.cpp)
+add_executable(simcov main.cpp tissue.cpp)
 
 target_link_libraries(simcov Threads::Threads ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES} SIMCOV_VERSION_LIB)
 
