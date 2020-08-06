@@ -216,22 +216,11 @@ void Tissue::construct(GridCoords grid_size) {
       // FIXME: this is an epicall on every grid point.
       // They should be placed according to the underlying lung structure
       // (gaps, etc)
-      GridPoint grid_point(
+      GridPoint grid_point;
+      grid_points->push_back(std::move(grid_point));
+      grid_points->back().init(
           id, coords, neighbors,
           new EpiCell({.id = id, .status = EpiCellStatus::HEALTHY, .num_steps_infected = 0}));
-      grid_points->push_back(grid_point);
-      /*
-          {.id = id,
-           .coords = coords,
-           .neighbors = neighbors,
-           .epicell = new EpiCell(
-               {.id = id, .status = EpiCellStatus::Healthy, .num_steps_infected = 0}),
-           //.tcells_backing_1 = {},
-           //.tcells_backing_2 = {},
-           //.tcells = nullptr,
-           //.virus = 0
-           });
-      */
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
     }
   }

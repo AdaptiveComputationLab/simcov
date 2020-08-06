@@ -71,26 +71,39 @@ void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
   // each rank generates a block of infected cells
   // for large dimensions, the chance of repeat sampling for a few points is very small
-  int local_num_infections = ceil((double)_options->num_infections / rank_n());
-  int64_t min_i = rank_me() * local_num_infections;
-  int64_t max_i = (rank_me() + 1) * local_num_infections;
-  if (max_i > _options->num_infections) max_i = _options->num_infections;
-  if (min_i > _options->num_infections) min_i = _options->num_infections;
-  int64_t num_infected = 0;
-  barrier();
-  DBG("Infecting ", (max_i - min_i), " cells from ", min_i, " to ", max_i, "\n");
-  ProgressBar progbar(max_i - min_i, "Setting initial infections");
-  for (int i = min_i; i < max_i; i++) {
+  int local_num_infections = _options->num_infections / rank_n();
+  int remaining_infections = _options->num_infections - local_num_infections * rank_n();
+  if (rank_me() < remaining_infections) local_num_infections++;
+  DBG("Infecting ", local_num_infections, " epicells\n");
+  ProgressBar progbar(local_num_infections, "Setting initial infections");
+  for (int i = 0; i < local_num_infections; i++) {
     progbar.update();
     GridCoords coords(_rnd_gen, Tissue::grid_size);
     DBG("infection: ", coords.str() + "\n");
+    WARN("infection: ", coords.str() + "\n");
     tissue.inc_incoming_virus(coords, 1.0);
-    num_infected++;
     upcxx::progress();
   }
   progbar.done();
   barrier();
-  SLOG("Initially infected ", reduce_one(num_infected, op_fast_add, 0).wait(), " epicells\n");
+  SLOG("Initially infected ", reduce_one(local_num_infections, op_fast_add, 0).wait(),
+       " epicells\n");
+  int num_infections_found = 0;
+  for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
+       grid_point = tissue.get_next_local_grid_point()) {
+    if (grid_point->incoming_virus > 0) {
+      grid_point->virus = grid_point->incoming_virus;
+      grid_point->incoming_virus = 0;
+      grid_point->epicell->num_steps_infected = 0;
+      grid_point->epicell->status = EpiCellStatus::INCUBATING;
+      num_infections_found++;
+    }
+  }
+  barrier();
+  int tot_num_infections_found = reduce_one(num_infections_found, op_fast_add, 0).wait();
+  if (!rank_me() && tot_num_infections_found != _options->num_infections)
+    WARN("Generated fewer initial infections that expected, ", tot_num_infections_found, " < ",
+         _options->num_infections);
 }
 
 void generate_tcells(Tissue &tissue, int64_t time_step) {
@@ -104,7 +117,7 @@ void generate_tcells(Tissue &tissue, int64_t time_step) {
       GridCoords coords(_rnd_gen, Tissue::grid_size);
       string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
       tissue.tcells_generated++;
-      DBG("tcell ", tcell_id, " starting at ", coords.str(), "\n");
+      // the initial position is actually meaningless
       tissue.add_tcell(coords,
                        {.id = tcell_id, .in_vasculature = true, .birth_timestep = time_step});
       upcxx::progress();
@@ -127,8 +140,8 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
   if (tcell.in_vasculature && grid_point->icytokine > 0) tcell.in_vasculature = false;
   if (tcell.in_vasculature) {
     if (time_step - tcell.birth_timestep < _options->tcell_circulating_lifespan) {
-      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-      GridCoords selected_coords = grid_point->neighbors[rnd_nb_i];
+      // tcell moves to any random location in the grid
+      GridCoords selected_coords(_rnd_gen, Tissue::grid_size);
       tissue.add_tcell(selected_coords, tcell);
     }
     // otherwise do nothing - the tcell dies off
@@ -232,7 +245,7 @@ void update_cytokines(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->icytokine < 0) grid_point->icytokine = 0;
     }
     if (grid_point->incoming_icytokine > 0) {
-      double icytokine_to_nb = grid_point->incoming_virus * _options->icytokine_diffusion_rate /
+      double icytokine_to_nb = grid_point->icytokine * _options->icytokine_diffusion_rate /
                                grid_point->neighbors.size();
       for (auto &nb_coords : grid_point->neighbors) {
         if (nb_coords == grid_point->coords) continue;
@@ -363,7 +376,7 @@ void run_sim(Tissue &tissue) {
       upcxx::progress();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
-      if (grid_point->tcells) {
+      if (grid_point->tcells && grid_point->tcells->size()) {
         for (auto &tcell : *grid_point->tcells) {
           update_tcell(time_step, tissue, grid_point, tcell);
         }
@@ -384,7 +397,6 @@ void run_sim(Tissue &tissue) {
     }
     // sample
     if (time_step % _options->sample_period == 0) {
-      sample(time_step, tissue, ViewObject::TCELL_VAS);
       sample(time_step, tissue, ViewObject::TCELL_TISSUE);
       sample(time_step, tissue, ViewObject::VIRUS);
       sample(time_step, tissue, ViewObject::EPICELL);
@@ -423,7 +435,6 @@ int main(int argc, char **argv) {
   Tissue tissue;
   tissue.construct({_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]});
   initial_infection(tissue);
-  finish_round(tissue);
   SLOG(KBLUE, "Memory used on node 0 after initialization is  ",
        get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");
 

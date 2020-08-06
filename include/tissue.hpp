@@ -100,15 +100,24 @@ class GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   // a pointer to the currently active tcells vector
-  vector<TCell> *tcells = &tcells_backing_1;
+  vector<TCell> *tcells = nullptr;
   // we have incoming values for the concentrations so that we can update at the end of the round
   // without being subject to the vagaries of multiprocess collisions
   double virus = 0, incoming_virus = 0;
   double chemokine = 0, incoming_chemokine = 0;
   double icytokine = 0, incoming_icytokine = 0;
 
-  GridPoint(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell)
-      : id(id), coords(coords), neighbors(neighbors), epicell(epicell) {}
+  ~GridPoint() {
+    if (epicell) delete epicell;
+  }
+
+  void init(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell) {
+    this->id = id;
+    this->coords = coords;
+    this->neighbors = neighbors;
+    this->epicell = epicell;
+    tcells = &tcells_backing_1;
+  }
 
   string str() const;
 
