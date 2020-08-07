@@ -21,11 +21,10 @@
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-enum class ViewObject { VIRUS, TCELL_VAS, TCELL_TISSUE, EPICELL, CHEMOKINE, ICYTOKINE };
+enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE, ICYTOKINE };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
-    case ViewObject::TCELL_VAS: return "tcellvas";
     case ViewObject::TCELL_TISSUE: return "tcelltissue";
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";

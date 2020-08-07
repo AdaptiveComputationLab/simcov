@@ -339,20 +339,23 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
              << "DATASET STRUCTURED_POINTS\n"
              // we add one in each dimension because these are for drawing the
              // visualization points, and our visualization entities are cells
-             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1) << "\n"
-             << "SPACING 1 1 1\n"
+             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
+             << "\n"
+             // each cell is 5 microns
+             << "SPACING 5 5 5\n"
              << "ORIGIN 0 0 0\n"
-             << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n";
+             << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
+             << "SCALARS ";
   switch (view_object) {
-    case ViewObject::VIRUS: header_oss << "SCALARS virus unsigned_char 1\n"; break;
-    case ViewObject::TCELL_VAS: header_oss << "SCALARS t-cell-vas unsigned_char 1\n"; break;
-    case ViewObject::TCELL_TISSUE: header_oss << "SCALARS t-cell-tissue unsigned_char 1\n"; break;
-    case ViewObject::EPICELL: header_oss << "SCALARS epicell unsigned_char 1\n"; break;
-    case ViewObject::ICYTOKINE: header_oss << "SCALARS icytokine unsigned_char 1\n"; break;
-    case ViewObject::CHEMOKINE: header_oss << "SCALARS chemokine unsigned_char 1\n"; break;
+    case ViewObject::VIRUS: header_oss << "virus"; break;
+    case ViewObject::TCELL_TISSUE: header_oss << "t-cell-tissue"; break;
+    case ViewObject::EPICELL: header_oss << "epicell"; break;
+    case ViewObject::ICYTOKINE: header_oss << "icytokine"; break;
+    case ViewObject::CHEMOKINE: header_oss << "chemokine"; break;
     default: SDIE("unknown view object");
   }
-  header_oss << "LOOKUP_TABLE default\n";
+  header_oss << " unsigned_char 1\n"
+             << "LOOKUP_TABLE default\n";
   if (!rank_me()) {
     // all ranks have the same size since we zero pad ASCII chars to ensure we
     // always write out 3 chars per point

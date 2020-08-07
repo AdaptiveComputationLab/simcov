@@ -252,7 +252,8 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
   int64_t num_grid_points = get_num_grid_points();
   int64_t num_blocks = num_grid_points / Tissue::block_size;
   int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-  unsigned char *buf = new unsigned char[Tissue::block_size + 1];
+  size_t buf_size = Tissue::block_size;
+  unsigned char *buf = new unsigned char[buf_size];
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
     if (start_id >= num_grid_points) break;
@@ -260,62 +261,42 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
       assert(id < num_grid_points);
       GridCoords coords(id, Tissue::grid_size);
       GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-      // a dead cell is 0 value (blue), otherwise a normal cell is 127, which
-      // is grey. The view objects add to the 127 color.
-      int val = 0;
-      switch (view_object) {
-        case ViewObject::TCELL_VAS:
-          for (auto tcell : *grid_point.tcells) {
-            if (tcell.in_vasculature) {
-              val++;
-              if (val == 255) break;
-            }
+      unsigned char val = 0;
+      if (view_object == ViewObject::TCELL_TISSUE) {
+        for (auto tcell : *grid_point.tcells) {
+          if (!tcell.in_vasculature) {
+            val++;
+            if (val == 255) break;
           }
-          break;
-        case ViewObject::TCELL_TISSUE:
-          for (auto tcell : *grid_point.tcells) {
-            if (!tcell.in_vasculature) {
-              val++;
-              if (val == 255) break;
-            }
-          }
-          break;
-        case ViewObject::VIRUS:
-          if (grid_point.virus < 0)
-            val = 0;
-          else
-            val = 255 * grid_point.virus;
-          break;
-        case ViewObject::EPICELL:
-          switch (grid_point.epicell->status) {
-            case EpiCellStatus::INCUBATING: val = 1; break;
-            case EpiCellStatus::EXPRESSING: val = 2; break;
-            case EpiCellStatus::APOPTOTIC: val = 3; break;
-            case EpiCellStatus::DEAD: val = 4; break;
-            default: val = 0;
-          }
-          break;
-        case ViewObject::CHEMOKINE:
-          if (grid_point.chemokine < 0)
-            val = 0;
-          else
-            val = 255 * grid_point.chemokine;
-          break;
-        case ViewObject::ICYTOKINE:
-          if (grid_point.icytokine < 0)
-            val = 0;
-          else
-            val = 255 * grid_point.icytokine;
-          break;
+        }
+      } else if (view_object == ViewObject::EPICELL) {
+        switch (grid_point.epicell->status) {
+          case EpiCellStatus::HEALTHY: val = 0; break;
+          case EpiCellStatus::INCUBATING: val = 1; break;
+          case EpiCellStatus::EXPRESSING: val = 2; break;
+          case EpiCellStatus::APOPTOTIC: val = 3; break;
+          case EpiCellStatus::DEAD: val = 4; break;
+        }
+      } else if (view_object == ViewObject::VIRUS) {
+        if (grid_point.virus < 0) DIE("virus is negative ", grid_point.virus);
+        val = 255 * grid_point.virus;
+        if (grid_point.virus > 0 && val == 0) val = 1;
+      } else if (view_object == ViewObject::CHEMOKINE) {
+        if (grid_point.chemokine < 0) DIE("chemokine is negative ", grid_point.chemokine);
+        val = 255 * grid_point.chemokine;
+        if (grid_point.chemokine > 0 && val == 0) val = 1;
+      } else if (view_object == ViewObject::ICYTOKINE) {
+        if (grid_point.icytokine < 0) DIE("icytokine is negative ", grid_point.icytokine);
+        val = 255 * grid_point.icytokine;
+        if (grid_point.icytokine > 0 && val == 0) val = 1;
       }
-      buf[id - start_id] = (unsigned char)val;
       grid_points_written++;
+      buf[id - start_id] = val;
     }
-    buf[Tissue::block_size] = 0;
     size_t fpos = start_id + header_str.length();
-    auto bytes_written = pwrite(fileno, buf, Tissue::block_size, fpos);
-    if (bytes_written != Tissue::block_size)
-      DIE("Could not write all ", Tissue::block_size, " bytes; only wrote ", bytes_written, "\n");
+    auto bytes_written = pwrite(fileno, buf, buf_size, fpos);
+    if (bytes_written != buf_size)
+      DIE("Could not write all ", buf_size, " bytes; only wrote ", bytes_written, "\n");
     tot_bytes_written += bytes_written;
     DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
   }
