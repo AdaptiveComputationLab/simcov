@@ -13,6 +13,56 @@ GridCoords::GridCoords(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_s
   z = rnd_gen->get(0, grid_size.z);
 }
 
+
+
+void EpiCell::infect(int time_step, int my_incubation_period) {
+  assert(status == EpiCellStatus::HEALTHY);
+  status = EpiCellStatus::INCUBATING;
+  infected_time_step = time_step;
+  incubation_period = my_incubation_period;
+}
+
+void EpiCell::induce_apoptosis(int time_step) {
+  if (status == EpiCellStatus::APOPTOTIC) return;
+  status = EpiCellStatus::APOPTOTIC;
+  apoptosis_time_step = time_step;
+}
+
+bool EpiCell::transition_to_expressing(int time_step) {
+  assert(status == EpiCellStatus::INCUBATING);
+  if (time_step - infected_time_step < incubation_period) return false;
+  status = EpiCellStatus::EXPRESSING;
+  return true;
+}
+
+bool EpiCell::apoptosis_death(int time_step, int apoptosis_period) {
+  if (time_step - apoptosis_time_step < apoptosis_period) return false;
+  status = EpiCellStatus::DEAD;
+  return true;
+}
+
+bool EpiCell::infection_death(int time_step, int infected_lifespan) {
+  if (time_step - infected_time_step > infected_lifespan) {
+    status = EpiCellStatus::DEAD;
+    return true;
+  }
+  return false;
+}
+
+
+GridPoint::~GridPoint() {
+  if (epicell) delete epicell;
+}
+
+void GridPoint::init(int64_t id, GridCoords coords, vector<GridCoords> neighbors,
+                     EpiCell *epicell) {
+  this->id = id;
+  this->coords = coords;
+  this->neighbors = neighbors;
+  this->epicell = epicell;
+  tcells = &tcells_backing_1;
+}
+
 string GridPoint::str() const {
   ostringstream oss;
   oss << id << " " << coords.str() << " " << epicell->str() << " " << virus;
@@ -35,6 +85,7 @@ void GridPoint::add_tcell(TCell tcell) {
   auto next_tcells = (tcells == &tcells_backing_1 ? &tcells_backing_2 : &tcells_backing_1);
   next_tcells->push_back(tcell);
 }
+
 
 intrank_t Tissue::get_rank_for_grid_point(const GridCoords &coords) {
   int64_t id = coords.to_1d(Tissue::grid_size);
@@ -220,9 +271,7 @@ void Tissue::construct(GridCoords grid_size) {
       // (gaps, etc)
       GridPoint grid_point;
       grid_points->push_back(std::move(grid_point));
-      grid_points->back().init(
-          id, coords, neighbors,
-          new EpiCell({.id = id, .status = EpiCellStatus::HEALTHY, .num_steps_infected = 0}));
+      grid_points->back().init(id, coords, neighbors, new EpiCell(id));
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
     }
   }

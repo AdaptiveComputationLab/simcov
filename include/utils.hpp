@@ -50,7 +50,8 @@ inline void dump_single_file(const string &fname, const string &out_str) {
     // rank 0 creates the file and truncates it to the correct length
     fileno = open(fname.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (fileno == -1) WARN("Error trying to create file ", fname, ": ", strerror(errno), "\n");
-    if (ftruncate(fileno, fsize) == -1) WARN("Could not truncate ", fname, " to ", fsize, " bytes\n");
+    if (ftruncate(fileno, fsize) == -1)
+      WARN("Could not truncate ", fname, " to ", fsize, " bytes\n");
   }
   upcxx::barrier();
   ad.destroy();
@@ -59,7 +60,8 @@ inline void dump_single_file(const string &fname, const string &out_str) {
   if (fileno == -1) WARN("Error trying to open file ", fname, ": ", strerror(errno), "\n");
   auto bytes_written = pwrite(fileno, out_str.c_str(), sz, my_fpos);
   close(fileno);
-  if (bytes_written != sz) DIE("Could not write all ", sz, " bytes; only wrote ", bytes_written, "\n");
+  if (bytes_written != sz)
+    DIE("Could not write all ", sz, " bytes; only wrote ", bytes_written, "\n");
   upcxx::barrier();
   auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
   SLOG_VERBOSE("Successfully wrote ", get_size_str(tot_bytes_written), " to ", fname, "\n");
@@ -77,6 +79,10 @@ class Random {
 
   double get_prob(double max_val=1.0) {
     return std::uniform_real_distribution<>(0, max_val)(generator);
+  }
+
+  int get_normal_distr(int avg, int stddev) {
+    return (int)std::normal_distribution<float>(avg, stddev)(generator);
   }
 };
 

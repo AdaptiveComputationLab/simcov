@@ -64,7 +64,7 @@ SimStats _sim_stats;
 
 IntermittentTimer _generate_tcell_timer(__FILENAME__ + string(":") + "generate_tcells");
 IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell");
-IntermittentTimer _update_virus_timer(__FILENAME__ + string(":") + "update_virus");
+IntermittentTimer _update_epicell_timer(__FILENAME__ + string(":") + "update_virus");
 IntermittentTimer _update_cytokines_timer(__FILENAME__ + string(":") + "update_cytokines");
 IntermittentTimer _sample_timer(__FILENAME__ + string(":") + "sample");
 
@@ -98,8 +98,8 @@ void initial_infection(Tissue &tissue) {
     if (grid_point->incoming_virus > 0) {
       grid_point->virus = grid_point->incoming_virus;
       grid_point->incoming_virus = 0;
-      grid_point->epicell->num_steps_infected = 0;
-      grid_point->epicell->status = EpiCellStatus::INCUBATING;
+      grid_point->epicell->infect(0, _rnd_gen->get_normal_distr(_options->av_incubation_period,
+                                                                _options->sd_incubation_period));
       num_infections_found++;
     }
   }
@@ -110,7 +110,7 @@ void initial_infection(Tissue &tissue) {
          _options->num_infections);
 }
 
-void generate_tcells(Tissue &tissue, int64_t time_step) {
+void generate_tcells(Tissue &tissue, int time_step) {
   _generate_tcell_timer.start();
   // each rank could generate some t-cells
   int local_num_tcells = _options->tcell_generation_rate / rank_n();
@@ -123,7 +123,7 @@ void generate_tcells(Tissue &tissue, int64_t time_step) {
       tissue.tcells_generated++;
       // the initial position is actually meaningless
       tissue.add_tcell(coords,
-                       {.id = tcell_id, .in_vasculature = true, .birth_timestep = time_step});
+                       {.id = tcell_id, .in_vasculature = true, .birth_time_step = time_step});
       upcxx::progress();
     }
   }
@@ -144,25 +144,22 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
   if (tcell.in_vasculature && grid_point->icytokine > 0) tcell.in_vasculature = false;
   if (tcell.in_vasculature) {
     int tcell_circulating_lifespan = get_rnd_period(_options->tcell_circulating_lifespan);
-    if (time_step - tcell.birth_timestep < tcell_circulating_lifespan) {
+    if (time_step - tcell.birth_time_step < tcell_circulating_lifespan) {
       // tcell moves to any random location in the grid
       GridCoords selected_coords(_rnd_gen, Tissue::grid_size);
       tissue.add_tcell(selected_coords, tcell);
     }
   } else {
     int tcell_tissue_lifespan = get_rnd_period(_options->tcell_tissue_lifespan);
-    if (time_step - tcell.birth_timestep < tcell_tissue_lifespan) {
+    if (time_step - tcell.birth_time_step < tcell_tissue_lifespan) {
       if (grid_point->virus > 0) {
         // induce apoptosis
         DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(),
             " induced apoptosis\n");
-        if (grid_point->epicell->status != EpiCellStatus::APOPTOTIC) {
-          grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
-          grid_point->epicell->start_apoptosis = time_step;
-        }
+        grid_point->epicell->induce_apoptosis(time_step);
         // need to add here to ensure it gets to the next time step in the vector swap
         tissue.add_tcell(grid_point->coords, tcell);
-      } else {
+      } else { // no virus
         GridCoords selected_coords;
         double highest_chemokine = 0;
         for (auto &nb_coords : grid_point->neighbors) {
@@ -190,9 +187,10 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
   _update_tcell_timer.stop();
 }
 
-void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point) {
-  if (grid_point->virus == 0) return;
-  _update_virus_timer.start();
+void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
+  if (grid_point->epicell->status == EpiCellStatus::HEALTHY) return;
+  if (grid_point->epicell->status == EpiCellStatus::DEAD) return;
+  _update_epicell_timer.start();
 
   auto infect_nbs = [](Tissue &tissue, GridPoint *grid_point) {
     for (auto &nb_coords : grid_point->neighbors) {
@@ -201,33 +199,23 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point) {
     }
   };
 
-  grid_point->epicell->num_steps_infected++;
-
-  int incubation_period = get_rnd_period(_options->incubation_period);
-  int apoptosis_period = get_rnd_period(_options->apoptosis_period);
-  int expressing_period = get_rnd_period(_options->expressing_period);
-
   switch (grid_point->epicell->status) {
     case EpiCellStatus::INCUBATING:
-      if (grid_point->epicell->num_steps_infected > incubation_period) {
-        grid_point->epicell->status = EpiCellStatus::EXPRESSING;
+      if (grid_point->epicell->transition_to_expressing(time_step)) {
         grid_point->chemokine = 1.0;
         grid_point->icytokine = 1.0;
       }
       break;
     case EpiCellStatus::APOPTOTIC:
-      if (time_step - grid_point->epicell->start_apoptosis > apoptosis_period) {
-        grid_point->epicell->status = EpiCellStatus::DEAD;
+      if (grid_point->epicell->apoptosis_death(time_step, _options->apoptosis_period)) {
         grid_point->virus = 0;
         _sim_stats.tot_num_viral_kills++;
         break;
       }
-      if (grid_point->epicell->num_steps_infected > incubation_period)
-        infect_nbs(tissue, grid_point);
+      infect_nbs(tissue, grid_point);
       break;
     case EpiCellStatus::EXPRESSING:
-      if (grid_point->epicell->num_steps_infected > incubation_period + expressing_period) {
-        grid_point->epicell->status = EpiCellStatus::DEAD;
+      if (grid_point->epicell->infection_death(time_step, _options->infected_lifespan)) {
         grid_point->virus = 0;
         break;
       }
@@ -235,7 +223,7 @@ void update_virus(int time_step, Tissue &tissue, GridPoint *grid_point) {
       break;
     default: DIE("Invalid state ", (int)grid_point->epicell->status, " for infected cell");
   }
-  _update_virus_timer.stop();
+  _update_epicell_timer.stop();
 }
 
 void update_cytokines(int time_step, Tissue &tissue, GridPoint *grid_point) {
@@ -271,7 +259,7 @@ void update_cytokines(int time_step, Tissue &tissue, GridPoint *grid_point) {
   _update_cytokines_timer.stop();
 }
 
-void finish_round(Tissue &tissue) {
+void finish_round(Tissue &tissue, int time_step) {
   barrier();
   _sim_stats.clear();
   for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
@@ -291,8 +279,9 @@ void finish_round(Tissue &tissue) {
       } else {
         grid_point->virus = 1.0;
         grid_point->incoming_virus = 0;
-        grid_point->epicell->num_steps_infected = 0;
-        grid_point->epicell->status = EpiCellStatus::INCUBATING;
+        grid_point->epicell->infect(time_step,
+                                    _rnd_gen->get_normal_distr(_options->av_incubation_period,
+                                                               _options->sd_incubation_period));
       }
     }
     if (grid_point->incoming_chemokine) {
@@ -400,10 +389,10 @@ void run_sim(Tissue &tissue) {
           update_tcell(time_step, tissue, grid_point, tcell);
         }
       }
-      update_virus(time_step, tissue, grid_point);
+      update_epicell(time_step, tissue, grid_point);
       update_cytokines(time_step, tissue, grid_point);
     }
-    finish_round(tissue);
+    finish_round(tissue, time_step);
     // print every 5% of the iterations
     if (time_step >= time_step_ticks || time_step == _options->num_timesteps - 1) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
@@ -424,7 +413,7 @@ void run_sim(Tissue &tissue) {
     }
   }
   _update_tcell_timer.done_all();
-  _update_virus_timer.done_all();
+  _update_epicell_timer.done_all();
   _sample_timer.done_all();
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,

@@ -113,9 +113,10 @@ class Options {
   vector<int64_t> dimensions{50, 50, 1};
   int num_timesteps = 200;
   int num_infections = 3;
-  int incubation_period = 30;
-  int expressing_period = 10;
+  int av_incubation_period = 30;
+  int sd_incubation_period = 10;
   int apoptosis_period = 5;
+  int infected_lifespan = 100;
   double virus_infection_prob = 0.2;
   int tcell_generation_rate = 2;
   int tcell_circulating_lifespan = 50;
@@ -142,14 +143,18 @@ class Options {
         ->delimiter(',')
         ->expected(3)
         ->capture_default_str();
-    app.add_option("-t,--timestep", num_timesteps, "Number of timesteps")
+    app.add_option("-t,--timesteps", num_timesteps, "Number of timesteps")
         ->check(CLI::Range(1, 1000000))
         ->capture_default_str();
     app.add_option("--infections", num_infections, "Number of starting infections")
         ->capture_default_str();
-    app.add_option("--incubation-period", incubation_period, "Incubation period")
+    app.add_option("--av-incubation-period", av_incubation_period, "Average incubation period")
         ->capture_default_str();
-    app.add_option("--expressing-period", expressing_period, "Expressing period")
+    app.add_option("--sd-incubation-period", sd_incubation_period,
+                   "Standard deviation of incubation period")
+        ->capture_default_str();
+    app.add_option("--infected-lifespan", infected_lifespan,
+                   "Time steps taken for an infected epicell to die")
         ->capture_default_str();
     app.add_option("--apoptosis-period", apoptosis_period, "Apoptosis period")
         ->capture_default_str();

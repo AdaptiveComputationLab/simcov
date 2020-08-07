@@ -68,20 +68,34 @@ struct GridCoords {
 struct TCell {
   string id;
   bool in_vasculature = true;
-  int64_t birth_timestep = 0;
+  int birth_time_step = 0;
 
-  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, birth_timestep);
+  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, birth_time_step);
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 
-struct EpiCell {
+class EpiCell {
   int64_t id;
+  // time step when this epicell was infected
+  int infected_time_step = -1;
+  // age at which infected cell will transition to expressing
+  int incubation_period = -1;
+  // time step at which apoptosis was induced
+  int apoptosis_time_step = -1;
+
+ public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
-  int64_t num_steps_infected = 0;
-  int64_t start_apoptosis = 0;
+
+  EpiCell(int id) : id(id) {};
 
   string str() { return std::to_string(id); }
+
+  void infect(int time_step, int my_incubation_period);
+  void induce_apoptosis(int time_step);
+  bool transition_to_expressing(int time_step);
+  bool apoptosis_death(int time_step, int apoptosis_period);
+  bool infection_death(int time_step, int infected_lifespan);
 };
 
 class GridPoint {
@@ -106,17 +120,9 @@ class GridPoint {
   double chemokine = 0, incoming_chemokine = 0;
   double icytokine = 0, incoming_icytokine = 0;
 
-  ~GridPoint() {
-    if (epicell) delete epicell;
-  }
+  ~GridPoint();
 
-  void init(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell) {
-    this->id = id;
-    this->coords = coords;
-    this->neighbors = neighbors;
-    this->epicell = epicell;
-    tcells = &tcells_backing_1;
-  }
+  void init(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell);
 
   string str() const;
 
