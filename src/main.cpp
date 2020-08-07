@@ -372,7 +372,6 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
 
 void run_sim(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
-  double time_step_ticks = (double)_options->num_timesteps / 20;
   auto start_t = NOW();
   auto curr_t = start_t;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
@@ -394,14 +393,13 @@ void run_sim(Tissue &tissue) {
     }
     finish_round(tissue, time_step);
     // print every 5% of the iterations
-    if (time_step >= time_step_ticks || time_step == _options->num_timesteps - 1) {
+    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       // memory doesn't really change so don't report it every iteration
       SLOG(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2), fixed,
            setw(5), right, t_elapsed.count(),
            "s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
-      time_step_ticks += (double)_options->num_timesteps / 20;
     }
     // sample
     if (time_step % _options->sample_period == 0) {
