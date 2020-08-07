@@ -75,8 +75,8 @@ class Random {
     return std::uniform_int_distribution<int64_t>(begin, end - 1)(generator);
   }
 
-  double get_prob() {
-    return std::uniform_real_distribution<>(0, 1)(generator);
+  double get_prob(double max_val=1.0) {
+    return std::uniform_real_distribution<>(0, max_val)(generator);
   }
 };
 

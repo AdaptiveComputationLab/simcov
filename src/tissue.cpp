@@ -98,8 +98,8 @@ void Tissue::inc_incoming_chemokines(GridCoords coords, double chemokine) {
       [](grid_points_t &grid_points, int64_t id, GridCoords coords, double chemokine) {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
         if (grid_point.epicell->status != EpiCellStatus::EXPRESSING) {
-          //grid_point.incoming_chemokine += chemokine;
-          grid_point.incoming_chemokine = std::max(chemokine, grid_point.incoming_chemokine);
+          grid_point.incoming_chemokine += chemokine;
+          //grid_point.incoming_chemokine = std::max(chemokine, grid_point.incoming_chemokine);
           if (grid_point.incoming_chemokine > 1) grid_point.incoming_chemokine = 1;
         }
       },
@@ -113,8 +113,8 @@ void Tissue::inc_incoming_icytokines(GridCoords coords, double icytokine) {
       [](grid_points_t &grid_points, int64_t id, GridCoords coords, double icytokine) {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
         if (grid_point.epicell->status != EpiCellStatus::EXPRESSING) {
-          //grid_point.incoming_icytokine += icytokine;
-          grid_point.incoming_icytokine = std::max(icytokine, grid_point.incoming_icytokine);
+          grid_point.incoming_icytokine += icytokine;
+          //grid_point.incoming_icytokine = std::max(icytokine, grid_point.incoming_icytokine);
           if (grid_point.incoming_icytokine > 1) grid_point.incoming_icytokine = 1;
         }
       },
