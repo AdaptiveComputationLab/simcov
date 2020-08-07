@@ -112,14 +112,14 @@ class Options {
  public:
   vector<int64_t> dimensions{50, 50, 1};
   int num_timesteps = 200;
-  int num_infections = 10;
-  int incubation_period = 10;
+  int num_infections = 3;
+  int incubation_period = 30;
   int expressing_period = 10;
-  int apoptosis_period = 2;
+  int apoptosis_period = 5;
   double virus_infection_prob = 0.2;
   int tcell_generation_rate = 2;
-  int tcell_circulating_lifespan = 30;
-  int tcell_tissue_lifespan = 10;
+  int tcell_circulating_lifespan = 50;
+  int tcell_tissue_lifespan = 20;
   double chemokine_decay_rate = 0.01;
   double icytokine_decay_rate = 0.01;
   double chemokine_diffusion_rate = 1.0;
