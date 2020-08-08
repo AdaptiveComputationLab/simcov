@@ -120,9 +120,9 @@ class Options {
   vector<int> apoptosis_period{30, 3};   // 600
   vector<int> infection_period{80, 8};    // 1600
 
-  double virus_infection_prob = 0.15;       // 0.145 gradient?
+  double virus_infection_prob = 1.0;        // 0.145 gradient?
   double virus_decay_rate = 0.14;           // 0.14
-  double virus_diffusion_coef = 0.1;        // 1 grid point in all directions
+  double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
 
   int tcell_generation_rate = 2;
   vector<int> tcell_vascular_period{280, 28};  // 5760

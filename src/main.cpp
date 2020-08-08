@@ -271,17 +271,19 @@ void finish_round(Tissue &tissue, int time_step) {
         grid_point->incoming_virus = 0;
         grid_point->epicell->infect();
       } else {
+        grid_point->virus += grid_point->incoming_virus;
+        if (grid_point->virus > 1) grid_point->virus = 1;
         grid_point->incoming_virus = 0;
-        // FIXME: the virus should still be here, but should also decay
-        grid_point->virus = 0;
       }
     }
     if (grid_point->incoming_chemokine) {
-      grid_point->chemokine = grid_point->incoming_chemokine;
+      grid_point->chemokine += grid_point->incoming_chemokine;
+      if (grid_point->chemokine > 1) grid_point->chemokine = 1;
       grid_point->incoming_chemokine = 0;
     }
     if (grid_point->incoming_icytokine) {
-      grid_point->icytokine = grid_point->incoming_icytokine;
+      grid_point->icytokine += grid_point->incoming_icytokine;
+      if (grid_point->icytokine > 1) grid_point->icytokine = 1;
       grid_point->incoming_icytokine = 0;
     }
     switch (grid_point->epicell->status) {
