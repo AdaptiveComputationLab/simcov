@@ -17,6 +17,9 @@
 #include "upcxx_utils/progress_bar.hpp"
 #include "upcxx_utils/timers.hpp"
 #include "utils.hpp"
+#include "options.hpp"
+
+extern shared_ptr<Options> _options;
 
 using upcxx::rank_me;
 using upcxx::rank_n;
@@ -48,6 +51,8 @@ struct GridCoords {
   // create a random grid point
   GridCoords(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
 
+  void set_rnd(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
+
   bool operator==(const GridCoords &coords) {
     return x == coords.x && y == coords.y && z == coords.z;
   }
@@ -68,21 +73,24 @@ struct GridCoords {
 struct TCell {
   string id;
   bool in_vasculature = true;
-  int birth_time_step = 0;
+  int vascular_period = -1;
+  int tissue_period = -1;
+  GridCoords prev_coords;
 
-  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, birth_time_step);
+  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, vascular_period, tissue_period, prev_coords);
+
+  TCell(const string &id, GridCoords &coords);
+
+  TCell() {}
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 
 class EpiCell {
   int64_t id;
-  // time step when this epicell was infected
-  int infected_time_step = -1;
-  // age at which infected cell will transition to expressing
   int incubation_period = -1;
-  // time step at which apoptosis was induced
-  int apoptosis_time_step = -1;
+  int apoptosis_period = -1;
+  int infection_period = -1;
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
@@ -91,11 +99,11 @@ class EpiCell {
 
   string str() { return std::to_string(id); }
 
-  void infect(int time_step, int my_incubation_period);
-  void induce_apoptosis(int time_step);
-  bool transition_to_expressing(int time_step);
-  bool apoptosis_death(int time_step, int apoptosis_period);
-  bool infection_death(int time_step, int infected_lifespan);
+  void infect();
+  void induce_apoptosis();
+  bool transition_to_expressing();
+  bool apoptosis_death();
+  bool infection_death();
 };
 
 class GridPoint {

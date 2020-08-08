@@ -13,41 +13,57 @@ GridCoords::GridCoords(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_s
   z = rnd_gen->get(0, grid_size.z);
 }
 
+void GridCoords::set_rnd(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
+  x = rnd_gen->get(0, grid_size.x);
+  y = rnd_gen->get(0, grid_size.y);
+  z = rnd_gen->get(0, grid_size.z);
+}
 
 
-void EpiCell::infect(int time_step, int my_incubation_period) {
+TCell::TCell(const string &id, GridCoords &coords) : id(id), prev_coords(coords) {
+  vascular_period = _rnd_gen->get_normal_distr(_options->tcell_vascular_period);
+  tissue_period = _rnd_gen->get_normal_distr(_options->tcell_tissue_period);
+}
+
+
+void EpiCell::infect() {
   assert(status == EpiCellStatus::HEALTHY);
   status = EpiCellStatus::INCUBATING;
-  infected_time_step = time_step;
-  incubation_period = my_incubation_period;
+  infection_period = _rnd_gen->get_normal_distr(_options->infection_period);
+  incubation_period = _rnd_gen->get_normal_distr(_options->incubation_period);
+  apoptosis_period = _rnd_gen->get_normal_distr(_options->apoptosis_period);
 }
 
-void EpiCell::induce_apoptosis(int time_step) {
+void EpiCell::induce_apoptosis() {
   if (status == EpiCellStatus::APOPTOTIC) return;
   status = EpiCellStatus::APOPTOTIC;
-  apoptosis_time_step = time_step;
 }
 
-bool EpiCell::transition_to_expressing(int time_step) {
+bool EpiCell::transition_to_expressing() {
   assert(status == EpiCellStatus::INCUBATING);
-  if (time_step - infected_time_step < incubation_period) return false;
+  incubation_period--;
+  infection_period--;
+  if (incubation_period > 0) return false;
   status = EpiCellStatus::EXPRESSING;
   return true;
 }
 
-bool EpiCell::apoptosis_death(int time_step, int apoptosis_period) {
-  if (time_step - apoptosis_time_step < apoptosis_period) return false;
+bool EpiCell::apoptosis_death() {
+  assert(status == EpiCellStatus::APOPTOTIC);
+  apoptosis_period--;
+  infection_period--;
+  if (apoptosis_period > 0 && infection_period > 0) return false;
   status = EpiCellStatus::DEAD;
   return true;
 }
 
-bool EpiCell::infection_death(int time_step, int infected_lifespan) {
-  if (time_step - infected_time_step > infected_lifespan) {
-    status = EpiCellStatus::DEAD;
-    return true;
-  }
-  return false;
+bool EpiCell::infection_death() {
+  infection_period--;
+  if (infection_period > 0) return false;
+  status = EpiCellStatus::DEAD;
+  return true;
 }
+
 
 
 GridPoint::~GridPoint() {
@@ -134,10 +150,8 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, int64_t id, GridCoords coords, double virus) {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        if (grid_point.virus == 0 && grid_point.epicell->status == EpiCellStatus::HEALTHY) {
-          grid_point.incoming_virus += virus;
-          if (grid_point.incoming_virus > 1) grid_point.incoming_virus = 1;
-        }
+        grid_point.incoming_virus += virus;
+        if (grid_point.incoming_virus > 1) grid_point.incoming_virus = 1;
       },
       grid_points, coords.to_1d(Tissue::grid_size), coords, virus)
       .wait();
@@ -148,11 +162,8 @@ void Tissue::inc_incoming_chemokines(GridCoords coords, double chemokine) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, int64_t id, GridCoords coords, double chemokine) {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        if (grid_point.epicell->status != EpiCellStatus::EXPRESSING) {
-          grid_point.incoming_chemokine += chemokine;
-          //grid_point.incoming_chemokine = std::max(chemokine, grid_point.incoming_chemokine);
-          if (grid_point.incoming_chemokine > 1) grid_point.incoming_chemokine = 1;
-        }
+        grid_point.incoming_chemokine += chemokine;
+        if (grid_point.incoming_chemokine > 1) grid_point.incoming_chemokine = 1;
       },
       grid_points, coords.to_1d(Tissue::grid_size), coords, chemokine)
       .wait();
@@ -163,11 +174,8 @@ void Tissue::inc_incoming_icytokines(GridCoords coords, double icytokine) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, int64_t id, GridCoords coords, double icytokine) {
         GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        if (grid_point.epicell->status != EpiCellStatus::EXPRESSING) {
-          grid_point.incoming_icytokine += icytokine;
-          //grid_point.incoming_icytokine = std::max(icytokine, grid_point.incoming_icytokine);
-          if (grid_point.incoming_icytokine > 1) grid_point.incoming_icytokine = 1;
-        }
+        grid_point.incoming_icytokine += icytokine;
+        if (grid_point.incoming_icytokine > 1) grid_point.incoming_icytokine = 1;
       },
       grid_points, coords.to_1d(Tissue::grid_size), coords, icytokine)
       .wait();

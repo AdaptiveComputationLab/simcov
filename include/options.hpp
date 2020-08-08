@@ -20,6 +20,7 @@ using namespace upcxx_utils;
 
 #define YES_NO(X) ((X) ? "YES" : "NO")
 
+
 class Options {
   vector<string> splitter(string in_pattern, string &content) {
     vector<string> split_content;
@@ -111,26 +112,35 @@ class Options {
 
  public:
   vector<int64_t> dimensions{50, 50, 1};
+  // each time step should be about 1 minute, so one day = 1440 time steps
   int num_timesteps = 200;
   int num_infections = 3;
-  int av_incubation_period = 30;
-  int sd_incubation_period = 10;
-  int apoptosis_period = 5;
-  int infected_lifespan = 100;
-  double virus_infection_prob = 0.2;
+  // these periods are normally distributed with mean and stddev
+  vector<int> incubation_period{30, 3};  // 600, 60
+  vector<int> apoptosis_period{30, 3};   // 600
+  vector<int> infection_period{80, 8};    // 1600
+
+  double virus_infection_prob = 0.15;       // 0.145 gradient?
+  double virus_decay_rate = 0.14;           // 0.14
+  double virus_diffusion_coef = 0.1;        // 1 grid point in all directions
+
   int tcell_generation_rate = 2;
-  int tcell_circulating_lifespan = 50;
-  int tcell_tissue_lifespan = 20;
-  double chemokine_decay_rate = 0.01;
-  double icytokine_decay_rate = 0.01;
-  double chemokine_diffusion_rate = 1.0;
-  double icytokine_diffusion_rate = 1.0;
+  vector<int> tcell_vascular_period{280, 28};  // 5760
+  vector<int> tcell_tissue_period{6, 1};          // 120
+
+  double chemokine_decay_rate = 0.023;  // 0.023
+  double chemokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
+
+  double icytokine_decay_rate = 0.023;     // 0.023
+  double icytokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
+
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
                       get_current_time(true);
   int sample_period = 1;
   double sample_resolution = 1.0;
+
   bool show_progress = false;
   bool verbose = false;
 
@@ -148,44 +158,61 @@ class Options {
         ->capture_default_str();
     app.add_option("--infections", num_infections, "Number of starting infections")
         ->capture_default_str();
-    app.add_option("--av-incubation-period", av_incubation_period, "Average incubation period")
+    app.add_option(
+           "--incubation-period", incubation_period,
+           "Number of time steps to expressing virus after cell is infected (average:stddev)")
+        ->delimiter(':')
+        ->expected(2)
+        ->check(CLI::Range(1, 50000))
         ->capture_default_str();
-    app.add_option("--sd-incubation-period", sd_incubation_period,
-                   "Standard deviation of incubation period")
+    app.add_option("--apoptosis-period", apoptosis_period,
+                   "Number of time steps to death after apoptosis is induced (average:stddev)")
+        ->delimiter(':')
+        ->expected(2)
+        ->check(CLI::Range(1, 50000))
         ->capture_default_str();
-    app.add_option("--infected-lifespan", infected_lifespan,
-                   "Time steps taken for an infected epicell to die")
-        ->capture_default_str();
-    app.add_option("--apoptosis-period", apoptosis_period, "Apoptosis period")
+    app.add_option("--infected-period", infection_period,
+                   "Number of time steps to death after a cell is infected (average:stddev)")
+        ->delimiter(':')
+        ->expected(2)
+        ->check(CLI::Range(1, 50000))
         ->capture_default_str();
     app.add_option("--virus-infection-prob", virus_infection_prob,
                    "Probability of virus spreading to a neighbor")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--chemokine-decay-rate", chemokine_decay_rate,
-                   "Chemokine decay rate")
+    app.add_option("--chemokine-decay", chemokine_decay_rate,
+                   "Amount by which chemokine concentration drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--icytokine-decay-rate", icytokine_decay_rate,
-                   "Inflammatory cytokine decay rate")
+    app.add_option("--icytokine-decay", icytokine_decay_rate,
+                   "Amount by which inflamattory cytokine concentration drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--chemokine-diffusion-rate", chemokine_diffusion_rate,
-                   "Chemokine diffusion rate")
+    app.add_option("--chemokine-diffusion", chemokine_diffusion_coef,
+                   "Fraction of chemokine concentration that diffuses into all neighbors "
+                   "each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--icytokine-diffusion-rate", icytokine_diffusion_rate,
-                   "Inflammatory cytokine diffusion rate")
+    app.add_option("--icytokine-diffusion", icytokine_diffusion_coef,
+                   "Fraction of inflammatory cytokine concentration that diffuses into all "
+                   "neighbors each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
                    "Number of tcells generated at each timestep")
         ->capture_default_str();
-    app.add_option("--tcell-circulating-lifespan", tcell_circulating_lifespan,
-                   "Number of timesteps that circulating tcells last")
+    app.add_option("--tcell-vascular-period", tcell_vascular_period,
+                   "Number of time steps to death for a t-cell in the vasculature (average:stddev)")
+        ->delimiter(':')
+        ->expected(2)
+        ->check(CLI::Range(1, 50000))
         ->capture_default_str();
-    app.add_option("--tcell-tissue-lifespan", tcell_tissue_lifespan,
-                   "Number of timesteps that tcells in the tissue last")
+    app.add_option("--tcell-tissue-period", tcell_tissue_period,
+                   "Number of time steps to death after a t-cell extravasates (average:stddev)")
+        ->delimiter(':')
+        ->expected(2)
+        ->check(CLI::Range(1, 50000))
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
     app.add_option("--sample-period", sample_period, "Number of timesteps between samples")
