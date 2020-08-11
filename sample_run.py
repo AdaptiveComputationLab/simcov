@@ -13,6 +13,7 @@ import glob
 import os
 import sys
 import argparse
+import functools
 
 #### import the simple module from the paraview
 from paraview.simple import *
@@ -23,8 +24,21 @@ options = argparser.parse_args()
 
 def get_sample_fnames(prefix):
     global options
-    num_fnames = len(glob.glob(options.data + '/' + prefix + '*'))
-    return [options.data + '/' + prefix + str(i) + '.vtk' for i in range(num_fnames)]
+    fnames = sorted(glob.glob(options.data + '/' + prefix + '*'), key=lambda s: int(s.split('_')[2].split('.')[0]))
+    return fnames
+
+
+def get_dims():
+    with open(options.data + '/sample_epicell_0.vtk') as f:
+        for line in f.readlines():
+            if line.startswith('DIMENSIONS'):
+                xdim, ydim, _ = line.split()[1:]
+                xdim = int(xdim) - 1
+                ydim = int(ydim) - 1
+                print('Dimensions of simulation are:', xdim, ydim)
+                return xdim, ydim
+    print('Cannot find dimensions in sample files', file=sys.stderr)
+    os.abort()
 
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
@@ -47,16 +61,18 @@ quartileChartView2.BottomAxisRangeMaximum = 200.0
 quartileChartView2.RightAxisRangeMaximum = 6.66
 quartileChartView2.TopAxisRangeMaximum = 6.66
 
+xdim, ydim = get_dims()
+
 # Create a new 'Render View'
 renderView1 = CreateView('RenderView')
 renderView1.ViewSize = [1120, 901]
 renderView1.InteractionMode = 'Selection'
 renderView1.AxesGrid = 'GridAxes3DActor'
 renderView1.OrientationAxesVisibility = 0
-renderView1.CenterOfRotation = [100.0, 100.0, 0.5]
+renderView1.CenterOfRotation = [2.0 * xdim, 2.0 * ydim, 0.5]
 renderView1.StereoType = 'Crystal Eyes'
-renderView1.CameraPosition = [100.0, 100.0, 702.5932558000225]
-renderView1.CameraFocalPoint = [100.0, 100.0, 0.5]
+renderView1.CameraPosition = [2.0 * xdim, 2.0 * ydim, 14 * max(xdim, ydim)]
+renderView1.CameraFocalPoint = [2.0 * xdim, 2.0 * ydim, 0.5]
 renderView1.CameraFocalDisk = 1.0
 renderView1.CameraParallelScale = 42.875511494162964
 renderView1.Background = [0.32, 0.34, 0.43]
@@ -67,10 +83,10 @@ renderView2.ViewSize = [1120, 644]
 renderView2.InteractionMode = 'Selection'
 renderView2.AxesGrid = 'GridAxes3DActor'
 renderView2.OrientationAxesVisibility = 0
-renderView2.CenterOfRotation = [100.0, 100.0, 0.5]
+renderView2.CenterOfRotation = [2.0 * xdim, 2.0 * ydim, 0.5]
 renderView2.StereoType = 'Crystal Eyes'
-renderView2.CameraPosition = [100.0, 100.0, 702.5932558000225]
-renderView2.CameraFocalPoint = [100.0, 100.0, 0.5]
+renderView2.CameraPosition = [2.0 * xdim, 2.0 * ydim, 14 * max(xdim, ydim)]
+renderView2.CameraFocalPoint = [2.0 * xdim, 2.0 * ydim, 0.5]
 renderView2.CameraFocalDisk = 1.0
 renderView2.CameraParallelScale = 42.875511494162964
 renderView2.Background = [0.32, 0.34, 0.43]
