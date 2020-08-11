@@ -208,21 +208,7 @@ void Tissue::add_tcell(GridCoords coords, TCell tcell) {
       .wait();
 }
 
-void Tissue::construct(GridCoords grid_size) {
-  auto remainder = [](int64_t numerator, int64_t denominator) -> bool {
-    return ((double)numerator / denominator - (numerator / denominator) != 0);
-  };
-  BarrierTimer timer(__FILEFUNC__, false, true);
-  Tissue::grid_size = grid_size;
-  int64_t num_grid_points = get_num_grid_points();
-  // find the biggest cube that perfectly divides the grid and gives enough
-  // data for at least two cubes per rank (for load
-  // balance)
-  // This is a trade-off: the more data is blocked, the better the locality,
-  // but load balance could be a problem if not all
-  // ranks get the same number of cubes. Also, having bigger cubes could lead
-  // to load imbalance if all of the computation is
-  // happening within a cube.
+static int get_cube_block_dim(int64_t num_grid_points) {
   int min_cubes_per_rank = 2;
   int block_dim = 1;
   int min_dim = std::min(std::min(Tissue::grid_size.x, Tissue::grid_size.y), Tissue::grid_size.z);
@@ -249,16 +235,71 @@ void Tissue::construct(GridCoords grid_size) {
       block_dim = i;
     }
   }
-  Tissue::block_size = block_dim * block_dim * block_dim;
+  return block_dim;
+}
+
+static int get_square_block_dim(int64_t num_grid_points) {
+  int min_squares_per_rank = 2;
+  int block_dim = 1;
+  int min_dim = std::min(Tissue::grid_size.x, Tissue::grid_size.y);
+  for (int i = 1; i < min_dim; i++) {
+    // only allow dims that divide each main dimension perfectly
+    if (remainder(Tissue::grid_size.x, i) || remainder(Tissue::grid_size.y, i)) {
+      DBG("dim ", i, " does not divide all main dimensions cleanly\n");
+      continue;
+    }
+    size_t square = (size_t)pow((double)i, 2.0);
+    size_t num_squares = num_grid_points / square;
+    DBG("square size ", square, " num squares ", num_squares, "\n");
+    if (num_squares < rank_n() * min_squares_per_rank) {
+      DBG("not enough squares ", num_squares, " < ", rank_n() * min_squares_per_rank, "\n");
+      break;
+    }
+    // there is a remainder - this is not a perfect division
+    if (remainder(num_grid_points, square)) {
+      DBG("there is a remainder - don't use\n");
+      continue;
+    } else {
+      DBG("selected dim ", i, "\n");
+      block_dim = i;
+    }
+  }
+  return block_dim;
+}
+
+void Tissue::construct(GridCoords grid_size) {
+  auto remainder = [](int64_t numerator, int64_t denominator) -> bool {
+    return ((double)numerator / denominator - (numerator / denominator) != 0);
+  };
+  BarrierTimer timer(__FILEFUNC__, false, true);
+  Tissue::grid_size = grid_size;
+  int64_t num_grid_points = get_num_grid_points();
+  // find the biggest cube that perfectly divides the grid and gives enough
+  // data for at least two cubes per rank (for load
+  // balance)
+  // This is a trade-off: the more data is blocked, the better the locality,
+  // but load balance could be a problem if not all
+  // ranks get the same number of cubes. Also, having bigger cubes could lead
+  // to load imbalance if all of the computation is
+  // happening within a cube.
+  int block_dim = (Tissue::grid_size.z > 1 ? get_cube_block_dim(num_grid_points) :
+                                             get_square_block_dim(num_grid_points));
   if (block_dim == 1)
     SWARN("Using a block size of 1: this will result in a lot of "
           "communication. You should change the dimensions.");
+  Tissue::block_size = (Tissue::grid_size.z > 1 ? block_dim * block_dim * block_dim :
+                                                  block_dim * block_dim);
   int64_t x_blocks = Tissue::grid_size.x / block_dim;
   int64_t y_blocks = Tissue::grid_size.y / block_dim;
-  int64_t z_blocks = Tissue::grid_size.z / block_dim;
+  int64_t z_blocks = (Tissue::grid_size.z > 1 ? Tissue::grid_size.z / block_dim : 1);
   int64_t num_blocks = num_grid_points / Tissue::block_size;
-  SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " blocks of size ",
-       Tissue::block_size, " (", block_dim, "^3)\n");
+  if (Tissue::grid_size.z > 1)
+    SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " blocks of size ",
+         Tissue::block_size, " (", block_dim, "^3)\n");
+  else
+    SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " squares of size ",
+         Tissue::block_size, " (", block_dim, "^2)\n");
+
   int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
   SLOG_VERBOSE("Each process has ", blocks_per_rank, " blocks\n");
   grid_points->reserve(blocks_per_rank * Tissue::block_size);
@@ -283,13 +324,6 @@ void Tissue::construct(GridCoords grid_size) {
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
     }
   }
-  /*
-  #ifdef DEBUG
-      for (auto &grid_point : (*grid_points)) {
-        DBG("grid point ", grid_point.str(), "\n");
-      }
-  #endif
-  */
   barrier();
 }
 

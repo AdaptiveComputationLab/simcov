@@ -398,16 +398,19 @@ void run_sim(Tissue &tissue) {
                            tissue, &Tissue::inc_incoming_virus);
     }
     finish_round(tissue, time_step);
-    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)
+    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
+      chrono::duration<double> t_elapsed = NOW() - curr_t;
+      if (_options->verbose) curr_t = NOW();
       SLOG_VERBOSE(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2),
-                   fixed, setw(5), right, "]: ", _sim_stats.to_str(tissue.get_num_grid_points()),
-                   "\n");
-    if (tick % five_perc == 0) {
+                   fixed, setw(5), right, t_elapsed.count(),
+                   " s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
+    }
+    if (!_options->verbose && tick % five_perc == 0) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2), fixed,
            setw(5), right, t_elapsed.count(),
-           "s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
+           " s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
     }
     tick++;
     // sample
