@@ -111,9 +111,9 @@ class Options {
   }
 
  public:
-  vector<int64_t> dimensions{50, 50, 1};
+  vector<int64_t> dimensions{50, 50, 1};  // 2000,2000,1
   // each time step should be about 1 minute, so one day = 1440 time steps
-  int num_timesteps = 200;
+  int num_timesteps = 200;   // 14400
   int num_infections = 3;
   // these periods are normally distributed with mean and stddev
   vector<int> incubation_period{30, 3};  // 600, 60
@@ -125,7 +125,7 @@ class Options {
   double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
 
   int tcell_generation_rate = 2;            // 21
-  int tcell_initial_delay = 7200;
+  int tcell_initial_delay = 10;             // 7200
   vector<int> tcell_vascular_period{280, 28};  // 5760
   vector<int> tcell_tissue_period{6, 1};          // 120
 
