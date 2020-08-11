@@ -90,7 +90,7 @@ void initial_infection(Tissue &tissue) {
   for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
        grid_point = tissue.get_next_local_grid_point()) {
     if (grid_point->incoming_virus > 0) {
-      grid_point->virus = grid_point->incoming_virus;
+      grid_point->virus = 1.0;
       grid_point->incoming_virus = 0;
       grid_point->epicell->infect();
       num_infections_found++;
@@ -121,7 +121,6 @@ void generate_tcells(Tissue &tissue) {
   }
   _generate_tcell_timer.stop();
   barrier();
-  SLOG_VERBOSE("Generated ", reduce_one(local_num_tcells, op_fast_add, 0).wait(), " t-cells\n");
 }
 
 int64_t get_rnd_coord(int64_t x, int64_t max_x) {
@@ -190,7 +189,6 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
 }
 
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
-  if (grid_point->epicell->status == EpiCellStatus::HEALTHY) return;
   if (grid_point->epicell->status == EpiCellStatus::DEAD) return;
 
   _update_epicell_timer.start();
@@ -214,7 +212,13 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       }
       spreading = true;
       break;
-    default: DIE("Invalid state ", (int)grid_point->epicell->status, " for infected cell");
+    case EpiCellStatus::HEALTHY:
+      if (grid_point->virus > 0) {
+        double infection_prob = grid_point->virus * _options->virus_infection_prob;
+        if (_rnd_gen->trial_success(infection_prob)) grid_point->epicell->infect();
+      }
+      break;
+    default: break;
   }
   if (spreading) {
     // always gives out max concentrations every time step
@@ -264,17 +268,10 @@ void finish_round(Tissue &tissue, int time_step) {
         else _sim_stats.num_tcells_in_tissue++;
       }
     }
-    if (grid_point->incoming_virus > 0 && grid_point->epicell->status == EpiCellStatus::HEALTHY) {
-      double infection_prob = grid_point->incoming_virus * _options->virus_infection_prob;
-      if (_rnd_gen->trial_success(infection_prob)) {
-        grid_point->virus = 1.0;
-        grid_point->incoming_virus = 0;
-        grid_point->epicell->infect();
-      } else {
-        grid_point->virus += grid_point->incoming_virus;
-        if (grid_point->virus > 1) grid_point->virus = 1;
-        grid_point->incoming_virus = 0;
-      }
+    if (grid_point->incoming_virus) {
+      grid_point->virus += grid_point->incoming_virus;
+      if (grid_point->virus > 1) grid_point->virus = 1;
+      grid_point->incoming_virus = 0;
     }
     if (grid_point->incoming_chemokine) {
       grid_point->chemokine += grid_point->incoming_chemokine;
@@ -295,6 +292,15 @@ void finish_round(Tissue &tissue, int time_step) {
     }
   }
   barrier();
+}
+
+void write_paraview_state() {
+  /*
+  if (rank_me() > 0) return;
+  ofstream outf("sample_state.py")
+  outf << "from paraview.simple import *\n"
+  quartileChartView1 = CreateView('QuartileChartView');
+  */
 }
 
 void sample(int time_step, Tissue &tissue, ViewObject view_object) {
@@ -358,8 +364,6 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
   auto tot_bytes_written = reduce_one(bytes_written, op_fast_add, 0).wait();
   auto tot_grid_points_written = reduce_one(grid_points_written, op_fast_add, 0).wait();
   if (!rank_me()) assert(tot_grid_points_written == tissue.get_num_grid_points());
-  SLOG_VERBOSE("Successfully wrote ", tot_grid_points_written, " grid points, with size ",
-               get_size_str(tot_bytes_written), " to ", fname, "\n");
   _sample_timer.stop();
 }
 
@@ -367,6 +371,8 @@ void run_sim(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
   auto start_t = NOW();
   auto curr_t = start_t;
+  auto five_perc = _options->num_timesteps / 20;
+  int tick = 0;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     generate_tcells(tissue);
     // iterate through all local grid points
@@ -393,15 +399,18 @@ void run_sim(Tissue &tissue) {
                            tissue, &Tissue::inc_incoming_virus);
     }
     finish_round(tissue, time_step);
-    // print every 5% of the iterations
-    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
+    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)
+      SLOG_VERBOSE(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2),
+                   fixed, setw(5), right, "]: ", _sim_stats.to_str(tissue.get_num_grid_points()),
+                   "\n");
+    if (tick % five_perc == 0) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
-      // memory doesn't really change so don't report it every iteration
       SLOG(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2), fixed,
            setw(5), right, t_elapsed.count(),
            "s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
     }
+    tick++;
     // sample
     if (time_step % _options->sample_period == 0) {
       sample(time_step, tissue, ViewObject::TCELL_TISSUE);
@@ -418,6 +427,8 @@ void run_sim(Tissue &tissue) {
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
        t_elapsed.count(), " s (", (double)t_elapsed.count() / _options->num_timesteps,
        " s per step)\n");
+  // write out paraview state file for easy preformatted viewing
+  write_paraview_state();
 }
 
 int main(int argc, char **argv) {
