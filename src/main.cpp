@@ -295,12 +295,9 @@ void finish_round(Tissue &tissue, int time_step) {
 }
 
 void write_paraview_state() {
-  /*
   if (rank_me() > 0) return;
   ofstream outf("sample_state.py")
   outf << "from paraview.simple import *\n"
-  quartileChartView1 = CreateView('QuartileChartView');
-  */
 }
 
 void sample(int time_step, Tissue &tissue, ViewObject view_object) {
