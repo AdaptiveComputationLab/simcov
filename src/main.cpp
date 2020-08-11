@@ -295,9 +295,11 @@ void finish_round(Tissue &tissue, int time_step) {
 }
 
 void write_paraview_state() {
+  /*
   if (rank_me() > 0) return;
   ofstream outf("sample_state.py")
   outf << "from paraview.simple import *\n"
+  */
 }
 
 void sample(int time_step, Tissue &tissue, ViewObject view_object) {
@@ -371,7 +373,7 @@ void run_sim(Tissue &tissue) {
   auto five_perc = _options->num_timesteps / 20;
   int tick = 0;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
-    generate_tcells(tissue);
+    if (time_step > _options->tcell_initial_delay) generate_tcells(tissue);
     // iterate through all local grid points
     // FIXME: this should be iteration through the local active grid points only
     for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;

@@ -211,6 +211,9 @@ class Options {
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
                    "Number of tcells generated at each timestep")
         ->capture_default_str();
+    app.add_option("--tcell-initial-delay", tcell_initial_delay,
+                   "Number of time steps before t-cells start to be produced")
+        ->capture_default_str();
     app.add_option("--tcell-vascular-period", tcell_vascular_period,
                    "Number of time steps to death for a t-cell in the vasculature (average:stddev)")
         ->delimiter(':')
