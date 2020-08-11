@@ -390,7 +390,7 @@ calculator3Display.SetScalarBarVisibility(renderView2, True)
 SetActiveSource(None)
 # ----------------------------------------------------------------
 
-state_fname = os.path.splitext(sys.argv[0])[0] + '.pvsm'
+state_fname = options.data + '-state.pvsm'
 servermanager.SaveState(state_fname)
 
 print('Created a state file', state_fname, 'for paraview')

@@ -3,4 +3,4 @@
 install
 data
 .vscode
-g
+__pycache__
