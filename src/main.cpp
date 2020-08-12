@@ -406,6 +406,7 @@ void run_sim(Tissue &tissue) {
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
       if (grid_point->tcells && grid_point->tcells->size()) {
+        tissue.set_active(grid_point);
         for (auto &tcell : *grid_point->tcells) {
           update_tcell(time_step, tissue, grid_point, tcell);
         }
