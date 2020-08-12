@@ -137,6 +137,8 @@ class GridPoint {
   void switch_tcells_vector();
 
   void add_tcell(TCell tcell);
+
+  bool is_active();
 };
 
 class Tissue {
@@ -146,13 +148,12 @@ class Tissue {
 
   using grid_points_t = upcxx::dist_object<vector<GridPoint>>;
   grid_points_t grid_points;
-
   vector<GridPoint>::iterator grid_point_iter;
 
-  // TODO: maintain a list of active cells (i.e. those that need to be updated,
-  // e.g because of cytokines, viruses, T-cells).
-  // This will reduce computation by avoiding having to iterate through the
-  // whole space.
+  // keeps track of all grid points that need to be updated
+  using active_grid_points_t = upcxx::dist_object<vector<GridPoint*>>;
+  active_grid_points_t active_grid_points;
+  vector<GridPoint*>::iterator active_grid_point_iter;
 
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
 
@@ -166,7 +167,7 @@ class Tissue {
 
   int64_t tcells_generated = 0;
 
-  Tissue() : grid_points({}) {}
+  Tissue() : grid_points({}), active_grid_points({}) {}
 
   ~Tissue() {}
 
@@ -190,6 +191,10 @@ class Tissue {
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
 
+  GridPoint *get_first_active_grid_point();
+  GridPoint *get_next_active_grid_point();
+
+  void clear_active();
 };
 
 inline GridCoords Tissue::grid_size;

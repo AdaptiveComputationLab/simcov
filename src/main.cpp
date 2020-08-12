@@ -65,6 +65,7 @@ IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell
 IntermittentTimer _update_epicell_timer(__FILENAME__ + string(":") + "update_epicell");
 IntermittentTimer _update_concentration_timer(__FILENAME__ + string(":") + "update_concentration");
 IntermittentTimer _sample_timer(__FILENAME__ + string(":") + "sample");
+IntermittentTimer _finish_round_timer(__FILENAME__ + string(":") + "finish_round");
 
 void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
@@ -87,8 +88,8 @@ void initial_infection(Tissue &tissue) {
   SLOG("Initially infected ", reduce_one(local_num_infections, op_fast_add, 0).wait(),
        " epicells\n");
   int num_infections_found = 0;
-  for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
-       grid_point = tissue.get_next_local_grid_point()) {
+  for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+       grid_point = tissue.get_next_active_grid_point()) {
     if (grid_point->incoming_virus > 0) {
       grid_point->virus = 1.0;
       grid_point->incoming_virus = 0;
@@ -96,6 +97,8 @@ void initial_infection(Tissue &tissue) {
       num_infections_found++;
     }
   }
+  barrier();
+  tissue.clear_active();
   barrier();
   int tot_num_infections_found = reduce_one(num_infections_found, op_fast_add, 0).wait();
   if (!rank_me() && tot_num_infections_found != _options->num_infections)
@@ -257,10 +260,12 @@ void update_concentration(int time_step, GridPoint *grid_point,
 }
 
 void finish_round(Tissue &tissue, int time_step) {
+  _finish_round_timer.start();
   barrier();
   _sim_stats.clear();
-  for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
-       grid_point = tissue.get_next_local_grid_point()) {
+  // FIXME: go through active list
+  for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+       grid_point = tissue.get_next_active_grid_point()) {
     if (grid_point->tcells) {
       grid_point->switch_tcells_vector();
       for (auto &tcell : *grid_point->tcells) {
@@ -292,6 +297,9 @@ void finish_round(Tissue &tissue, int time_step) {
     }
   }
   barrier();
+  tissue.clear_active();
+  barrier();
+  _finish_round_timer.stop();
 }
 
 void write_paraview_state() {
@@ -422,9 +430,13 @@ void run_sim(Tissue &tissue) {
       sample(time_step, tissue, ViewObject::CHEMOKINE);
     }
   }
+  _generate_tcell_timer.done_all();
   _update_tcell_timer.done_all();
   _update_epicell_timer.done_all();
+  _update_concentration_timer.done_all();
   _sample_timer.done_all();
+  _finish_round_timer.done_all();
+
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
        t_elapsed.count(), " s (", (double)t_elapsed.count() / _options->num_timesteps,
