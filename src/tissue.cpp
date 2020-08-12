@@ -102,12 +102,6 @@ void GridPoint::add_tcell(TCell tcell) {
   next_tcells->push_back(tcell);
 }
 
-bool GridPoint::is_active() {
-  if (tcells->size() > 0 || virus > 0 || incoming_virus > 0 || chemokine > 0 ||
-      incoming_chemokine > 0 || icytokine > 0 || incoming_icytokine > 0)
-    return true;
-  return false;
-}
 
 
 intrank_t Tissue::get_rank_for_grid_point(const GridCoords &coords) {
@@ -116,16 +110,16 @@ intrank_t Tissue::get_rank_for_grid_point(const GridCoords &coords) {
   return block_i % rank_n();
 }
 
-GridPoint &Tissue::get_local_grid_point(grid_points_t &grid_points, int64_t id,
+GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, int64_t id,
                                         const GridCoords &coords) {
   int64_t block_i = id / Tissue::block_size / rank_n();
   int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
   assert(i < grid_points->size());
-  GridPoint &grid_point = (*grid_points)[i];
-  assert(grid_point.id == id);
-  assert(grid_point.coords.x == coords.x);
-  assert(grid_point.coords.y == coords.y);
-  assert(grid_point.coords.z == coords.z);
+  GridPoint *grid_point = &(*grid_points)[i];
+  assert(grid_point->id == id);
+  assert(grid_point->coords.x == coords.x);
+  assert(grid_point->coords.y == coords.y);
+  assert(grid_point->coords.z == coords.z);
   return grid_point;
 }
 
@@ -157,13 +151,10 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, active_grid_points_t &active_grid_points, int64_t id,
          GridCoords coords, double virus) {
-        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        if (!grid_point.is_active()) {
-          active_grid_points->push_back(&grid_point);
-          WARN("grid point added to active list ", grid_point.str());
-        }
-        grid_point.incoming_virus += virus;
-        if (grid_point.incoming_virus > 1) grid_point.incoming_virus = 1;
+        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        active_grid_points->insert({grid_point, true});
+        grid_point->incoming_virus += virus;
+        if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
       },
       grid_points, active_grid_points, coords.to_1d(Tissue::grid_size), coords, virus)
       .wait();
@@ -174,10 +165,10 @@ void Tissue::inc_incoming_chemokines(GridCoords coords, double chemokine) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, active_grid_points_t &active_grid_points, int64_t id,
          GridCoords coords, double chemokine) {
-        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        if (!grid_point.is_active()) active_grid_points->push_back(&grid_point);
-        grid_point.incoming_chemokine += chemokine;
-        if (grid_point.incoming_chemokine > 1) grid_point.incoming_chemokine = 1;
+        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        active_grid_points->insert({grid_point, true});
+        grid_point->incoming_chemokine += chemokine;
+        if (grid_point->incoming_chemokine > 1) grid_point->incoming_chemokine = 1;
       },
       grid_points, active_grid_points, coords.to_1d(Tissue::grid_size), coords, chemokine)
       .wait();
@@ -188,10 +179,10 @@ void Tissue::inc_incoming_icytokines(GridCoords coords, double icytokine) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, active_grid_points_t &active_grid_points, int64_t id,
          GridCoords coords, double icytokine) {
-        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        if (!grid_point.is_active()) active_grid_points->push_back(&grid_point);
-        grid_point.incoming_icytokine += icytokine;
-        if (grid_point.incoming_icytokine > 1) grid_point.incoming_icytokine = 1;
+        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        active_grid_points->insert({grid_point, true});
+        grid_point->incoming_icytokine += icytokine;
+        if (grid_point->incoming_icytokine > 1) grid_point->incoming_icytokine = 1;
       },
       grid_points, active_grid_points, coords.to_1d(Tissue::grid_size), coords, icytokine)
       .wait();
@@ -201,9 +192,9 @@ double Tissue::get_chemokine(GridCoords coords) {
   return upcxx::rpc(
              get_rank_for_grid_point(coords),
              [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
-               GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-               if (grid_point.epicell->status != EpiCellStatus::DEAD) return 0.0;
-               return grid_point.chemokine;
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+               if (grid_point->epicell->status != EpiCellStatus::DEAD) return 0.0;
+               return grid_point->chemokine;
              },
              grid_points, coords.to_1d(Tissue::grid_size), coords)
       .wait();
@@ -215,12 +206,12 @@ void Tissue::add_tcell(GridCoords coords, TCell tcell) {
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, active_grid_points_t &active_grid_points, int64_t id,
          GridCoords coords, TCell tcell) {
-        GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        assert(grid_point.tcells != nullptr);
-        if (!grid_point.is_active()) active_grid_points->push_back(&grid_point);
+        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        assert(grid_point->tcells != nullptr);
+        active_grid_points->insert({grid_point, true});
         // add the tcell to the future tcells vector, i.e. not
         // the one pointed to by tcells
-        grid_point.add_tcell(tcell);
+        grid_point->add_tcell(tcell);
       },
       grid_points, active_grid_points, coords.to_1d(Tissue::grid_size), coords, tcell)
       .wait();
@@ -369,17 +360,17 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
     for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id, Tissue::grid_size);
-      GridPoint &grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+      GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
       unsigned char val = 0;
       if (view_object == ViewObject::TCELL_TISSUE) {
-        for (auto tcell : *grid_point.tcells) {
+        for (auto tcell : *grid_point->tcells) {
           if (!tcell.in_vasculature) {
             val++;
             if (val == 255) break;
           }
         }
       } else if (view_object == ViewObject::EPICELL) {
-        switch (grid_point.epicell->status) {
+        switch (grid_point->epicell->status) {
           case EpiCellStatus::HEALTHY: val = 0; break;
           case EpiCellStatus::INCUBATING: val = 1; break;
           case EpiCellStatus::EXPRESSING: val = 2; break;
@@ -387,17 +378,17 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
           case EpiCellStatus::DEAD: val = 4; break;
         }
       } else if (view_object == ViewObject::VIRUS) {
-        if (grid_point.virus < 0) DIE("virus is negative ", grid_point.virus);
-        val = 255 * grid_point.virus;
-        if (grid_point.virus > 0 && val == 0) val = 1;
+        if (grid_point->virus < 0) DIE("virus is negative ", grid_point->virus);
+        val = 255 * grid_point->virus;
+        if (grid_point->virus > 0 && val == 0) val = 1;
       } else if (view_object == ViewObject::CHEMOKINE) {
-        if (grid_point.chemokine < 0) DIE("chemokine is negative ", grid_point.chemokine);
-        val = 255 * grid_point.chemokine;
-        if (grid_point.chemokine > 0 && val == 0) val = 1;
+        if (grid_point->chemokine < 0) DIE("chemokine is negative ", grid_point->chemokine);
+        val = 255 * grid_point->chemokine;
+        if (grid_point->chemokine > 0 && val == 0) val = 1;
       } else if (view_object == ViewObject::ICYTOKINE) {
-        if (grid_point.icytokine < 0) DIE("icytokine is negative ", grid_point.icytokine);
-        val = 255 * grid_point.icytokine;
-        if (grid_point.icytokine > 0 && val == 0) val = 1;
+        if (grid_point->icytokine < 0) DIE("icytokine is negative ", grid_point->icytokine);
+        val = 255 * grid_point->icytokine;
+        if (grid_point->icytokine > 0 && val == 0) val = 1;
       }
       grid_points_written++;
       buf[id - start_id] = val;
@@ -432,16 +423,20 @@ GridPoint *Tissue::get_next_local_grid_point() {
 GridPoint *Tissue::get_first_active_grid_point() {
   active_grid_point_iter = active_grid_points->begin();
   if (active_grid_point_iter == active_grid_points->end()) return nullptr;
-  auto grid_point = *active_grid_point_iter;
+  auto grid_point = active_grid_point_iter->first;
   ++active_grid_point_iter;
   return grid_point;
 }
 
 GridPoint *Tissue::get_next_active_grid_point() {
   if (active_grid_point_iter == active_grid_points->end()) return nullptr;
-  auto grid_point = *active_grid_point_iter;
+  auto grid_point = active_grid_point_iter->first;
   ++active_grid_point_iter;
   return grid_point;
+}
+
+void Tissue::set_active(GridPoint *grid_point) {
+  active_grid_points->insert({grid_point, true});
 }
 
 void Tissue::clear_active() {

@@ -199,6 +199,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   switch (grid_point->epicell->status) {
     case EpiCellStatus::INCUBATING:
       grid_point->epicell->transition_to_expressing();
+      tissue.set_active(grid_point);
       break;
     case EpiCellStatus::APOPTOTIC:
       if (grid_point->epicell->apoptosis_death()) {
@@ -219,6 +220,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->virus > 0) {
         double infection_prob = grid_point->virus * _options->virus_infection_prob;
         if (_rnd_gen->trial_success(infection_prob)) grid_point->epicell->infect();
+        tissue.set_active(grid_point);
       }
       break;
     default: break;
@@ -231,6 +233,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     grid_point->incoming_icytokine = 1.0;
     grid_point->virus = 1.0;
     grid_point->incoming_virus = 1.0;
+    tissue.set_active(grid_point);
   }
   _update_epicell_timer.stop();
 }
@@ -245,6 +248,7 @@ void update_concentration(int time_step, GridPoint *grid_point,
       if (concentration < 0) concentration = 0;
     }
     if (concentration > 0) {
+      tissue.set_active(grid_point);
       // diffuses, reducing concentration at source
       double diffusion_amount = concentration * diffusion_coef;
       concentration -= diffusion_amount;
