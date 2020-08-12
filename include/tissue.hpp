@@ -62,6 +62,8 @@ struct GridCoords {
   }
 
   int64_t to_1d(const GridCoords &grid_size) const {
+    if (x >= grid_size.x || y >= grid_size.y || z >= grid_size.z)
+      DIE("Grid point is out of range: ", str(), " max size ", grid_size.str());
     return x + y * grid_size.x + z * grid_size.x * grid_size.y;
   }
 
