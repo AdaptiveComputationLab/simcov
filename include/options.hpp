@@ -115,6 +115,9 @@ class Options {
   // each time step should be about 1 minute, so one day = 1440 time steps
   int num_timesteps = 200;   // 14400
   int num_infections = 3;
+
+  vector<int64_t> infection_coords{-1, -1, -1};
+
   // these periods are normally distributed with mean and stddev
   vector<int> incubation_period{30, 3};  // 600, 60
   vector<int> apoptosis_period{30, 3};   // 600
@@ -158,6 +161,10 @@ class Options {
         ->check(CLI::Range(1, 1000000))
         ->capture_default_str();
     app.add_option("--infections", num_infections, "Number of starting infections")
+        ->capture_default_str();
+    app.add_option("--infection-coords", infection_coords, "Location of initial infection")
+        ->delimiter(',')
+        ->expected(3)
         ->capture_default_str();
     app.add_option(
            "--incubation-period", incubation_period,
@@ -255,6 +262,10 @@ class Options {
       output_dir_opt->default_val(output_dir);
     }
 
+    if (infection_coords[0] != -1 && num_infections > 1) {
+      num_infections = 1;
+      SLOG("Initial infection coords specified, setting number of infection points to 1\n");
+    }
     setup_output_dir();
     setup_log_file();
 

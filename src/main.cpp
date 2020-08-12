@@ -69,21 +69,33 @@ IntermittentTimer _finish_round_timer(__FILENAME__ + string(":") + "finish_round
 
 void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
-  // each rank generates a block of infected cells
-  // for large dimensions, the chance of repeat sampling for a few points is very small
-  int local_num_infections = _options->num_infections / rank_n();
-  int remaining_infections = _options->num_infections - local_num_infections * rank_n();
-  if (rank_me() < remaining_infections) local_num_infections++;
-  DBG("Infecting ", local_num_infections, " epicells\n");
-  ProgressBar progbar(local_num_infections, "Setting initial infections");
-  for (int i = 0; i < local_num_infections; i++) {
-    progbar.update();
-    GridCoords coords(_rnd_gen, Tissue::grid_size);
-    DBG("infection: ", coords.str() + "\n");
-    tissue.inc_incoming_virus(coords, 1.0);
-    upcxx::progress();
+  int local_num_infections = 0;
+  if (_options->infection_coords[0] != -1) {
+    if (!rank_me()) {
+      local_num_infections = 1;
+      tissue.inc_incoming_virus({_options->infection_coords[0], _options->infection_coords[1],
+                                 _options->infection_coords[2]},
+                                1.0);
+    } else {
+      local_num_infections = 0;
+    }
+  } else {
+    // each rank generates a block of infected cells
+    // for large dimensions, the chance of repeat sampling for a few points is very small
+    local_num_infections = _options->num_infections / rank_n();
+    int remaining_infections = _options->num_infections - local_num_infections * rank_n();
+    if (rank_me() < remaining_infections) local_num_infections++;
+    DBG("Infecting ", local_num_infections, " epicells\n");
+    ProgressBar progbar(local_num_infections, "Setting initial infections");
+    for (int i = 0; i < local_num_infections; i++) {
+      progbar.update();
+      GridCoords coords(_rnd_gen, Tissue::grid_size);
+      DBG("infection: ", coords.str() + "\n");
+      tissue.inc_incoming_virus(coords, 1.0);
+      upcxx::progress();
+    }
+    progbar.done();
   }
-  progbar.done();
   barrier();
   SLOG("Initially infected ", reduce_one(local_num_infections, op_fast_add, 0).wait(),
        " epicells\n");
