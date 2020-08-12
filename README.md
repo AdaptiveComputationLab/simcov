@@ -44,7 +44,7 @@ For example:
 
 ```
 ; Dimensions: x y z
-  dim =                    100 100 100
+  dim =                    100,100,100
 
 ; Number of timesteps
   timesteps =                   14000
