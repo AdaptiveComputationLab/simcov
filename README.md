@@ -46,8 +46,9 @@ For example:
 ; Dimensions: x y z
   dim =                    100 100 100
 
-; Number of iterations
-  iterations =             1000
+; Number of timesteps
+  timesteps =                   14000
+
 ```
 
 Any options not specified in the config file will be set to the defaults (seen when run with `-h`).
@@ -56,3 +57,16 @@ Any options not specified in the config file will be set to the defaults (seen w
 If running in debug mode, a subdirectory
 called `per_thread` will appear, with one directory per process that contains debug information produced by that proc
 
+Once the run has completed, the outputs can be viewed in paraview by opening the samples subdirectory of the output directory. To help with viewing, a python script can generate a paraview state file:
+
+```
+pvpython sample-state.py --data <output_dir>/samples
+```
+
+Note that the `pvpython` wrapper is needed (not just plain python).
+
+The above command will generate a file called `samples-state.pvsm` and this can be loaded into paraview, e.g.:
+
+```
+paraview sample-state.pvsm
+```
