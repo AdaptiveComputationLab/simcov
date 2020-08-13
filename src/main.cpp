@@ -99,6 +99,8 @@ void initial_infection(Tissue &tissue) {
   barrier();
   SLOG("Initially infected ", reduce_one(local_num_infections, op_fast_add, 0).wait(),
        " epicells\n");
+  tissue.add_new_actives();
+  barrier();
   int num_infections_found = 0;
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
@@ -110,8 +112,8 @@ void initial_infection(Tissue &tissue) {
     }
   }
   barrier();
-  tissue.clear_active();
-  barrier();
+  //tissue.clear_active();
+  //barrier();
   int tot_num_infections_found = reduce_one(num_infections_found, op_fast_add, 0).wait();
   if (!rank_me() && tot_num_infections_found != _options->num_infections)
     WARN("Generated fewer initial infections that expected, ", tot_num_infections_found, " < ",
@@ -210,7 +212,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   bool spreading = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::INCUBATING:
-      grid_point->epicell->transition_to_expressing();
+      if (grid_point->epicell->transition_to_expressing()) grid_point->virus = 1.0;
       tissue.set_active(grid_point);
       break;
     case EpiCellStatus::APOPTOTIC:
@@ -277,8 +279,10 @@ void update_concentration(int time_step, GridPoint *grid_point,
 
 void finish_round(Tissue &tissue, int time_step) {
   _finish_round_timer.start();
+  tissue.add_new_actives();
   barrier();
   _sim_stats.clear();
+  vector<GridPoint*> to_erase = {};
   // FIXME: go through active list
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
@@ -311,19 +315,10 @@ void finish_round(Tissue &tissue, int time_step) {
       case EpiCellStatus::DEAD: _sim_stats.num_dead_epicells++; break;
       case EpiCellStatus::HEALTHY: break;
     }
+    if (!grid_point->is_active()) to_erase.push_back(grid_point);
   }
-  barrier();
-  tissue.clear_active();
-  barrier();
+  for (auto grid_point : to_erase) tissue.erase_active(grid_point);
   _finish_round_timer.stop();
-}
-
-void write_paraview_state() {
-  /*
-  if (rank_me() > 0) return;
-  ofstream outf("sample_state.py")
-  outf << "from paraview.simple import *\n"
-  */
 }
 
 void sample(int time_step, Tissue &tissue, ViewObject view_object) {
@@ -400,8 +395,8 @@ void run_sim(Tissue &tissue) {
     if (time_step > _options->tcell_initial_delay) generate_tcells(tissue);
     // iterate through all local grid points
     // FIXME: this should be iteration through the local active grid points only
-    for (auto grid_point = tissue.get_first_local_grid_point(); grid_point;
-         grid_point = tissue.get_next_local_grid_point()) {
+    for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+         grid_point = tissue.get_next_active_grid_point()) {
       upcxx::progress();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
@@ -422,7 +417,9 @@ void run_sim(Tissue &tissue) {
                            _options->virus_decay_rate, _options->virus_diffusion_coef,
                            tissue, &Tissue::inc_incoming_virus);
     }
+    barrier();
     finish_round(tissue, time_step);
+    barrier();
     if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       if (_options->verbose) curr_t = NOW();
@@ -458,8 +455,6 @@ void run_sim(Tissue &tissue) {
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
        t_elapsed.count(), " s (", (double)t_elapsed.count() / _options->num_timesteps,
        " s per step)\n");
-  // write out paraview state file for easy preformatted viewing
-  write_paraview_state();
 }
 
 int main(int argc, char **argv) {

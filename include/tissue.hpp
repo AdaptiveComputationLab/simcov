@@ -153,8 +153,10 @@ class Tissue {
   vector<GridPoint>::iterator grid_point_iter;
 
   // keeps track of all grid points that need to be updated
-  using active_grid_points_t = upcxx::dist_object<std::unordered_map<GridPoint*, bool>>;
-  active_grid_points_t active_grid_points;
+  using new_active_grid_points_t = upcxx::dist_object<std::unordered_map<GridPoint*, bool>>;
+  new_active_grid_points_t new_active_grid_points;
+
+  std::unordered_map<GridPoint*, bool> active_grid_points;
   std::unordered_map<GridPoint*, bool>::iterator active_grid_point_iter;
 
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
@@ -169,7 +171,7 @@ class Tissue {
 
   int64_t tcells_generated = 0;
 
-  Tissue() : grid_points({}), active_grid_points({}) {}
+  Tissue() : grid_points({}), new_active_grid_points({}) {}
 
   ~Tissue() {}
 
@@ -197,7 +199,9 @@ class Tissue {
   GridPoint *get_next_active_grid_point();
 
   void set_active(GridPoint *grid_point);
-  void clear_active();
+  void erase_active(GridPoint *grid_point);
+
+  void add_new_actives();
 };
 
 inline GridCoords Tissue::grid_size;
