@@ -33,13 +33,6 @@ struct SimStats {
   int64_t num_tcells_in_tissue = 0;
   int64_t tot_num_viral_kills = 0;
 
-  void clear() {
-    num_infected = 0;
-    num_dead_epicells = 0;
-    num_tcells_in_vasculature = 0;
-    num_tcells_in_tissue = 0;
-  }
-
   string to_str(int64_t num_grid_points) {
     ostringstream oss;
     oss << " infections " << upcxx::reduce_one(num_infected, upcxx::op_fast_add, 0).wait()
@@ -111,9 +104,8 @@ void initial_infection(Tissue &tissue) {
       num_infections_found++;
     }
   }
+  _sim_stats.num_infected += num_infections_found;
   barrier();
-  //tissue.clear_active();
-  //barrier();
   int tot_num_infections_found = reduce_one(num_infections_found, op_fast_add, 0).wait();
   if (!rank_me() && tot_num_infections_found != _options->num_infections)
     WARN("Generated fewer initial infections that expected, ", tot_num_infections_found, " < ",
@@ -133,6 +125,7 @@ void generate_tcells(Tissue &tissue) {
       tissue.tcells_generated++;
       // the initial position is actually meaningless
       tissue.add_tcell(coords, TCell(tcell_id, coords));
+      _sim_stats.num_tcells_in_vasculature++;
       upcxx::progress();
     }
   }
@@ -149,15 +142,19 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell) {
   _update_tcell_timer.start();
-  if (grid_point->icytokine > 0) {
+  if (grid_point->icytokine > 0 && tcell.in_vasculature) {
     tcell.in_vasculature = false;
     tcell.prev_coords = grid_point->coords;
+    _sim_stats.num_tcells_in_vasculature--;
+    _sim_stats.num_tcells_in_tissue++;
   }
   if (tcell.in_vasculature) {
     tcell.vascular_period--;
     if (tcell.vascular_period > 0) {
       // tcell is still alive - moves to any random location in the grid
       tissue.add_tcell({_rnd_gen, Tissue::grid_size}, tcell);
+    } else {
+      _sim_stats.num_tcells_in_vasculature--;
     }
   } else {
     tcell.tissue_period--;
@@ -200,6 +197,8 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
         tcell.prev_coords = grid_point->coords;
         tissue.add_tcell(selected_coords, tcell);
       }
+    } else {
+      _sim_stats.num_tcells_in_tissue--;
     }
   }
   _update_tcell_timer.stop();
@@ -218,6 +217,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->epicell->apoptosis_death()) {
         grid_point->virus = 0;
         _sim_stats.tot_num_viral_kills++;
+        _sim_stats.num_dead_epicells++;
+        _sim_stats.num_infected--;
         break;
       }
       spreading = true;
@@ -225,6 +226,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     case EpiCellStatus::EXPRESSING:
       if (grid_point->epicell->infection_death()) {
         grid_point->virus = 0;
+        _sim_stats.num_dead_epicells++;
+        _sim_stats.num_infected--;
         break;
       }
       spreading = true;
@@ -232,7 +235,10 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virus > 0) {
         double infection_prob = grid_point->virus * _options->virus_infection_prob;
-        if (_rnd_gen->trial_success(infection_prob)) grid_point->epicell->infect();
+        if (_rnd_gen->trial_success(infection_prob)) {
+          _sim_stats.num_infected++;
+          grid_point->epicell->infect();
+        }
         tissue.set_active(grid_point);
       }
       break;
@@ -280,18 +286,11 @@ void finish_round(Tissue &tissue, int time_step) {
   _finish_round_timer.start();
   tissue.add_new_actives();
   barrier();
-  _sim_stats.clear();
   vector<GridPoint*> to_erase = {};
   // FIXME: go through active list
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
-    if (grid_point->tcells) {
-      grid_point->switch_tcells_vector();
-      for (auto &tcell : *grid_point->tcells) {
-        if (tcell.in_vasculature) _sim_stats.num_tcells_in_vasculature++;
-        else _sim_stats.num_tcells_in_tissue++;
-      }
-    }
+    if (grid_point->tcells) grid_point->switch_tcells_vector();
     if (grid_point->incoming_virus) {
       grid_point->virus += grid_point->incoming_virus;
       if (grid_point->virus > 1) grid_point->virus = 1;
@@ -306,13 +305,6 @@ void finish_round(Tissue &tissue, int time_step) {
       grid_point->icytokine += grid_point->incoming_icytokine;
       if (grid_point->icytokine > 1) grid_point->icytokine = 1;
       grid_point->incoming_icytokine = 0;
-    }
-    switch (grid_point->epicell->status) {
-      case EpiCellStatus::INCUBATING:
-      case EpiCellStatus::EXPRESSING:
-      case EpiCellStatus::APOPTOTIC: _sim_stats.num_infected++; break;
-      case EpiCellStatus::DEAD: _sim_stats.num_dead_epicells++; break;
-      case EpiCellStatus::HEALTHY: break;
     }
     if (!grid_point->is_active()) to_erase.push_back(grid_point);
   }
