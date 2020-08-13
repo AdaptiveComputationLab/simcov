@@ -26,6 +26,13 @@ TCell::TCell(const string &id, GridCoords &coords) : id(id), prev_coords(coords)
 }
 
 
+
+string EpiCell::str() {
+  ostringstream oss;
+  oss << id << " " << EpiCellStatusStr[(int)status];
+  return oss.str();
+}
+
 void EpiCell::infect() {
   assert(status == EpiCellStatus::HEALTHY);
   status = EpiCellStatus::INCUBATING;
@@ -64,6 +71,9 @@ bool EpiCell::infection_death() {
   return true;
 }
 
+bool EpiCell::is_active() {
+  return (status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
+}
 
 
 GridPoint::~GridPoint() {
@@ -81,7 +91,9 @@ void GridPoint::init(int64_t id, GridCoords coords, vector<GridCoords> neighbors
 
 string GridPoint::str() const {
   ostringstream oss;
-  oss << id << " " << coords.str() << " " << epicell->str() << " " << virus;
+  oss << "id " << id << ", xyz " << coords.str() << ", epi " << epicell->str() << ", v " << virus
+      << ", iv " << incoming_virus << ", c " << chemokine << ", ic " << incoming_chemokine << ", i "
+      << icytokine << ", ii " << incoming_icytokine;
   return oss.str();
 }
 
@@ -106,7 +118,7 @@ bool GridPoint::is_active() {
   // it could be incubating but without anything else set
   return (virus > 0 || incoming_virus > 0 || chemokine > 0 || incoming_chemokine > 0 ||
           icytokine > 0 || incoming_icytokine > 0 || tcells->size() > 0 ||
-          epicell->status == EpiCellStatus::INCUBATING);
+          epicell->is_active());
 }
 
 
@@ -347,14 +359,14 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
                                               ViewObject view_object) {
   auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
+  size_t tot_bytes_written = 0;
   if (!upcxx::rank_me()) {
-    auto bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
-    if (bytes_written != header_str.length())
-      DIE("Could not write all ", header_str.length(), " bytes: only wrote ", bytes_written);
+    tot_bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
+    if (tot_bytes_written != header_str.length())
+      DIE("Could not write all ", header_str.length(), " bytes: only wrote ", tot_bytes_written);
   }
   DBG("Writing samples to ", fname, "\n");
   DBG("header size is ", header_str.length(), "\n");
-  size_t tot_bytes_written = 0;
   size_t grid_points_written = 0;
   int64_t num_grid_points = get_num_grid_points();
   int64_t num_blocks = num_grid_points / Tissue::block_size;
@@ -456,3 +468,16 @@ void Tissue::add_new_actives() {
   }
   new_active_grid_points->clear();
 }
+
+#ifdef DEBUG
+void Tissue::check_actives(int time_step) {
+  for (int64_t i = 0; i < grid_points->size(); i++) {
+    GridPoint *grid_point = &(*grid_points)[i];
+    bool found_active = (active_grid_points.find(grid_point) != active_grid_points.end());
+    if (grid_point->is_active() && !found_active)
+      DIE(time_step, ": active grid point ", grid_point->str(), " not found in active list");
+    if (!grid_point->is_active() && found_active)
+      DIE(time_step, ": inactive grid point ", grid_point->str(), " found in active list");
+  }
+}
+#endif

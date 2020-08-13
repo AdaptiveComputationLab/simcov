@@ -207,7 +207,6 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
 
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   if (grid_point->epicell->status == EpiCellStatus::DEAD) return;
-
   _update_epicell_timer.start();
   bool spreading = false;
   switch (grid_point->epicell->status) {
@@ -377,7 +376,8 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
   // wait until rank 0 has finished setting up the file
   auto [bytes_written, grid_points_written] = tissue.dump_blocks(fname, header_oss.str(),
                                                                  view_object);
-  assert(bytes_written == tot_sz);
+  //assert(bytes_written == tot_sz);
+  if (bytes_written != tot_sz) DIE("bytes_written ", bytes_written, " != ", tot_sz, " tot_sz");
   upcxx::barrier();
   auto tot_bytes_written = reduce_one(bytes_written, op_fast_add, 0).wait();
   auto tot_grid_points_written = reduce_one(grid_points_written, op_fast_add, 0).wait();
@@ -390,7 +390,6 @@ void run_sim(Tissue &tissue) {
   auto start_t = NOW();
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 20;
-  int tick = 0;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     if (time_step > _options->tcell_initial_delay) generate_tcells(tissue);
     // iterate through all local grid points
@@ -421,28 +420,28 @@ void run_sim(Tissue &tissue) {
     finish_round(tissue, time_step);
     barrier();
     if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
+      sample(time_step, tissue, ViewObject::TCELL_TISSUE);
+      sample(time_step, tissue, ViewObject::VIRUS);
+      sample(time_step, tissue, ViewObject::EPICELL);
+      sample(time_step, tissue, ViewObject::ICYTOKINE);
+      sample(time_step, tissue, ViewObject::CHEMOKINE);
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       if (_options->verbose) curr_t = NOW();
       SLOG_VERBOSE(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2),
                    fixed, setw(5), right, t_elapsed.count(),
                    " s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
     }
-    if (!_options->verbose && tick % five_perc == 0) {
+    if (!_options->verbose &&
+        (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1)) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2), fixed,
            setw(5), right, t_elapsed.count(),
            " s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
     }
-    tick++;
-    // sample
-    if (time_step % _options->sample_period == 0) {
-      sample(time_step, tissue, ViewObject::TCELL_TISSUE);
-      sample(time_step, tissue, ViewObject::VIRUS);
-      sample(time_step, tissue, ViewObject::EPICELL);
-      sample(time_step, tissue, ViewObject::ICYTOKINE);
-      sample(time_step, tissue, ViewObject::CHEMOKINE);
-    }
+#ifdef DEBUG
+    tissue.check_actives(time_step);
+#endif
   }
   _generate_tcell_timer.done_all();
   _update_tcell_timer.done_all();

@@ -87,6 +87,7 @@ struct TCell {
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
+const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
 
 class EpiCell {
   int64_t id;
@@ -99,13 +100,14 @@ class EpiCell {
 
   EpiCell(int id) : id(id) {};
 
-  string str() { return std::to_string(id); }
+  string str();
 
   void infect();
   void induce_apoptosis();
   bool transition_to_expressing();
   bool apoptosis_death();
   bool infection_death();
+  bool is_active();
 };
 
 class GridPoint {
@@ -202,6 +204,10 @@ class Tissue {
   void erase_active(GridPoint *grid_point);
 
   void add_new_actives();
+
+#ifdef DEBUG
+  void check_actives(int time_step);
+#endif
 };
 
 inline GridCoords Tissue::grid_size;
