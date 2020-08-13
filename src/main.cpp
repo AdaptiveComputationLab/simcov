@@ -26,26 +26,65 @@ using namespace upcxx_utils;
 
 #define NOW chrono::high_resolution_clock::now
 
-struct SimStats {
-  int64_t num_infected = 0;
-  int64_t num_dead_epicells = 0;
-  int64_t num_tcells_in_vasculature = 0;
-  int64_t num_tcells_in_tissue = 0;
-  int64_t tot_num_viral_kills = 0;
+class SimStats {
 
-  string to_str(int64_t num_grid_points) {
+ private:
+  ofstream log_file;
+
+ public:
+  int64_t incubating = 0;
+  int64_t expressing = 0;
+  int64_t apoptotic = 0;
+  int64_t dead = 0;
+  int64_t tcells_vasculature = 0;
+  int64_t tcells_tissue = 0;
+  double chemokines = 0;
+  double icytokines = 0;
+  double virus = 0;
+
+  void init() {
+    if (!rank_me()) {
+      log_file.open("simcov.stats");
+      log_file << "# " << header() << endl;
+    }
+  }
+
+  string header() {
     ostringstream oss;
-    oss << " infections " << upcxx::reduce_one(num_infected, upcxx::op_fast_add, 0).wait()
-        << " dead epicells "
-        << perc_str(upcxx::reduce_one(num_dead_epicells, upcxx::op_fast_add, 0).wait(),
-                    num_grid_points)
-        << " viral kills " << upcxx::reduce_one(tot_num_viral_kills, upcxx::op_fast_add, 0).wait()
-        << " t-cells in vasculature "
-        << upcxx::reduce_one(num_tcells_in_vasculature, upcxx::op_fast_add, 0).wait()
-        << " t-cells in tissue "
-        << upcxx::reduce_one(num_tcells_in_tissue, upcxx::op_fast_add, 0).wait();
+    oss << "incb\t"
+        << "expr\t"
+        << "apop\t"
+        << "dead\t"
+        << "tvas\t"
+        << "ttis\t"
+        << "chem\t"
+        << "icyt\t"
+        << "virs";
     return oss.str();
   }
+
+  string to_str() {
+    auto tot_incubating = reduce_one(incubating, op_fast_add, 0).wait();
+    auto tot_expressing = reduce_one(expressing, op_fast_add, 0).wait();
+    auto tot_apoptotic = reduce_one(apoptotic, op_fast_add, 0).wait();
+    auto tot_dead = reduce_one(dead, op_fast_add, 0).wait();
+    auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
+    auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
+    auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
+    auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait();
+    auto tot_virus = reduce_one(virus, op_fast_add, 0).wait();
+    ostringstream oss;
+    oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
+        << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t"
+        << tot_chemokines << "\t" << tot_icytokines << "\t" << tot_virus;
+    return oss.str();
+  }
+
+  void log() {
+    string s = to_str();
+    if (!rank_me()) log_file << s << endl;
+  }
+
 };
 
 ofstream _logstream;
@@ -102,9 +141,9 @@ void initial_infection(Tissue &tissue) {
       grid_point->incoming_virus = 0;
       grid_point->epicell->infect();
       num_infections_found++;
+      _sim_stats.incubating++;
     }
   }
-  _sim_stats.num_infected += num_infections_found;
   barrier();
   int tot_num_infections_found = reduce_one(num_infections_found, op_fast_add, 0).wait();
   if (!rank_me() && tot_num_infections_found != _options->num_infections)
@@ -125,7 +164,7 @@ void generate_tcells(Tissue &tissue) {
       tissue.tcells_generated++;
       // the initial position is actually meaningless
       tissue.add_tcell(coords, TCell(tcell_id, coords));
-      _sim_stats.num_tcells_in_vasculature++;
+      _sim_stats.tcells_vasculature++;
       upcxx::progress();
     }
   }
@@ -145,8 +184,8 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
   if (grid_point->icytokine > 0 && tcell.in_vasculature) {
     tcell.in_vasculature = false;
     tcell.prev_coords = grid_point->coords;
-    _sim_stats.num_tcells_in_vasculature--;
-    _sim_stats.num_tcells_in_tissue++;
+    _sim_stats.tcells_vasculature--;
+    _sim_stats.tcells_tissue++;
   }
   if (tcell.in_vasculature) {
     tcell.vascular_period--;
@@ -154,7 +193,7 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       // tcell is still alive - moves to any random location in the grid
       tissue.add_tcell({_rnd_gen, Tissue::grid_size}, tcell);
     } else {
-      _sim_stats.num_tcells_in_vasculature--;
+      _sim_stats.tcells_vasculature--;
     }
   } else {
     tcell.tissue_period--;
@@ -166,6 +205,7 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
         DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(),
             " induced apoptosis\n");
         grid_point->epicell->induce_apoptosis();
+        _sim_stats.apoptotic++;
         // add here to ensure it gets to the next time step in the vector swap, in the same spot
         tcell.prev_coords = grid_point->coords;
         tissue.add_tcell(grid_point->coords, tcell);
@@ -198,7 +238,7 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
         tissue.add_tcell(selected_coords, tcell);
       }
     } else {
-      _sim_stats.num_tcells_in_tissue--;
+      _sim_stats.tcells_tissue--;
     }
   }
   _update_tcell_timer.stop();
@@ -210,15 +250,18 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   bool spreading = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::INCUBATING:
-      if (grid_point->epicell->transition_to_expressing()) grid_point->virus = 1.0;
+      if (grid_point->epicell->transition_to_expressing()) {
+        _sim_stats.incubating--;
+        _sim_stats.expressing++;
+        grid_point->virus = 1.0;
+      }
       tissue.set_active(grid_point);
       break;
     case EpiCellStatus::APOPTOTIC:
       if (grid_point->epicell->apoptosis_death()) {
         grid_point->virus = 0;
-        _sim_stats.tot_num_viral_kills++;
-        _sim_stats.num_dead_epicells++;
-        _sim_stats.num_infected--;
+        _sim_stats.dead++;
+        _sim_stats.apoptotic--;
         break;
       }
       spreading = true;
@@ -226,8 +269,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     case EpiCellStatus::EXPRESSING:
       if (grid_point->epicell->infection_death()) {
         grid_point->virus = 0;
-        _sim_stats.num_dead_epicells++;
-        _sim_stats.num_infected--;
+        _sim_stats.dead++;
+        _sim_stats.expressing--;
         break;
       }
       spreading = true;
@@ -236,8 +279,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->virus > 0) {
         double infection_prob = grid_point->virus * _options->virus_infection_prob;
         if (_rnd_gen->trial_success(infection_prob)) {
-          _sim_stats.num_infected++;
           grid_point->epicell->infect();
+          _sim_stats.incubating++;
         }
         tissue.set_active(grid_point);
       }
@@ -384,6 +427,8 @@ void run_sim(Tissue &tissue) {
   auto start_t = NOW();
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 20;
+  _sim_stats.init();
+  SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\n");
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     if (time_step > _options->tcell_initial_delay) generate_tcells(tissue);
     // iterate through all local grid points
@@ -421,18 +466,17 @@ void run_sim(Tissue &tissue) {
       sample(time_step, tissue, ViewObject::CHEMOKINE);
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       if (_options->verbose) curr_t = NOW();
-      SLOG_VERBOSE(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2),
-                   fixed, setw(5), right, t_elapsed.count(),
-                   " s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
+      SLOG_VERBOSE("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
+           t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
     }
     if (!_options->verbose &&
         (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1)) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
-      SLOG(setw(5), left, time_step, " [", get_current_time(true), " ", setprecision(2), fixed,
-           setw(5), right, t_elapsed.count(),
-           " s]: ", _sim_stats.to_str(tissue.get_num_grid_points()), "\n");
+      SLOG("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
+           t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
     }
+    _sim_stats.log();
 #ifdef DEBUG
     tissue.check_actives(time_step);
 #endif
