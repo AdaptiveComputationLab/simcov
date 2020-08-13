@@ -228,7 +228,7 @@ epicellPWF = GetOpacityTransferFunction('epicell')
 epicellPWF.ScalarRangeInitialized = 1
 
 # trace defaults for the display properties.
-epicell_readerDisplay.Representation = 'Surface With Edges'
+epicell_readerDisplay.Representation = 'Surface'
 epicell_readerDisplay.ColorArrayName = ['CELLS', 'epicell']
 epicell_readerDisplay.LookupTable = epicellLUT
 epicell_readerDisplay.OSPRayScaleFunction = 'PiecewiseFunction'
@@ -248,6 +248,40 @@ epicell_readerDisplay.ScalarOpacityUnitDistance = 5.210528284270439
 epicell_readerDisplay.ScalarOpacityFunction = epicellPWF
 epicell_readerDisplay.IsosurfaceValues = [0.5]
 
+# show data from calculator2
+calculator2Display = Show(calculator2, renderView1)
+
+# get color transfer function/color map for 'virusnorm'
+virusnormLUT = GetColorTransferFunction('virusnorm')
+virusnormLUT.RGBPoints = [0.0, 0.231373, 0.298039, 0.752941, 0.047058823529411764, 0.865003, 0.865003, 0.865003, 0.09411764705882353, 0.705882, 0.0156863, 0.14902]
+virusnormLUT.ScalarRangeInitialized = 1.0
+
+# get opacity transfer function/opacity map for 'virusnorm'
+virusnormPWF = GetOpacityTransferFunction('virusnorm')
+virusnormPWF.Points = [0.0, 0.0, 0.5, 0.0, 0.09411764705882353, 1.0, 0.5, 0.0]
+virusnormPWF.ScalarRangeInitialized = 1
+
+# trace defaults for the display properties.
+calculator2Display.Representation = 'Points'
+calculator2Display.ColorArrayName = ['CELLS', 'virus norm']
+calculator2Display.LookupTable = virusnormLUT
+calculator2Display.OSPRayScaleFunction = 'PiecewiseFunction'
+calculator2Display.SelectOrientationVectors = 'None'
+calculator2Display.ScaleFactor = 25.0
+calculator2Display.SelectScaleArray = 'virus norm'
+calculator2Display.GlyphType = 'Arrow'
+calculator2Display.GlyphTableIndexArray = 'virus norm'
+calculator2Display.GaussianRadius = 1.25
+calculator2Display.SetScaleArray = [None, '']
+calculator2Display.ScaleTransferFunction = 'PiecewiseFunction'
+calculator2Display.OpacityArray = [None, '']
+calculator2Display.OpacityTransferFunction = 'PiecewiseFunction'
+calculator2Display.DataAxesGrid = 'GridAxesRepresentation'
+calculator2Display.PolarAxes = 'PolarAxesRepresentation'
+calculator2Display.ScalarOpacityUnitDistance = 26.0526414213522
+calculator2Display.ScalarOpacityFunction = virusnormPWF
+calculator2Display.IsosurfaceValues = [0.047058823529411764]
+
 # setup the color legend parameters for each legend in this view
 
 # get color legend/bar for epicellLUT in view renderView1
@@ -261,6 +295,14 @@ epicellLUTColorBar.ScalarBarLength = 0.3300000000000003
 
 # set color bar visibility
 epicellLUTColorBar.Visibility = 1
+
+# get color legend/bar for virusnormLUT in view renderView1
+virusnormLUTColorBar = GetScalarBar(virusnormLUT, renderView1)
+virusnormLUTColorBar.Title = 'virus norm'
+virusnormLUTColorBar.ComponentTitle = ''
+
+# set color bar visibility
+virusnormLUTColorBar.Visibility = 1
 
 # show color legend
 epicell_readerDisplay.SetScalarBarVisibility(renderView1, True)
@@ -291,7 +333,7 @@ tcelltissuePWF = GetOpacityTransferFunction('tcelltissue')
 tcelltissuePWF.ScalarRangeInitialized = 1
 
 # trace defaults for the display properties.
-tcell_readerDisplay.Representation = 'Surface With Edges'
+tcell_readerDisplay.Representation = 'Surface'
 tcell_readerDisplay.ColorArrayName = ['CELLS', 't-cell-tissue']
 tcell_readerDisplay.LookupTable = tcelltissueLUT
 tcell_readerDisplay.OSPRayScaleFunction = 'PiecewiseFunction'
@@ -330,7 +372,7 @@ chemokinenormPWF.UseLogScale = 1
 chemokinenormPWF.ScalarRangeInitialized = 1
 
 # trace defaults for the display properties.
-calculator3Display.Representation = 'Surface With Edges'
+calculator3Display.Representation = 'Surface'
 calculator3Display.ColorArrayName = ['CELLS', 'chemokine norm']
 calculator3Display.LookupTable = chemokinenormLUT
 calculator3Display.OSPRayScaleFunction = 'PiecewiseFunction'
