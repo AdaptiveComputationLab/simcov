@@ -165,6 +165,10 @@ int64_t Tissue::get_num_grid_points() {
   return Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
 }
 
+int64_t Tissue::get_num_local_grid_points() {
+  return grid_points->size();
+}
+
 void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
   upcxx::rpc(
       get_rank_for_grid_point(coords),

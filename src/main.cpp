@@ -373,6 +373,8 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
     DBG("Truncated sample file ", fname, " to ", tot_sz, " bytes\n");
   }
   upcxx::barrier();
+  tot_sz = tissue.get_num_local_grid_points();
+  if (!rank_me()) tot_sz += header_oss.str().length();
   // wait until rank 0 has finished setting up the file
   auto [bytes_written, grid_points_written] = tissue.dump_blocks(fname, header_oss.str(),
                                                                  view_object);
