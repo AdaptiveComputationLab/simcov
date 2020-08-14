@@ -157,7 +157,7 @@ vector<GridCoords> Tissue::get_neighbors(GridCoords c, GridCoords grid_size) {
         newz = c.z + k;
         if ((newx >= 0 && newx < grid_size.x) && (newy >= 0 && newy < grid_size.y) &&
             (newz >= 0 && newz < grid_size.z)) {
-          n.push_back(GridCoords(newx, newy, newz));
+          if (newx != c.x || newy != c.y || newz != c.z) n.push_back(GridCoords(newx, newy, newz));
         }
       }
     }
@@ -381,7 +381,14 @@ void Tissue::construct(GridCoords grid_size) {
       GridPoint grid_point;
       grid_points->push_back(std::move(grid_point));
       grid_points->back().init(id, coords, neighbors, new EpiCell(id));
+#ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
+      ostringstream oss;
+      for (auto nb_coords : neighbors) {
+        oss << nb_coords.str() << " ";
+      }
+      DBG("nbs: ", oss.str(), "\n");
+#endif
     }
   }
   barrier();

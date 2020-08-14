@@ -203,7 +203,6 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       GridCoords selected_coords;
       double highest_chemokine = 0;
       for (auto &nb_coords : grid_point->neighbors) {
-        if (nb_coords == grid_point->coords) continue;
         double chemokine = tissue.get_chemokine(nb_coords);
         if (chemokine > highest_chemokine) {
           highest_chemokine = chemokine;
