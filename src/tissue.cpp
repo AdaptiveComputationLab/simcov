@@ -41,8 +41,8 @@ void EpiCell::infect() {
   apoptosis_period = _rnd_gen->get_normal_distr(_options->apoptosis_period);
 }
 
-void EpiCell::induce_apoptosis() {
-  if (status == EpiCellStatus::APOPTOTIC) return;
+void EpiCell::transition_to_apoptosis() {
+  assert(status != EpiCellStatus::APOPTOTIC);
   status = EpiCellStatus::APOPTOTIC;
 }
 
@@ -75,6 +75,10 @@ bool EpiCell::is_active() {
   return (status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
 }
 
+bool EpiCell::is_fully_incubated() {
+  assert(status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
+  return (incubation_period == 0);
+}
 
 GridPoint::~GridPoint() {
   if (epicell) delete epicell;
@@ -117,7 +121,7 @@ void GridPoint::add_tcell(TCell tcell) {
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
   return (virus > 0 || incoming_virus > 0 || chemokine > 0 || incoming_chemokine > 0 ||
-          icytokine > 0 || incoming_icytokine > 0 || tcells->size() > 0 ||
+          icytokine > 0 || incoming_icytokine > 0 || (tcells && tcells->size()) > 0 ||
           epicell->is_active());
 }
 
@@ -175,6 +179,7 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
       [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points, int64_t id,
          GridCoords coords, double virus) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        DBG("inc incoming virus for grid point ", grid_point, " ", grid_point->str(), "\n");
         new_active_grid_points->insert({grid_point, true});
         grid_point->incoming_virus += virus;
         if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
@@ -189,7 +194,9 @@ void Tissue::inc_incoming_chemokines(GridCoords coords, double chemokine) {
       [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points, int64_t id,
          GridCoords coords, double chemokine) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        DBG("inc incoming chemokine for grid point ", grid_point, " ", grid_point->str(), "\n");
         new_active_grid_points->insert({grid_point, true});
+        assert(new_active_grid_points->size());
         grid_point->incoming_chemokine += chemokine;
         if (grid_point->incoming_chemokine > 1) grid_point->incoming_chemokine = 1;
       },
@@ -203,6 +210,7 @@ void Tissue::inc_incoming_icytokines(GridCoords coords, double icytokine) {
       [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points, int64_t id,
          GridCoords coords, double icytokine) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+        DBG("inc incoming icyto for grid point ", grid_point, " ", grid_point->str(), "\n");
         new_active_grid_points->insert({grid_point, true});
         grid_point->incoming_icytokine += icytokine;
         if (grid_point->incoming_icytokine > 1) grid_point->incoming_icytokine = 1;
@@ -221,6 +229,26 @@ double Tissue::get_chemokine(GridCoords coords) {
              },
              grid_points, coords.to_1d(Tissue::grid_size), coords)
       .wait();
+}
+
+int Tissue::get_num_tcells(GridCoords coords) {
+  return upcxx::rpc(
+             get_rank_for_grid_point(coords),
+             [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
+               if (grid_point->tcells) return (int)grid_point->tcells->size();
+               return 0;
+             },
+             grid_points, coords.to_1d(Tissue::grid_size), coords)
+      .wait();
+}
+
+bool Tissue::tcells_in_neighborhood(GridPoint *grid_point) {
+  if (grid_point->tcells && grid_point->tcells->size()) return true;
+  for (auto nb_coords : grid_point->neighbors) {
+    if (get_num_tcells(nb_coords)) return true;
+  }
+  return false;
 }
 
 void Tissue::add_tcell(GridCoords coords, TCell tcell) {
@@ -369,8 +397,8 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
     if (tot_bytes_written != header_str.length())
       DIE("Could not write all ", header_str.length(), " bytes: only wrote ", tot_bytes_written);
   }
-  DBG("Writing samples to ", fname, "\n");
-  DBG("header size is ", header_str.length(), "\n");
+  //DBG("Writing samples to ", fname, "\n");
+  //DBG("header size is ", header_str.length(), "\n");
   size_t grid_points_written = 0;
   int64_t num_grid_points = get_num_grid_points();
   int64_t num_blocks = num_grid_points / Tissue::block_size;
@@ -421,7 +449,7 @@ std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string 
     if (bytes_written != buf_size)
       DIE("Could not write all ", buf_size, " bytes; only wrote ", bytes_written, "\n");
     tot_bytes_written += bytes_written;
-    DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
+    //DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
   }
   delete[] buf;
   close(fileno);
@@ -467,7 +495,9 @@ void Tissue::erase_active(GridPoint *grid_point) {
 }
 
 void Tissue::add_new_actives() {
+  DBG("add ", new_active_grid_points->size(), " new active grid points\n");
   for (auto elem : *new_active_grid_points) {
+    DBG("inserting from new active ", elem.first, " ", elem.first->str(), "\n");
     active_grid_points.insert(elem);
   }
   new_active_grid_points->clear();

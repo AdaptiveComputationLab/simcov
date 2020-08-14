@@ -103,11 +103,12 @@ class EpiCell {
   string str();
 
   void infect();
-  void induce_apoptosis();
+  void transition_to_apoptosis();
   bool transition_to_expressing();
   bool apoptosis_death();
   bool infection_death();
   bool is_active();
+  bool is_fully_incubated();
 };
 
 class GridPoint {
@@ -178,7 +179,7 @@ class Tissue {
   ~Tissue() {}
 
   int64_t get_num_grid_points();
-  
+
   int64_t get_num_local_grid_points();
 
   void inc_incoming_virus(GridCoords coords, double virus);
@@ -188,6 +189,10 @@ class Tissue {
   void inc_incoming_icytokines(GridCoords coords, double icytokine);
 
   double get_chemokine(GridCoords coords);
+
+  int get_num_tcells(GridCoords coords);
+
+  bool tcells_in_neighborhood(GridPoint *grid_point);
 
   void add_tcell(GridCoords coords, TCell tcell);
 
