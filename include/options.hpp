@@ -123,11 +123,11 @@ class Options {
   vector<int> apoptosis_period{30, 3};   // 600
   vector<int> infection_period{80, 8};    // 1600
 
-  double virus_infection_prob = 1.0;        // 0.145 gradient?
+  double infection_prob = 1.0;        // 0.145 gradient?
   double virus_decay_rate = 0.14;           // 0.14
   double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
 
-  int tcell_generation_rate = 2;            // 21
+  int tcell_generation_rate = 1;            // 21
   int tcell_initial_delay = 10;             // 7200
   vector<int> tcell_vascular_period{280, 28};  // 5760
   vector<int> tcell_tissue_period{6, 1};          // 120
@@ -185,7 +185,7 @@ class Options {
         ->expected(2)
         ->check(CLI::Range(1, 50000))
         ->capture_default_str();
-    app.add_option("--virus-infection-prob", virus_infection_prob,
+    app.add_option("--infection-prob", infection_prob,
                    "Probability of virus spreading to a neighbor")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();

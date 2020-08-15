@@ -201,24 +201,30 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     if (tcell.tissue_period > 0) {
       // still alive - move, either following gradient or at random
       GridCoords selected_coords;
-      double highest_chemokine = 0;
-      for (auto &nb_coords : grid_point->neighbors) {
-        double chemokine = tissue.get_chemokine(nb_coords);
-        if (chemokine > highest_chemokine) {
-          highest_chemokine = chemokine;
-          selected_coords = nb_coords;
+      if (grid_point->epicell->status != EpiCellStatus::EXPRESSING) {
+        // only move on if not causing apoptosis in expressing epicell
+        double highest_chemokine = 0;
+        for (auto &nb_coords : grid_point->neighbors) {
+          double chemokine = tissue.get_chemokine(nb_coords);
+          if (chemokine > highest_chemokine) {
+            highest_chemokine = chemokine;
+            selected_coords = nb_coords;
+          }
         }
-      }
-      if (highest_chemokine == 0) {
-        // no chemokine found, move at random, except back to previous coords
-        do {
-          auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-          selected_coords = grid_point->neighbors[rnd_nb_i];
-        } while (selected_coords == tcell.prev_coords);
+        if (highest_chemokine == 0) {
+          // no chemokine found, move at random, except back to previous coords
+          do {
+            auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
+            selected_coords = grid_point->neighbors[rnd_nb_i];
+          } while (selected_coords == tcell.prev_coords);
+        } else {
+          DBG(time_step, ": highest nb chemokine for tcell ", tcell.id, " at ",
+              grid_point->coords.str(), " is at ", selected_coords.str(), " with ",
+              highest_chemokine, "\n");
+        }
       } else {
-        DBG(time_step, ": highest nb chemokine for tcell ", tcell.id, " at ",
-            grid_point->coords.str(), " is at ", selected_coords.str(), " with ", highest_chemokine,
-            "\n");
+        // don't move
+        selected_coords = grid_point->coords;
       }
       DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
           selected_coords.str(), "\n");
@@ -237,7 +243,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virus > 0) {
-        double infection_prob = grid_point->virus * _options->virus_infection_prob;
+        double infection_prob = grid_point->virus * _options->infection_prob;
         if (_rnd_gen->trial_success(infection_prob)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
@@ -245,7 +251,9 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       }
       break;
     case EpiCellStatus::INCUBATING:
-      if (tissue.tcells_in_neighborhood(grid_point)) {
+      // FIXME should this be the case?
+      //if (tissue.tcells_in_neighborhood(grid_point)) {
+      if (grid_point->tcells && grid_point->tcells->size() && _rnd_gen->trial_success(0.5)) {
         grid_point->epicell->transition_to_apoptosis();
         _sim_stats.incubating--;
         _sim_stats.apoptotic++;
@@ -263,7 +271,9 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       } else {
         grid_point->virus = 1.0;
         grid_point->incoming_virus = 1.0;
-        if (tissue.tcells_in_neighborhood(grid_point)) {
+        // FIXME: have to be colocated with tcell for apoptosis?
+        if (grid_point->tcells && grid_point->tcells->size()) {
+        //if (tissue.tcells_in_neighborhood(grid_point)) {
           grid_point->epicell->transition_to_apoptosis();
           _sim_stats.expressing--;
           _sim_stats.apoptotic++;
@@ -280,11 +290,13 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         grid_point->virus = 0;
         _sim_stats.dead++;
         _sim_stats.apoptotic--;
+      /* FIXME: no secretion of virions during apoptosis
       } else {
         if (grid_point->epicell->is_fully_incubated()) {
           grid_point->virus = 1.0;
           grid_point->incoming_virus = 1.0;
         }
+      */
       }
       break;
     default: break;
@@ -449,7 +461,7 @@ void run_sim(Tissue &tissue) {
                            tissue, &Tissue::inc_incoming_virus);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
-    finish_round(tissue, time_step);
+    barrier();
     if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
       sample(time_step, tissue, ViewObject::TCELL_TISSUE);
       sample(time_step, tissue, ViewObject::VIRUS);
@@ -459,7 +471,7 @@ void run_sim(Tissue &tissue) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       if (_options->verbose) curr_t = NOW();
       SLOG_VERBOSE("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
-           t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
+                   t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
     }
     if (!_options->verbose &&
         (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1)) {
@@ -468,6 +480,7 @@ void run_sim(Tissue &tissue) {
       SLOG("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
            t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
     }
+    finish_round(tissue, time_step);
     _sim_stats.log();
 #ifdef DEBUG
     DBG("check actives ", time_step, "\n");
