@@ -282,53 +282,6 @@ calculator2Display.ScalarOpacityUnitDistance = 26.0526414213522
 calculator2Display.ScalarOpacityFunction = virusnormPWF
 calculator2Display.IsosurfaceValues = [0.047058823529411764]
 
-# show data from legacyVTKReader2
-tcell_display2 = Show(epicell_reader, renderView1)
-
-# get color transfer function/color map for 'tcelltissue'
-tcelltissueLUT = GetColorTransferFunction('tcelltissue')
-tcelltissueLUT.InterpretValuesAsCategories = 1
-tcelltissueLUT.AnnotationsInitialized = 1
-tcelltissueLUT.RGBPoints = [0.0, 0.054902, 0.109804, 0.121569, 0.05, 0.07451, 0.172549, 0.180392, 0.1, 0.086275, 0.231373, 0.219608, 0.15, 0.094118, 0.278431, 0.25098, 0.2,
-0.109804, 0.34902, 0.278431, 0.25, 0.113725, 0.4, 0.278431, 0.3, 0.117647, 0.45098, 0.270588, 0.35, 0.117647, 0.490196, 0.243137, 0.4, 0.113725, 0.521569, 0.203922, 0.45, 0.109804,
-0.54902, 0.152941, 0.5, 0.082353, 0.588235, 0.082353, 0.55, 0.109804, 0.631373, 0.05098, 0.6, 0.211765, 0.678431, 0.082353, 0.65, 0.317647, 0.721569, 0.113725, 0.7, 0.431373,
-0.760784, 0.160784, 0.75, 0.556863, 0.8, 0.239216, 0.8, 0.666667, 0.839216, 0.294118, 0.85, 0.784314, 0.878431, 0.396078, 0.9, 0.886275, 0.921569, 0.533333, 0.95, 0.960784,
-0.94902, 0.670588, 1.0, 1.0, 0.984314, 0.901961]
-tcelltissueLUT.ColorSpace = 'Lab'
-tcelltissueLUT.NanColor = [0.25, 0.0, 0.0]
-tcelltissueLUT.NanOpacity = 0.0
-tcelltissueLUT.ScalarRangeInitialized = 1.0
-tcelltissueLUT.Annotations = ['1', '1', '2', '2', '3', '3', '4', '4', '5', '5']
-tcelltissueLUT.ActiveAnnotatedValues = ['1', '2', '4']
-tcelltissueLUT.IndexedColors = [0.0, 0.9921568627450981, 0.047058823529411764, 0.43137254901960786, 0.9921568627450981, 0.0, 0.8, 1.0, 0.0, 0.9058823529411765, 1.0,
-0.0392156862745098, 1.0, 0.9686274509803922, 0.0392156862745098]
-tcelltissueLUT.IndexedOpacities = [1.0, 1.0, 1.0, 1.0, 1.0]
-
-# get opacity transfer function/opacity map for 'tcelltissue'
-tcelltissuePWF = GetOpacityTransferFunction('tcelltissue')
-tcelltissuePWF.ScalarRangeInitialized = 1
-
-# trace defaults for the display properties.
-tcell_display2.Representation = 'Surface'
-tcell_display2.ColorArrayName = ['CELLS', 't-cell-tissue']
-tcell_display2.LookupTable = tcelltissueLUT
-tcell_display2.OSPRayScaleFunction = 'PiecewiseFunction'
-tcell_display2.SelectOrientationVectors = 'None'
-tcell_display2.ScaleFactor = 25.0
-tcell_display2.SelectScaleArray = 't-cell-tissue'
-tcell_display2.GlyphType = 'Arrow'
-tcell_display2.GlyphTableIndexArray = 't-cell-tissue'
-tcell_display2.GaussianRadius = 1.25
-tcell_display2.SetScaleArray = [None, '']
-tcell_display2.ScaleTransferFunction = 'PiecewiseFunction'
-tcell_display2.OpacityArray = [None, '']
-tcell_display2.OpacityTransferFunction = 'PiecewiseFunction'
-tcell_display2.DataAxesGrid = 'GridAxesRepresentation'
-tcell_display2.PolarAxes = 'PolarAxesRepresentation'
-tcell_display2.ScalarOpacityUnitDistance = 26.0526414213522
-tcell_display2.ScalarOpacityFunction = tcelltissuePWF
-tcell_display2.IsosurfaceValues = [0.0]
-
 # setup the color legend parameters for each legend in this view
 
 # get color legend/bar for epicellLUT in view renderView1
@@ -350,24 +303,6 @@ virusnormLUTColorBar.ComponentTitle = ''
 
 # set color bar visibility
 virusnormLUTColorBar.Visibility = 1
-
-# get color legend/bar for tcelltissueLUT in view renderView1
-tcelltissueLUTColorBar = GetScalarBar(tcelltissueLUT, renderView1)
-tcelltissueLUTColorBar.WindowLocation = 'UpperRightCorner'
-tcelltissueLUTColorBar.Title = 't-cell-tissue'
-tcelltissueLUTColorBar.ComponentTitle = ''
-
-# set color bar visibility
-tcelltissueLUTColorBar.Visibility = 1
-
-# show color legend
-legacyVTKReader5Display.SetScalarBarVisibility(renderView1, True)
-
-# show color legend
-calculator2Display.SetScalarBarVisibility(renderView1, True)
-
-# show color legend
-tcell_display2.SetScalarBarVisibility(renderView1, True)
 
 # show color legend
 epicell_readerDisplay.SetScalarBarVisibility(renderView1, True)
