@@ -70,9 +70,10 @@ class SimStats {
     auto tot_dead = reduce_one(dead, op_fast_add, 0).wait();
     auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
     auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
-    auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
-    auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait();
-    auto tot_virus = reduce_one(virus, op_fast_add, 0).wait();
+    int64_t num_grid_points = Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
+    auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait() / num_grid_points;
+    auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait() / num_grid_points;
+    auto tot_virus = reduce_one(virus, op_fast_add, 0).wait() / num_grid_points;
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
         << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t"
@@ -97,7 +98,7 @@ IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell
 IntermittentTimer _update_epicell_timer(__FILENAME__ + string(":") + "update_epicell");
 IntermittentTimer _update_concentration_timer(__FILENAME__ + string(":") + "update_concentration");
 IntermittentTimer _sample_timer(__FILENAME__ + string(":") + "sample");
-IntermittentTimer _finish_round_timer(__FILENAME__ + string(":") + "finish_round");
+IntermittentTimer _switch_round_timer(__FILENAME__ + string(":") + "switch_round");
 
 void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
@@ -318,45 +319,12 @@ void update_concentration(int time_step, GridPoint *grid_point,
       // the amount diffusing spreads uniformly to all neighbors
       double amount_to_nb = diffusion_amount / grid_point->neighbors.size();
       for (auto &nb_coords : grid_point->neighbors) {
-        if (nb_coords == grid_point->coords) continue;
+        assert(nb_coords != grid_point->coords);
         (tissue.*inc_incoming)(nb_coords, amount_to_nb);
       }
     }
   }
   _update_concentration_timer.stop();
-}
-
-void finish_round(Tissue &tissue, int time_step) {
-  DBG("finish round ", time_step, "\n");
-  barrier();
-  _finish_round_timer.start();
-  tissue.add_new_actives();
-  barrier();
-  vector<GridPoint*> to_erase = {};
-  // FIXME: go through active list
-  for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
-       grid_point = tissue.get_next_active_grid_point()) {
-    if (grid_point->tcells) grid_point->switch_tcells_vector();
-    if (grid_point->incoming_virus > 0) {
-      grid_point->virus += grid_point->incoming_virus;
-      if (grid_point->virus > 1) grid_point->virus = 1;
-      grid_point->incoming_virus = 0;
-    }
-    if (grid_point->incoming_chemokine > 0) {
-      grid_point->chemokine += grid_point->incoming_chemokine;
-      if (grid_point->chemokine > 1) grid_point->chemokine = 1;
-      grid_point->incoming_chemokine = 0;
-    }
-    if (grid_point->incoming_icytokine > 0) {
-      grid_point->icytokine += grid_point->incoming_icytokine;
-      if (grid_point->icytokine > 1) grid_point->icytokine = 1;
-      grid_point->incoming_icytokine = 0;
-    }
-    if (!grid_point->is_active()) to_erase.push_back(grid_point);
-  }
-  for (auto grid_point : to_erase) tissue.erase_active(grid_point);
-  _finish_round_timer.stop();
-  barrier();
 }
 
 void sample(int time_step, Tissue &tissue, ViewObject view_object) {
@@ -409,7 +377,7 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
     if (ftruncate(fileno, tot_sz) == -1)
       DIE("Could not truncate ", fname, " to ", tot_sz, " bytes\n");
     close(fileno);
-    DBG("Truncated sample file ", fname, " to ", tot_sz, " bytes\n");
+    //DBG("Truncated sample file ", fname, " to ", tot_sz, " bytes\n");
   }
   upcxx::barrier();
   tot_sz = tissue.get_num_local_grid_points();
@@ -436,8 +404,7 @@ void run_sim(Tissue &tissue) {
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     if (time_step > _options->tcell_initial_delay) generate_tcells(tissue);
-    // iterate through all local grid points
-    // FIXME: this should be iteration through the local active grid points only
+    // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
       DBG("updating grid point ", grid_point->str(), "\n");
@@ -463,11 +430,6 @@ void run_sim(Tissue &tissue) {
     }
     barrier();
     if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
-      sample(time_step, tissue, ViewObject::TCELL_TISSUE);
-      sample(time_step, tissue, ViewObject::VIRUS);
-      sample(time_step, tissue, ViewObject::EPICELL);
-      sample(time_step, tissue, ViewObject::ICYTOKINE);
-      sample(time_step, tissue, ViewObject::CHEMOKINE);
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       if (_options->verbose) curr_t = NOW();
       SLOG_VERBOSE("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
@@ -480,7 +442,43 @@ void run_sim(Tissue &tissue) {
       SLOG("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
            t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
     }
-    finish_round(tissue, time_step);
+    barrier();
+    tissue.add_new_actives();
+    barrier();
+    _switch_round_timer.start();
+    _sim_stats.virus = 0;
+    _sim_stats.chemokines = 0;
+    _sim_stats.icytokines = 0;
+    vector<GridPoint *> to_erase = {};
+    // iterate through all active local grid points and set changes
+    for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+         grid_point = tissue.get_next_active_grid_point()) {
+      if (grid_point->tcells) grid_point->switch_tcells_vector();
+      if (grid_point->incoming_virus > 0) {
+        grid_point->virus += grid_point->incoming_virus;
+        if (grid_point->virus > 1) grid_point->virus = 1;
+        grid_point->incoming_virus = 0;
+      }
+      if (grid_point->incoming_chemokine > 0) {
+        grid_point->chemokine += grid_point->incoming_chemokine;
+        if (grid_point->chemokine > 1) grid_point->chemokine = 1;
+        grid_point->incoming_chemokine = 0;
+      }
+      if (grid_point->incoming_icytokine > 0) {
+        grid_point->icytokine += grid_point->incoming_icytokine;
+        if (grid_point->icytokine > 1) grid_point->icytokine = 1;
+        grid_point->incoming_icytokine = 0;
+      }
+      if (!grid_point->is_active()) to_erase.push_back(grid_point);
+    }
+    for (auto grid_point : to_erase) tissue.erase_active(grid_point);
+    _switch_round_timer.stop();
+    barrier();
+    sample(time_step, tissue, ViewObject::EPICELL);
+    sample(time_step, tissue, ViewObject::TCELL_TISSUE);
+    sample(time_step, tissue, ViewObject::VIRUS);
+    sample(time_step, tissue, ViewObject::ICYTOKINE);
+    sample(time_step, tissue, ViewObject::CHEMOKINE);
     _sim_stats.log();
 #ifdef DEBUG
     DBG("check actives ", time_step, "\n");
@@ -493,7 +491,7 @@ void run_sim(Tissue &tissue) {
   _update_epicell_timer.done_all();
   _update_concentration_timer.done_all();
   _sample_timer.done_all();
-  _finish_round_timer.done_all();
+  _switch_round_timer.done_all();
 
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
