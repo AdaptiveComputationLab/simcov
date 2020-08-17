@@ -76,8 +76,8 @@ class SimStats {
     auto tot_virus = reduce_one(virus, op_fast_add, 0).wait() / num_grid_points;
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
-        << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t"
-        << tot_chemokines << "\t" << tot_icytokines << "\t" << tot_virus;
+        << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
+        << setprecision(4) << tot_chemokines << "\t" << tot_icytokines << "\t" << tot_virus;
     return oss.str();
   }
 
@@ -469,6 +469,9 @@ void run_sim(Tissue &tissue) {
         if (grid_point->icytokine > 1) grid_point->icytokine = 1;
         grid_point->incoming_icytokine = 0;
       }
+      _sim_stats.virus += grid_point->virus;
+      _sim_stats.chemokines += grid_point->chemokine;
+      _sim_stats.icytokines += grid_point->icytokine;
       if (!grid_point->is_active()) to_erase.push_back(grid_point);
     }
     for (auto grid_point : to_erase) tissue.erase_active(grid_point);
