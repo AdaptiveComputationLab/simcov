@@ -187,6 +187,7 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     tcell.prev_coords = grid_point->coords;
     _sim_stats.tcells_vasculature--;
     _sim_stats.tcells_tissue++;
+    DBG(time_step, ": tcell ", tcell.id, " extravasates at ", grid_point->coords.str(),"\n");
   }
   if (tcell.in_vasculature) {
     tcell.vascular_period--;
@@ -195,15 +196,23 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       tissue.add_tcell({_rnd_gen, Tissue::grid_size}, tcell);
     } else {
       _sim_stats.tcells_vasculature--;
+      DBG(time_step, ": tcell ", tcell.id, " dies in vasculature\n");
     }
   } else {
     tcell.tissue_period--;
     // tcell is in the tissue
     if (tcell.tissue_period > 0) {
-      // still alive - move, either following gradient or at random
+      // still alive
       GridCoords selected_coords;
-      if (grid_point->epicell->status != EpiCellStatus::EXPRESSING) {
-        // only move on if not causing apoptosis in expressing epicell
+      if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) {
+        DBG(time_step, ": tcell ", tcell.id, " is inducing apoptosis at ", grid_point->coords.str(),
+            "\n");
+        grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
+        _sim_stats.expressing--;
+        _sim_stats.apoptotic++;
+        // we are inducing apoptosis, so don't move
+        selected_coords = grid_point->coords;
+      } else {
         double highest_chemokine = 0;
         for (auto &nb_coords : grid_point->neighbors) {
           double chemokine = tissue.get_chemokine(nb_coords);
@@ -219,13 +228,10 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
             selected_coords = grid_point->neighbors[rnd_nb_i];
           } while (selected_coords == tcell.prev_coords);
         } else {
-          DBG(time_step, ": highest nb chemokine for tcell ", tcell.id, " at ",
-              grid_point->coords.str(), " is at ", selected_coords.str(), " with ",
+          DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(),
+              " highest nb chemokine is at ", selected_coords.str(), " with ",
               highest_chemokine, "\n");
         }
-      } else {
-        // don't move
-        selected_coords = grid_point->coords;
       }
       DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
           selected_coords.str(), "\n");
@@ -233,6 +239,7 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       tissue.add_tcell(selected_coords, tcell);
     } else {
       _sim_stats.tcells_tissue--;
+      DBG(time_step, ": tcell ", tcell.id, " dies in tissue at " , grid_point->coords.str(), "\n");
     }
   }
   _update_tcell_timer.stop();
@@ -252,13 +259,14 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       }
       break;
     case EpiCellStatus::INCUBATING:
-      // FIXME should this be the case?
-      //if (tissue.tcells_in_neighborhood(grid_point)) {
+      // FIXME should a tcell be able to detect virus in an incubating cell?
+      /*
       if (grid_point->tcells && grid_point->tcells->size() && _rnd_gen->trial_success(0.5)) {
-        grid_point->epicell->transition_to_apoptosis();
+        grid_point->epicell->transition_to_apoptosis(grid_point->tcells->front().id);
         _sim_stats.incubating--;
         _sim_stats.apoptotic++;
-      } else if (grid_point->epicell->transition_to_expressing()) {
+      } else */
+      if (grid_point->epicell->transition_to_expressing()) {
         _sim_stats.incubating--;
         _sim_stats.expressing++;
         grid_point->virus = 1.0;
@@ -272,18 +280,11 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       } else {
         grid_point->virus = 1.0;
         grid_point->incoming_virus = 1.0;
-        // FIXME: have to be colocated with tcell for apoptosis?
-        if (grid_point->tcells && grid_point->tcells->size()) {
-        //if (tissue.tcells_in_neighborhood(grid_point)) {
-          grid_point->epicell->transition_to_apoptosis();
-          _sim_stats.expressing--;
-          _sim_stats.apoptotic++;
-        } else {
-          grid_point->chemokine = 1.0;
-          grid_point->incoming_chemokine = 1.0;
-          grid_point->icytokine = 1.0;
-          grid_point->incoming_icytokine = 1.0;
-        }
+        grid_point->chemokine = 1.0;
+        grid_point->incoming_chemokine = 1.0;
+        grid_point->icytokine = 1.0;
+        grid_point->incoming_icytokine = 1.0;
+        // apoptosis is induced directly by a tcell in update_tcell
       }
       break;
     case EpiCellStatus::APOPTOTIC:

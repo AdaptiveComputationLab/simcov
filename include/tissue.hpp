@@ -103,7 +103,6 @@ class EpiCell {
   string str();
 
   void infect();
-  void transition_to_apoptosis();
   bool transition_to_expressing();
   bool apoptosis_death();
   bool infection_death();

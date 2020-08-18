@@ -41,11 +41,6 @@ void EpiCell::infect() {
   apoptosis_period = _rnd_gen->get_normal_distr(_options->apoptosis_period);
 }
 
-void EpiCell::transition_to_apoptosis() {
-  assert(status != EpiCellStatus::APOPTOTIC);
-  status = EpiCellStatus::APOPTOTIC;
-}
-
 bool EpiCell::transition_to_expressing() {
   assert(status == EpiCellStatus::INCUBATING);
   incubation_period--;
@@ -224,7 +219,6 @@ double Tissue::get_chemokine(GridCoords coords) {
              get_rank_for_grid_point(coords),
              [](grid_points_t &grid_points, int64_t id, GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-               if (grid_point->epicell->status != EpiCellStatus::DEAD) return 0.0;
                return grid_point->chemokine;
              },
              grid_points, coords.to_1d(Tissue::grid_size), coords)
