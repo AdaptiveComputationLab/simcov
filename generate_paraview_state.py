@@ -9,14 +9,12 @@
 # To ensure correct image size when batch processing, please search 
 # for and uncomment the line `# renderView*.ViewSize = [*,*]`
 
+##### INSERT BEGIN
 import glob
 import os
 import sys
 import argparse
 import functools
-
-#### import the simple module from the paraview
-from paraview.simple import *
 
 argparser = argparse.ArgumentParser()
 argparser.add_argument("--data", required=True, help='Specify the output directory containing the time series data')
@@ -28,40 +26,46 @@ def get_sample_fnames(prefix):
     return fnames
 
 
-def get_dims():
-    with open(options.data + '/sample_epicell_0.vtk') as f:
-        for line in f.readlines():
-            if line.startswith('DIMENSIONS'):
-                xdim, ydim, _ = line.split()[1:]
-                xdim = int(xdim) - 1
-                ydim = int(ydim) - 1
-                print('Dimensions of simulation are:', xdim, ydim)
-                return xdim, ydim
-    print('Cannot find dimensions in sample files', file=sys.stderr)
-    os.abort()
+xdim = 0
+ydim = 0
+with open(options.data + '/sample_epicell_0.vtk') as f:
+    for line in f.readlines():
+        if line.startswith('DIMENSIONS'):
+            xdim, ydim, _ = line.split()[1:]
+            xdim = int(xdim) - 1
+            ydim = int(ydim) - 1
+            print('Dimensions of simulation are:', xdim, ydim)
+            break
+    else:
+        print('Cannot find dimensions in sample files', file=sys.stderr)
+        os.abort()
 
+##### INSERT END
+        
+#### import the simple module from the paraview
+from paraview.simple import *
 #### disable automatic camera reset on 'Show'
 paraview.simple._DisableFirstRenderCameraReset()
 
 # Create a new 'Quartile Chart View'
 quartileChartView1 = CreateView('QuartileChartView')
-quartileChartView1.ViewSize = [555, 226]
+quartileChartView1.ViewSize = [442, 226]
 quartileChartView1.LegendPosition = [400, 501]
-quartileChartView1.LeftAxisRangeMaximum = 2500.0
-quartileChartView1.BottomAxisRangeMaximum = 200.0
+quartileChartView1.LeftAxisRangeMaximum = 2000.0
+quartileChartView1.BottomAxisRangeMaximum = 500.0
 quartileChartView1.RightAxisRangeMaximum = 6.66
 quartileChartView1.TopAxisRangeMaximum = 6.66
 
 # Create a new 'Quartile Chart View'
 quartileChartView2 = CreateView('QuartileChartView')
-quartileChartView2.ViewSize = [555, 226]
+quartileChartView2.ViewSize = [442, 226]
 quartileChartView2.LegendPosition = [425, 501]
-quartileChartView2.LeftAxisRangeMaximum = 250000.0
-quartileChartView2.BottomAxisRangeMaximum = 200.0
+quartileChartView2.LeftAxisRangeMaximum = 800000.0
+quartileChartView2.BottomAxisRangeMaximum = 500.0
 quartileChartView2.RightAxisRangeMaximum = 6.66
 quartileChartView2.TopAxisRangeMaximum = 6.66
 
-xdim, ydim = get_dims()
+##### REPLACE BEGIN
 
 # Create a new 'Render View'
 renderView1 = CreateView('RenderView')
@@ -76,6 +80,7 @@ renderView1.CameraFocalPoint = [2.0 * xdim, 2.0 * ydim, 0.5]
 renderView1.CameraFocalDisk = 1.0
 renderView1.CameraParallelScale = 42.875511494162964
 renderView1.Background = [0.32, 0.34, 0.43]
+renderView1.AxesGrid.Visibility = 1
 
 # Create a new 'Render View'
 renderView2 = CreateView('RenderView')
@@ -90,6 +95,9 @@ renderView2.CameraFocalPoint = [2.0 * xdim, 2.0 * ydim, 0.5]
 renderView2.CameraFocalDisk = 1.0
 renderView2.CameraParallelScale = 42.875511494162964
 renderView2.Background = [0.32, 0.34, 0.43]
+renderView2.AxesGrid.Visibility = 1
+
+##### REPLACE END
 
 SetActiveView(None)
 
@@ -116,52 +124,62 @@ SetActiveView(renderView1)
 # setup the data processing pipelines
 # ----------------------------------------------------------------
 
+##### REPLACE BEGIN
 # create a new 'Legacy VTK Reader'
-chemokine_reader = LegacyVTKReader(FileNames=get_sample_fnames('sample_chemokine_'))
+legacyVTKReader4 = LegacyVTKReader(FileNames=get_sample_fnames('sample_icytokine_'))
+##### REPLACE END
 
 # create a new 'Calculator'
-calculator3 = Calculator(Input=chemokine_reader)
+calculator3 = Calculator(Input=legacyVTKReader4)
 calculator3.AttributeType = 'Cell Data'
-calculator3.ResultArrayName = 'chemokine norm'
-calculator3.Function = 'chemokine/255'
+calculator3.ResultArrayName = 'icytokine norm'
+calculator3.Function = 'icytokine/2000'
 
+##### REPLACE BEGIN
 # create a new 'Legacy VTK Reader'
-tcell_reader = LegacyVTKReader(FileNames=get_sample_fnames('sample_tcelltissue_'))
+legacyVTKReader5 = LegacyVTKReader(FileNames=get_sample_fnames('sample_epicell_'))
+##### REPLACE END
 
+##### REPLACE BEGIN
 # create a new 'Legacy VTK Reader'
-virus_reader = LegacyVTKReader(FileNames=get_sample_fnames('sample_virus_'))
+legacyVTKReader3 = LegacyVTKReader(FileNames=get_sample_fnames('sample_virus_'))
+##### REPLACE END
 
 # create a new 'Calculator'
-calculator2 = Calculator(Input=virus_reader)
+calculator2 = Calculator(Input=legacyVTKReader3)
 calculator2.AttributeType = 'Cell Data'
 calculator2.ResultArrayName = 'virus norm'
 calculator2.Function = 'virus/255'
 
+##### REPLACE BEGIN
 # create a new 'Legacy VTK Reader'
-icytokine_reader = LegacyVTKReader(FileNames=get_sample_fnames('sample_icytokine_'))
-
-# create a new 'Calculator'
-calculator1 = Calculator(Input=icytokine_reader)
-calculator1.AttributeType = 'Cell Data'
-calculator1.ResultArrayName = 'icytokine norm'
-calculator1.Function = 'icytokine/255'
+legacyVTKReader2 = LegacyVTKReader(FileNames=get_sample_fnames('sample_tcelltissue_'))
+##### REPLACE END
 
 # create a new 'Integrate Variables'
-integrateVariables2 = IntegrateVariables(Input=tcell_reader)
+integrateVariables1 = IntegrateVariables(Input=legacyVTKReader2)
 
 # create a new 'Plot Data Over Time'
-plotDataOverTime1 = PlotDataOverTime(Input=integrateVariables2)
+plotDataOverTime1 = PlotDataOverTime(Input=integrateVariables1)
 plotDataOverTime1.FieldAssociation = 'Cells'
 
-# create a new 'Legacy VTK Reader'
-epicell_reader = LegacyVTKReader(FileNames=get_sample_fnames('sample_epicell_'))
-
 # create a new 'Integrate Variables'
-integrateVariables1 = IntegrateVariables(Input=epicell_reader)
+integrateVariables2 = IntegrateVariables(Input=legacyVTKReader5)
 
 # create a new 'Plot Data Over Time'
-plotDataOverTime2 = PlotDataOverTime(Input=integrateVariables1)
+plotDataOverTime2 = PlotDataOverTime(Input=integrateVariables2)
 plotDataOverTime2.FieldAssociation = 'Cells'
+
+##### REPLACE BEGIN
+# create a new 'Legacy VTK Reader'
+legacyVTKReader1 = LegacyVTKReader(FileNames=get_sample_fnames('sample_chemokine_'))
+##### REPLACE END
+
+# create a new 'Calculator'
+calculator1 = Calculator(Input=legacyVTKReader1)
+calculator1.AttributeType = 'Cell Data'
+calculator1.ResultArrayName = 'chemokine norm'
+calculator1.Function = 'chemokine/255'
 
 # ----------------------------------------------------------------
 # setup the visualization in view 'quartileChartView1'
@@ -209,8 +227,8 @@ plotDataOverTime2Display.SeriesMarkerStyle = ['N (stats)', '0', 'Time (stats)', 
 # setup the visualization in view 'renderView1'
 # ----------------------------------------------------------------
 
-# show data from epicell_reader
-epicell_readerDisplay = Show(epicell_reader, renderView1)
+# show data from legacyVTKReader5
+legacyVTKReader5Display = Show(legacyVTKReader5, renderView1)
 
 # get color transfer function/color map for 'epicell'
 epicellLUT = GetColorTransferFunction('epicell')
@@ -228,25 +246,25 @@ epicellPWF = GetOpacityTransferFunction('epicell')
 epicellPWF.ScalarRangeInitialized = 1
 
 # trace defaults for the display properties.
-epicell_readerDisplay.Representation = 'Surface'
-epicell_readerDisplay.ColorArrayName = ['CELLS', 'epicell']
-epicell_readerDisplay.LookupTable = epicellLUT
-epicell_readerDisplay.OSPRayScaleFunction = 'PiecewiseFunction'
-epicell_readerDisplay.SelectOrientationVectors = 'None'
-epicell_readerDisplay.ScaleFactor = 5.0
-epicell_readerDisplay.SelectScaleArray = 'epicell'
-epicell_readerDisplay.GlyphType = 'Arrow'
-epicell_readerDisplay.GlyphTableIndexArray = 'epicell'
-epicell_readerDisplay.GaussianRadius = 0.25
-epicell_readerDisplay.SetScaleArray = ['POINTS', '']
-epicell_readerDisplay.ScaleTransferFunction = 'PiecewiseFunction'
-epicell_readerDisplay.OpacityArray = ['POINTS', '']
-epicell_readerDisplay.OpacityTransferFunction = 'PiecewiseFunction'
-epicell_readerDisplay.DataAxesGrid = 'GridAxesRepresentation'
-epicell_readerDisplay.PolarAxes = 'PolarAxesRepresentation'
-epicell_readerDisplay.ScalarOpacityUnitDistance = 5.210528284270439
-epicell_readerDisplay.ScalarOpacityFunction = epicellPWF
-epicell_readerDisplay.IsosurfaceValues = [0.5]
+legacyVTKReader5Display.Representation = 'Surface'
+legacyVTKReader5Display.ColorArrayName = ['CELLS', 'epicell']
+legacyVTKReader5Display.LookupTable = epicellLUT
+legacyVTKReader5Display.OSPRayScaleFunction = 'PiecewiseFunction'
+legacyVTKReader5Display.SelectOrientationVectors = 'None'
+legacyVTKReader5Display.ScaleFactor = 5.0
+legacyVTKReader5Display.SelectScaleArray = 'epicell'
+legacyVTKReader5Display.GlyphType = 'Arrow'
+legacyVTKReader5Display.GlyphTableIndexArray = 'epicell'
+legacyVTKReader5Display.GaussianRadius = 0.25
+legacyVTKReader5Display.SetScaleArray = ['POINTS', '']
+legacyVTKReader5Display.ScaleTransferFunction = 'PiecewiseFunction'
+legacyVTKReader5Display.OpacityArray = ['POINTS', '']
+legacyVTKReader5Display.OpacityTransferFunction = 'PiecewiseFunction'
+legacyVTKReader5Display.DataAxesGrid = 'GridAxesRepresentation'
+legacyVTKReader5Display.PolarAxes = 'PolarAxesRepresentation'
+legacyVTKReader5Display.ScalarOpacityUnitDistance = 5.210528284270439
+legacyVTKReader5Display.ScalarOpacityFunction = epicellPWF
+legacyVTKReader5Display.IsosurfaceValues = [0.5]
 
 # show data from calculator2
 calculator2Display = Show(calculator2, renderView1)
@@ -272,9 +290,9 @@ calculator2Display.SelectScaleArray = 'virus norm'
 calculator2Display.GlyphType = 'Arrow'
 calculator2Display.GlyphTableIndexArray = 'virus norm'
 calculator2Display.GaussianRadius = 1.25
-calculator2Display.SetScaleArray = [None, '']
+calculator2Display.SetScaleArray = ['POINTS', '']
 calculator2Display.ScaleTransferFunction = 'PiecewiseFunction'
-calculator2Display.OpacityArray = [None, '']
+calculator2Display.OpacityArray = ['POINTS', '']
 calculator2Display.OpacityTransferFunction = 'PiecewiseFunction'
 calculator2Display.DataAxesGrid = 'GridAxesRepresentation'
 calculator2Display.PolarAxes = 'PolarAxesRepresentation'
@@ -288,7 +306,7 @@ calculator2Display.IsosurfaceValues = [0.047058823529411764]
 epicellLUTColorBar = GetScalarBar(epicellLUT, renderView1)
 epicellLUTColorBar.Orientation = 'Horizontal'
 epicellLUTColorBar.WindowLocation = 'AnyLocation'
-epicellLUTColorBar.Position = [0.015535714285714236, 0.038855098389982246]
+epicellLUTColorBar.Position = [0.08759776536312833, 0.05558268590455051]
 epicellLUTColorBar.Title = 'epicell'
 epicellLUTColorBar.ComponentTitle = ''
 epicellLUTColorBar.ScalarBarLength = 0.3300000000000003
@@ -298,21 +316,28 @@ epicellLUTColorBar.Visibility = 1
 
 # get color legend/bar for virusnormLUT in view renderView1
 virusnormLUTColorBar = GetScalarBar(virusnormLUT, renderView1)
+virusnormLUTColorBar.Orientation = 'Horizontal'
+virusnormLUTColorBar.WindowLocation = 'AnyLocation'
+virusnormLUTColorBar.Position = [0.537877094972067, 0.0411542730299668]
 virusnormLUTColorBar.Title = 'virus norm'
 virusnormLUTColorBar.ComponentTitle = ''
+virusnormLUTColorBar.ScalarBarLength = 0.32999999999999996
 
 # set color bar visibility
 virusnormLUTColorBar.Visibility = 1
 
 # show color legend
-epicell_readerDisplay.SetScalarBarVisibility(renderView1, True)
+legacyVTKReader5Display.SetScalarBarVisibility(renderView1, True)
+
+# show color legend
+calculator2Display.SetScalarBarVisibility(renderView1, True)
 
 # ----------------------------------------------------------------
 # setup the visualization in view 'renderView2'
 # ----------------------------------------------------------------
 
-# show data from tcell_reader
-tcell_readerDisplay = Show(tcell_reader, renderView2)
+# show data from legacyVTKReader2
+legacyVTKReader2Display = Show(legacyVTKReader2, renderView2)
 
 # get color transfer function/color map for 'tcelltissue'
 tcelltissueLUT = GetColorTransferFunction('tcelltissue')
@@ -333,32 +358,32 @@ tcelltissuePWF = GetOpacityTransferFunction('tcelltissue')
 tcelltissuePWF.ScalarRangeInitialized = 1
 
 # trace defaults for the display properties.
-tcell_readerDisplay.Representation = 'Surface'
-tcell_readerDisplay.ColorArrayName = ['CELLS', 't-cell-tissue']
-tcell_readerDisplay.LookupTable = tcelltissueLUT
-tcell_readerDisplay.OSPRayScaleFunction = 'PiecewiseFunction'
-tcell_readerDisplay.SelectOrientationVectors = 'None'
-tcell_readerDisplay.ScaleFactor = 5.0
-tcell_readerDisplay.SelectScaleArray = 't-cell-tissue'
-tcell_readerDisplay.GlyphType = 'Arrow'
-tcell_readerDisplay.GlyphTableIndexArray = 't-cell-tissue'
-tcell_readerDisplay.GaussianRadius = 0.25
-tcell_readerDisplay.SetScaleArray = ['POINTS', '']
-tcell_readerDisplay.ScaleTransferFunction = 'PiecewiseFunction'
-tcell_readerDisplay.OpacityArray = ['POINTS', '']
-tcell_readerDisplay.OpacityTransferFunction = 'PiecewiseFunction'
-tcell_readerDisplay.DataAxesGrid = 'GridAxesRepresentation'
-tcell_readerDisplay.PolarAxes = 'PolarAxesRepresentation'
-tcell_readerDisplay.ScalarOpacityUnitDistance = 5.210528284270439
-tcell_readerDisplay.ScalarOpacityFunction = tcelltissuePWF
-tcell_readerDisplay.IsosurfaceValues = [0.5]
+legacyVTKReader2Display.Representation = 'Surface'
+legacyVTKReader2Display.ColorArrayName = ['CELLS', 't-cell-tissue']
+legacyVTKReader2Display.LookupTable = tcelltissueLUT
+legacyVTKReader2Display.OSPRayScaleFunction = 'PiecewiseFunction'
+legacyVTKReader2Display.SelectOrientationVectors = 'None'
+legacyVTKReader2Display.ScaleFactor = 5.0
+legacyVTKReader2Display.SelectScaleArray = 't-cell-tissue'
+legacyVTKReader2Display.GlyphType = 'Arrow'
+legacyVTKReader2Display.GlyphTableIndexArray = 't-cell-tissue'
+legacyVTKReader2Display.GaussianRadius = 0.25
+legacyVTKReader2Display.SetScaleArray = ['POINTS', '']
+legacyVTKReader2Display.ScaleTransferFunction = 'PiecewiseFunction'
+legacyVTKReader2Display.OpacityArray = ['POINTS', '']
+legacyVTKReader2Display.OpacityTransferFunction = 'PiecewiseFunction'
+legacyVTKReader2Display.DataAxesGrid = 'GridAxesRepresentation'
+legacyVTKReader2Display.PolarAxes = 'PolarAxesRepresentation'
+legacyVTKReader2Display.ScalarOpacityUnitDistance = 5.210528284270439
+legacyVTKReader2Display.ScalarOpacityFunction = tcelltissuePWF
+legacyVTKReader2Display.IsosurfaceValues = [0.5]
 
-# show data from calculator3
-calculator3Display = Show(calculator3, renderView2)
+# show data from calculator1
+calculator1Display = Show(calculator1, renderView2)
 
 # get color transfer function/color map for 'chemokinenorm'
 chemokinenormLUT = GetColorTransferFunction('chemokinenorm')
-chemokinenormLUT.RGBPoints = [0.0001, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+chemokinenormLUT.RGBPoints = [0.0001, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
 chemokinenormLUT.UseLogScale = 1
 chemokinenormLUT.ColorSpace = 'RGB'
 chemokinenormLUT.NanColor = [1.0, 0.0, 0.0]
@@ -372,25 +397,25 @@ chemokinenormPWF.UseLogScale = 1
 chemokinenormPWF.ScalarRangeInitialized = 1
 
 # trace defaults for the display properties.
-calculator3Display.Representation = 'Surface'
-calculator3Display.ColorArrayName = ['CELLS', 'chemokine norm']
-calculator3Display.LookupTable = chemokinenormLUT
-calculator3Display.OSPRayScaleFunction = 'PiecewiseFunction'
-calculator3Display.SelectOrientationVectors = 'None'
-calculator3Display.ScaleFactor = 25.0
-calculator3Display.SelectScaleArray = 'chemokine'
-calculator3Display.GlyphType = 'Arrow'
-calculator3Display.GlyphTableIndexArray = 'chemokine'
-calculator3Display.GaussianRadius = 1.25
-calculator3Display.SetScaleArray = ['POINTS', '']
-calculator3Display.ScaleTransferFunction = 'PiecewiseFunction'
-calculator3Display.OpacityArray = ['POINTS', '']
-calculator3Display.OpacityTransferFunction = 'PiecewiseFunction'
-calculator3Display.DataAxesGrid = 'GridAxesRepresentation'
-calculator3Display.PolarAxes = 'PolarAxesRepresentation'
-calculator3Display.ScalarOpacityUnitDistance = 26.0526414213522
-calculator3Display.ScalarOpacityFunction = chemokinenormPWF
-calculator3Display.IsosurfaceValues = [0.5]
+calculator1Display.Representation = 'Surface'
+calculator1Display.ColorArrayName = ['CELLS', 'chemokine norm']
+calculator1Display.LookupTable = chemokinenormLUT
+calculator1Display.OSPRayScaleFunction = 'PiecewiseFunction'
+calculator1Display.SelectOrientationVectors = 'None'
+calculator1Display.ScaleFactor = 25.0
+calculator1Display.SelectScaleArray = 'chemokine'
+calculator1Display.GlyphType = 'Arrow'
+calculator1Display.GlyphTableIndexArray = 'chemokine'
+calculator1Display.GaussianRadius = 1.25
+calculator1Display.SetScaleArray = ['POINTS', '']
+calculator1Display.ScaleTransferFunction = 'PiecewiseFunction'
+calculator1Display.OpacityArray = ['POINTS', '']
+calculator1Display.OpacityTransferFunction = 'PiecewiseFunction'
+calculator1Display.DataAxesGrid = 'GridAxesRepresentation'
+calculator1Display.PolarAxes = 'PolarAxesRepresentation'
+calculator1Display.ScalarOpacityUnitDistance = 26.0526414213522
+calculator1Display.ScalarOpacityFunction = chemokinenormPWF
+calculator1Display.IsosurfaceValues = [0.5]
 
 # setup the color legend parameters for each legend in this view
 
@@ -417,10 +442,10 @@ chemokinenormLUTColorBar.ScalarBarLength = 0.3300000000000002
 chemokinenormLUTColorBar.Visibility = 1
 
 # show color legend
-tcell_readerDisplay.SetScalarBarVisibility(renderView2, True)
+legacyVTKReader2Display.SetScalarBarVisibility(renderView2, True)
 
 # show color legend
-calculator3Display.SetScalarBarVisibility(renderView2, True)
+calculator1Display.SetScalarBarVisibility(renderView2, True)
 
 # ----------------------------------------------------------------
 # setup color maps and opacity mapes used in the visualization
@@ -432,8 +457,10 @@ calculator3Display.SetScalarBarVisibility(renderView2, True)
 SetActiveSource(None)
 # ----------------------------------------------------------------
 
+##### INSERT BEGIN
 state_fname = options.data + '-state.pvsm'
 servermanager.SaveState(state_fname)
 
 print('Created a state file', state_fname, 'for paraview')
 print('Run with\n', 'paraview', state_fname)
+##### INSERT END
