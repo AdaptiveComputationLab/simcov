@@ -204,6 +204,10 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     if (tcell.tissue_period > 0) {
       // still alive
       GridCoords selected_coords;
+      // FIXME: I believe that T cells should be able to detect virus in incubating cells too,
+      // just with a lower probability. Note that the TCRs are binding to viral peptides, not
+      // virions, so these should be detectable through MHC transport even before production of
+      // complete virions within the epicell.
       if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) {
         DBG(time_step, ": tcell ", tcell.id, " is inducing apoptosis at ", grid_point->coords.str(),
             "\n");
@@ -259,13 +263,6 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       }
       break;
     case EpiCellStatus::INCUBATING:
-      // FIXME should a tcell be able to detect virus in an incubating cell?
-      /*
-      if (grid_point->tcells && grid_point->tcells->size() && _rnd_gen->trial_success(0.5)) {
-        grid_point->epicell->transition_to_apoptosis(grid_point->tcells->front().id);
-        _sim_stats.incubating--;
-        _sim_stats.apoptotic++;
-      } else */
       if (grid_point->epicell->transition_to_expressing()) {
         _sim_stats.incubating--;
         _sim_stats.expressing++;
@@ -288,11 +285,16 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       }
       break;
     case EpiCellStatus::APOPTOTIC:
+      // FIXME: it seems that there is evidence that apoptotic cells also produce cytokines
+      // This would be a necessary requirement for a feedback loop of damage caused by autoreactive
+      // tcells.
       if (grid_point->epicell->apoptosis_death()) {
         grid_point->virus = 0;
         _sim_stats.dead++;
         _sim_stats.apoptotic--;
-      /* FIXME: no secretion of virions during apoptosis
+      // FIXME: no secretion of virions during apoptosis? It seems that virion secretion is
+      // inhibited, but it may still happen
+      /*
       } else {
         if (grid_point->epicell->is_fully_incubated()) {
           grid_point->virus = 1.0;

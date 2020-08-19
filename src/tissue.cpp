@@ -359,8 +359,7 @@ void Tissue::construct(GridCoords grid_size) {
   grid_points->reserve(blocks_per_rank * Tissue::block_size);
   auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * Tissue::block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
-  // FIXME: it may be more efficient (less communication) to have contiguous
-  // blocks
+  // FIXME: it may be more efficient (less communication) to have contiguous blocks
   // this is the quick & dirty approach
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
