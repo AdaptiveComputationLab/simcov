@@ -132,8 +132,8 @@ class Options {
   vector<int> tcell_vascular_period{280, 28};  // 5760
   vector<int> tcell_tissue_period{6, 1};          // 120
 
-  double chemokine_decay_rate = 0.023;  // 0.023
-  double chemokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
+  double chemokine_decay_rate = 0.015;  // 0.023
+  double chemokine_diffusion_coef = 0.7;  // 0.5 grid points in all directions
 
   double icytokine_decay_rate = 0.023;     // 0.023
   double icytokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
