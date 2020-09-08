@@ -45,7 +45,7 @@ class SimStats {
   void init() {
     if (!rank_me()) {
       log_file.open("simcov.stats");
-      log_file << "# " << header() << endl;
+      log_file << "# time\t" << header() << endl;
     }
   }
 
@@ -77,13 +77,13 @@ class SimStats {
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
         << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
-        << setprecision(4) << tot_chemokines << "\t" << tot_icytokines << "\t" << tot_virus;
+        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_icytokines << "\t" << tot_virus;
     return oss.str();
   }
 
-  void log() {
+  void log(int time_step) {
     string s = to_str();
-    if (!rank_me()) log_file << s << endl;
+    if (!rank_me()) log_file << time_step << "\t" << s << endl;
   }
 
 };
@@ -480,12 +480,14 @@ void run_sim(Tissue &tissue) {
     for (auto grid_point : to_erase) tissue.erase_active(grid_point);
     _switch_round_timer.stop();
     barrier();
-    sample(time_step, tissue, ViewObject::EPICELL);
-    sample(time_step, tissue, ViewObject::TCELL_TISSUE);
-    sample(time_step, tissue, ViewObject::VIRUS);
-    sample(time_step, tissue, ViewObject::ICYTOKINE);
-    sample(time_step, tissue, ViewObject::CHEMOKINE);
-    _sim_stats.log();
+    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
+      sample(time_step, tissue, ViewObject::EPICELL);
+      sample(time_step, tissue, ViewObject::TCELL_TISSUE);
+      sample(time_step, tissue, ViewObject::VIRUS);
+      sample(time_step, tissue, ViewObject::ICYTOKINE);
+      sample(time_step, tissue, ViewObject::CHEMOKINE);
+    }
+    _sim_stats.log(time_step);
 #ifdef DEBUG
     DBG("check actives ", time_step, "\n");
     tissue.check_actives(time_step);
