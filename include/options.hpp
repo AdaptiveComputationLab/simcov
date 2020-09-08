@@ -127,7 +127,7 @@ class Options {
   double virus_decay_rate = 0.14;           // 0.14
   double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
 
-  int tcell_generation_rate = 1;            // 21
+  double tcell_generation_rate = 1;            // 21
   int tcell_initial_delay = 10;             // 7200
   vector<int> tcell_vascular_period{280, 28};  // 5760
   vector<int> tcell_tissue_period{6, 1};          // 120

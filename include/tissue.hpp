@@ -77,9 +77,11 @@ struct TCell {
   bool in_vasculature = true;
   int vascular_period = -1;
   int tissue_period = -1;
+  int binding_period = -1;
   GridCoords prev_coords;
 
-  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, vascular_period, tissue_period, prev_coords);
+  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, vascular_period, tissue_period, binding_period,
+                          prev_coords);
 
   TCell(const string &id, GridCoords &coords);
 

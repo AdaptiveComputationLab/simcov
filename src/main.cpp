@@ -158,6 +158,8 @@ void generate_tcells(Tissue &tissue) {
   int local_num_tcells = _options->tcell_generation_rate / rank_n();
   int remaining_tcells = _options->tcell_generation_rate - local_num_tcells * rank_n();
   if (rank_me() < remaining_tcells) local_num_tcells++;
+  double frac = _options->tcell_generation_rate - floor(_options->tcell_generation_rate);
+  if (rank_me() == 0 && frac > 0 && _rnd_gen->trial_success(frac)) local_num_tcells++;
   if (local_num_tcells) {
     for (int i = 0; i < local_num_tcells; i++) {
       GridCoords coords(_rnd_gen, Tissue::grid_size);
@@ -183,6 +185,7 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell) {
   _update_tcell_timer.start();
   if (grid_point->icytokine > 0 && tcell.in_vasculature) {
+//      && _rnd_gen->trial_success(grid_point->icytokine)) {
     tcell.in_vasculature = false;
     tcell.prev_coords = grid_point->coords;
     _sim_stats.tcells_vasculature--;
@@ -208,15 +211,34 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       // just with a lower probability. Note that the TCRs are binding to viral peptides, not
       // virions, so these should be detectable through MHC transport even before production of
       // complete virions within the epicell.
+      // Judy agrees. So we will model this simply as a probability that is inversely proportional
+      // to the incubation_period remaining, so as the incubation goes on, the probability of
+      // infection goes up.
+      // FIXME: should there be some probability of binding and inducing apoptosis even for
+      // expressing epicells? Seems like that would be more realistic. So maybe specify this as a
+      // parameter P and then linearly increase from 0 to P when going from first incubation to
+      // expressing
       if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) {
         DBG(time_step, ": tcell ", tcell.id, " is inducing apoptosis at ", grid_point->coords.str(),
             "\n");
+        // as soon as this is set to apoptotic, no other tcell can bind to this epicell, so we
+        // ensure that only one tcell binds to an epicell at a time
         grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
         _sim_stats.expressing--;
         _sim_stats.apoptotic++;
-        // we are inducing apoptosis, so don't move
+        assert(tcell.binding_period == -1);
+        // FIXME: this should be a parameter
+        // tcell binds for 1/2hr
+        tcell.binding_period = 1800;
+      }
+      if (tcell.binding_period != -1) {
+        tcell.binding_period--;
+        // done with binding when set to -1
+        if (tcell.binding_period == 0) tcell.binding_period = -1;
+        // don't move
         selected_coords = grid_point->coords;
       } else {
+        // not bound - follow chemokine gradient
         double highest_chemokine = 0;
         for (auto &nb_coords : grid_point->neighbors) {
           double chemokine = tissue.get_chemokine(nb_coords);
@@ -233,8 +255,8 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
           } while (selected_coords == tcell.prev_coords);
         } else {
           DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(),
-              " highest nb chemokine is at ", selected_coords.str(), " with ",
-              highest_chemokine, "\n");
+              " highest nb chemokine is at ", selected_coords.str(), " with ", highest_chemokine,
+              "\n");
         }
       }
       DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
