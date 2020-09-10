@@ -93,6 +93,7 @@ const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPT
 
 class EpiCell {
   int64_t id;
+  int initial_incubation_period = -1;
   int incubation_period = -1;
   int apoptosis_period = -1;
   int infection_period = -1;
@@ -110,6 +111,7 @@ class EpiCell {
   bool infection_death();
   bool is_active();
   bool is_fully_incubated();
+  double get_binding_prob();
 };
 
 class GridPoint {

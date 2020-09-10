@@ -152,13 +152,17 @@ void initial_infection(Tissue &tissue) {
          _options->num_infections);
 }
 
-void generate_tcells(Tissue &tissue) {
+void generate_tcells(Tissue &tissue, int time_step) {
   _generate_tcell_timer.start();
   // each rank could generate some t-cells
-  int local_num_tcells = _options->tcell_generation_rate / rank_n();
-  int remaining_tcells = _options->tcell_generation_rate - local_num_tcells * rank_n();
+  // we don't want to abruptly start generating tcells after the initial delay, so we ramp up
+  // the generation linearly over 0.1x the initial delay
+  double ramp_up_factor = min(2.0 * ((double)time_step / _options->tcell_initial_delay - 1), 1.0);
+  double generation_rate = _options->tcell_generation_rate * ramp_up_factor;
+  int local_num_tcells = generation_rate / rank_n();
+  int remaining_tcells = generation_rate - local_num_tcells * rank_n();
   if (rank_me() < remaining_tcells) local_num_tcells++;
-  double frac = _options->tcell_generation_rate - floor(_options->tcell_generation_rate);
+  double frac = generation_rate - floor(generation_rate);
   if (rank_me() == 0 && frac > 0 && _rnd_gen->trial_success(frac)) local_num_tcells++;
   if (local_num_tcells) {
     for (int i = 0; i < local_num_tcells; i++) {
@@ -184,8 +188,8 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell) {
   _update_tcell_timer.start();
-  if (grid_point->icytokine > 0 && tcell.in_vasculature) {
-//      && _rnd_gen->trial_success(grid_point->icytokine)) {
+  if (grid_point->icytokine > 0 && tcell.in_vasculature
+      && _rnd_gen->trial_success(grid_point->icytokine)) {
     tcell.in_vasculature = false;
     tcell.prev_coords = grid_point->coords;
     _sim_stats.tcells_vasculature--;
@@ -218,18 +222,23 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       // expressing epicells? Seems like that would be more realistic. So maybe specify this as a
       // parameter P and then linearly increase from 0 to P when going from first incubation to
       // expressing
-      if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) {
-        DBG(time_step, ": tcell ", tcell.id, " is inducing apoptosis at ", grid_point->coords.str(),
-            "\n");
-        // as soon as this is set to apoptotic, no other tcell can bind to this epicell, so we
-        // ensure that only one tcell binds to an epicell at a time
-        grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
-        _sim_stats.expressing--;
-        _sim_stats.apoptotic++;
-        assert(tcell.binding_period == -1);
-        // FIXME: this should be a parameter
-        // tcell binds for 1/2hr
-        tcell.binding_period = 1800;
+      if (grid_point->epicell->status == EpiCellStatus::EXPRESSING ||
+          grid_point->epicell->status == EpiCellStatus::INCUBATING) {
+        double binding_prob = grid_point->epicell->get_binding_prob();
+        if (_rnd_gen->trial_success(binding_prob)) {
+          DBG(time_step, ": tcell ", tcell.id, " is inducing apoptosis at ",
+              grid_point->coords.str(), "\n");
+          if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) _sim_stats.expressing--;
+          if (grid_point->epicell->status == EpiCellStatus::INCUBATING) _sim_stats.incubating--;
+          // as soon as this is set to apoptotic, no other tcell can bind to this epicell, so we
+          // ensure that only one tcell binds to an epicell at a time
+          grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
+          _sim_stats.apoptotic++;
+          assert(tcell.binding_period == -1);
+          // FIXME: this should be a parameter
+          // tcell binds for 1/2hr
+          tcell.binding_period = _options->tcell_binding_period;
+        }
       }
       if (tcell.binding_period != -1) {
         tcell.binding_period--;
@@ -428,7 +437,7 @@ void run_sim(Tissue &tissue) {
   SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\n");
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
-    if (time_step > _options->tcell_initial_delay) generate_tcells(tissue);
+    if (time_step > _options->tcell_initial_delay) generate_tcells(tissue, time_step);
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {

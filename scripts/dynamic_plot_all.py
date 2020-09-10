@@ -30,7 +30,7 @@ moddate = os.stat('cycells-test/simcov.stats')[8]
 unchanged = 0
 first = True
 
-def plot_subplot(ax, columns, title):
+def plot_subplot(ax, columns, title, log_scale=False):
     graph_data = open('cycells-test/simcov.stats','r').read()
     lines = graph_data.split('\n')
     xs = []
@@ -55,6 +55,8 @@ def plot_subplot(ax, columns, title):
     ax.legend()
     ax.set_xlabel('Time (days)')
     ax.set_title(title)
+    if log_scale:
+        ax.set_yscale('log')
     plt.tight_layout()
 
 def animate(i):
@@ -67,7 +69,7 @@ def animate(i):
         first = False
         plot_subplot(ax_epicells, [1, 2, 3], 'epithelial cells')
         plot_subplot(ax_tcells, [5, 6], 'T cells')
-        plot_subplot(ax_virus, [9], 'viral load')
+        plot_subplot(ax_virus, [9], 'viral load', log_scale=True)
     else:
         unchanged += 1
         if unchanged > 4:

@@ -38,6 +38,7 @@ void EpiCell::infect() {
   status = EpiCellStatus::INCUBATING;
   infection_period = _rnd_gen->get_normal_distr(_options->infection_period);
   incubation_period = _rnd_gen->get_normal_distr(_options->incubation_period);
+  initial_incubation_period = incubation_period;
   apoptosis_period = _rnd_gen->get_normal_distr(_options->apoptosis_period);
 }
 
@@ -73,6 +74,11 @@ bool EpiCell::is_active() {
 bool EpiCell::is_fully_incubated() {
   assert(status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
   return (incubation_period == 0);
+}
+
+double EpiCell::get_binding_prob() {
+  return min((double)(initial_incubation_period - incubation_period) / initial_incubation_period,
+             1.0);
 }
 
 GridPoint::~GridPoint() {

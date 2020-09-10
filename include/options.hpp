@@ -131,6 +131,7 @@ class Options {
   int tcell_initial_delay = 10;             // 7200
   vector<int> tcell_vascular_period{280, 28};  // 5760
   vector<int> tcell_tissue_period{6, 1};          // 120
+  int tcell_binding_period = 1;        // 30
 
   double chemokine_decay_rate = 0.015;  // 0.023
   double chemokine_diffusion_coef = 0.7;  // 0.5 grid points in all directions
@@ -219,19 +220,23 @@ class Options {
                    "Number of tcells generated at each timestep")
         ->capture_default_str();
     app.add_option("--tcell-initial-delay", tcell_initial_delay,
-                   "Number of time steps before t-cells start to be produced")
+                   "Number of time steps before T cells start to be produced")
         ->capture_default_str();
     app.add_option("--tcell-vascular-period", tcell_vascular_period,
-                   "Number of time steps to death for a t-cell in the vasculature (average:stddev)")
+                   "Number of time steps to death for a T cell in the vasculature (average:stddev)")
         ->delimiter(':')
         ->expected(2)
         ->check(CLI::Range(1, 50000))
         ->capture_default_str();
     app.add_option("--tcell-tissue-period", tcell_tissue_period,
-                   "Number of time steps to death after a t-cell extravasates (average:stddev)")
+                   "Number of time steps to death after a T cell extravasates (average:stddev)")
         ->delimiter(':')
         ->expected(2)
         ->check(CLI::Range(1, 50000))
+        ->capture_default_str();
+    app.add_option("--tcell-binding-period", tcell_binding_period,
+                   "Number of time steps a T cell is bound to an epithelial cell when inducing "
+                   "apoptosis")
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
     app.add_option("--sample-period", sample_period, "Number of timesteps between samples")
