@@ -471,15 +471,15 @@ void run_sim(Tissue &tissue) {
     }
     if (!_options->verbose &&
         (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1)) {
-      auto avg_active_grid_points = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() / rank_n();
-      auto max_active_grid_points = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
+      auto avg_actives = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() /
+                         rank_n();
+      auto max_actives = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
            t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str());
-      SLOG(setprecision(3), fixed, "\t< ", max_active_grid_points, " ",
-           (double)avg_active_grid_points / max_active_grid_points, " >\n");
-    
+      SLOG(setprecision(3), fixed, "\t< ", max_actives, " ", (double)avg_actives / max_actives,
+           " >\n");
     }
     barrier();
     tissue.add_new_actives();
