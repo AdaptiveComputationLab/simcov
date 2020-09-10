@@ -509,6 +509,10 @@ void Tissue::add_new_actives() {
   new_active_grid_points->clear();
 }
 
+size_t Tissue::get_num_actives() {
+  return active_grid_points.size();
+}
+
 #ifdef DEBUG
 void Tissue::check_actives(int time_step) {
   for (int64_t i = 0; i < grid_points->size(); i++) {

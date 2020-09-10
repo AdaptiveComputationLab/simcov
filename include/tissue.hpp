@@ -215,6 +215,8 @@ class Tissue {
 
   void add_new_actives();
 
+  size_t get_num_actives();
+
 #ifdef DEBUG
   void check_actives(int time_step);
 #endif
