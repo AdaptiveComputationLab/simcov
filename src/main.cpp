@@ -434,7 +434,7 @@ void run_sim(Tissue &tissue) {
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 50;
   _sim_stats.init();
-  SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\t<max active procs  load balance>\n");
+  SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\t<max active points  load balance>\n");
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     if (time_step > _options->tcell_initial_delay) generate_tcells(tissue, time_step);
@@ -492,7 +492,6 @@ void run_sim(Tissue &tissue) {
     // iterate through all active local grid points and set changes
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
-      progress();
       if (grid_point->tcells) grid_point->switch_tcells_vector();
       if (grid_point->incoming_virus > 0) {
         grid_point->virus += grid_point->incoming_virus;
