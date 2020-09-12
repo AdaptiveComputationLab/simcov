@@ -190,39 +190,6 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
       grid_points, new_active_grid_points, coords.to_1d(Tissue::grid_size), coords, virus)
       .wait();
 }
-/*
-
-void Tissue::inc_incoming_chemokines(GridCoords coords, double chemokine) {
-  upcxx::rpc(
-      get_rank_for_grid_point(coords),
-      [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points, int64_t id,
-         GridCoords coords, double chemokine) {
-        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        DBG("inc incoming chemokine for grid point ", grid_point, " ", grid_point->str(), "\n");
-        new_active_grid_points->insert({grid_point, true});
-        assert(new_active_grid_points->size());
-        grid_point->incoming_chemokine += chemokine;
-        if (grid_point->incoming_chemokine > 1) grid_point->incoming_chemokine = 1;
-      },
-      grid_points, new_active_grid_points, coords.to_1d(Tissue::grid_size), coords, chemokine)
-      .wait();
-}
-
-void Tissue::inc_incoming_icytokines(GridCoords coords, double icytokine) {
-  upcxx::rpc(
-      get_rank_for_grid_point(coords),
-      [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points, int64_t id,
-         GridCoords coords, double icytokine) {
-        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, id, coords);
-        DBG("inc incoming icyto for grid point ", grid_point, " ", grid_point->str(), "\n");
-        new_active_grid_points->insert({grid_point, true});
-        grid_point->incoming_icytokine += icytokine;
-        if (grid_point->incoming_icytokine > 1) grid_point->incoming_icytokine = 1;
-      },
-      grid_points, new_active_grid_points, coords.to_1d(Tissue::grid_size), coords, icytokine)
-      .wait();
-}
-*/
 
 void Tissue::dispatch_concentrations(
     unordered_map<int64_t, array<double, 3>> &concentrations_to_update) {
@@ -233,10 +200,11 @@ void Tissue::dispatch_concentrations(
     GridCoords coords(coords_1d, Tissue::grid_size);
     target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, concentrations});
   }
+  future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
   for (auto& [target_rank, update_vector] : target_rank_updates) {
     upcxx::progress();
-    upcxx::rpc(
+    auto fut = upcxx::rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
            vector<pair<GridCoords, array<double, 3>>> update_vector) {
@@ -253,9 +221,10 @@ void Tissue::dispatch_concentrations(
             if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
           }
         },
-        grid_points, new_active_grid_points, update_vector)
-        .wait();
+        grid_points, new_active_grid_points, update_vector);
+    fut_chain = when_all(fut_chain, fut);
   }
+  fut_chain.wait();
 }
 
 double Tissue::get_chemokine(GridCoords coords) {

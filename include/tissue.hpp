@@ -186,12 +186,7 @@ class Tissue {
   int64_t get_num_local_grid_points();
 
   void inc_incoming_virus(GridCoords coords, double virus);
-/*
 
-  void inc_incoming_chemokines(GridCoords coords, double chemokine);
-
-  void inc_incoming_icytokines(GridCoords coords, double icytokine);
-*/
   void dispatch_concentrations(
       std::unordered_map<int64_t, std::array<double, 3>> &concentrations_to_update);
 
