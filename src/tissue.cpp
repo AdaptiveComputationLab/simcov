@@ -1,5 +1,7 @@
 #include "tissue.hpp"
 
+using namespace std;
+
 GridCoords::GridCoords(int64_t i, const GridCoords &grid_size) {
   z = i / (grid_size.x * grid_size.y);
   i = i % (grid_size.x * grid_size.y);
@@ -7,13 +9,13 @@ GridCoords::GridCoords(int64_t i, const GridCoords &grid_size) {
   x = i % grid_size.x;
 }
 
-GridCoords::GridCoords(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
+GridCoords::GridCoords(shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
   x = rnd_gen->get(0, grid_size.x);
   y = rnd_gen->get(0, grid_size.y);
   z = rnd_gen->get(0, grid_size.z);
 }
 
-void GridCoords::set_rnd(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
+void GridCoords::set_rnd(shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
   x = rnd_gen->get(0, grid_size.x);
   y = rnd_gen->get(0, grid_size.y);
   z = rnd_gen->get(0, grid_size.z);
@@ -188,6 +190,7 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
       grid_points, new_active_grid_points, coords.to_1d(Tissue::grid_size), coords, virus)
       .wait();
 }
+/*
 
 void Tissue::inc_incoming_chemokines(GridCoords coords, double chemokine) {
   upcxx::rpc(
@@ -218,6 +221,41 @@ void Tissue::inc_incoming_icytokines(GridCoords coords, double icytokine) {
       },
       grid_points, new_active_grid_points, coords.to_1d(Tissue::grid_size), coords, icytokine)
       .wait();
+}
+*/
+
+void Tissue::dispatch_concentrations(
+    unordered_map<int64_t, array<double, 3>> &concentrations_to_update) {
+  // accumulate updates for each target rank
+  unordered_map<intrank_t, vector<pair<GridCoords, array<double, 3>>>> target_rank_updates;
+  for (auto& [coords_1d, concentrations] : concentrations_to_update) {
+    upcxx::progress();
+    GridCoords coords(coords_1d, Tissue::grid_size);
+    target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, concentrations});
+  }
+  // dispatch all updates to each target rank in turn
+  for (auto& [target_rank, update_vector] : target_rank_updates) {
+    upcxx::progress();
+    upcxx::rpc(
+        target_rank,
+        [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+           vector<pair<GridCoords, array<double, 3>>> update_vector) {
+          for (auto &update_pair : update_vector) {
+            auto &coords = update_pair.first;
+            GridPoint *grid_point = Tissue::get_local_grid_point(
+                grid_points, coords.to_1d(Tissue::grid_size), coords);
+            new_active_grid_points->insert({grid_point, true});
+            grid_point->incoming_chemokine += update_pair.second[0];
+            if (grid_point->incoming_chemokine > 1) grid_point->incoming_chemokine = 1;
+            grid_point->incoming_icytokine += update_pair.second[1];
+            if (grid_point->incoming_icytokine > 1) grid_point->incoming_icytokine = 1;
+            grid_point->incoming_virus += update_pair.second[2];
+            if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
+          }
+        },
+        grid_points, new_active_grid_points, update_vector)
+        .wait();
+  }
 }
 
 double Tissue::get_chemokine(GridCoords coords) {
@@ -271,7 +309,7 @@ void Tissue::add_tcell(GridCoords coords, TCell tcell) {
 static int get_cube_block_dim(int64_t num_grid_points) {
   int min_cubes_per_rank = 2;
   int block_dim = 1;
-  int min_dim = std::min(std::min(Tissue::grid_size.x, Tissue::grid_size.y), Tissue::grid_size.z);
+  int min_dim = min(min(Tissue::grid_size.x, Tissue::grid_size.y), Tissue::grid_size.z);
   for (int i = 1; i < min_dim; i++) {
     // only allow dims that divide each main dimension perfectly
     if (remainder(Tissue::grid_size.x, i) || remainder(Tissue::grid_size.y, i) ||
@@ -301,7 +339,7 @@ static int get_cube_block_dim(int64_t num_grid_points) {
 static int get_square_block_dim(int64_t num_grid_points) {
   int min_squares_per_rank = 2;
   int block_dim = 1;
-  int min_dim = std::min(Tissue::grid_size.x, Tissue::grid_size.y);
+  int min_dim = min(Tissue::grid_size.x, Tissue::grid_size.y);
   for (int i = 1; i < min_dim; i++) {
     // only allow dims that divide each main dimension perfectly
     if (remainder(Tissue::grid_size.x, i) || remainder(Tissue::grid_size.y, i)) {
@@ -378,7 +416,7 @@ void Tissue::construct(GridCoords grid_size) {
       // They should be placed according to the underlying lung structure
       // (gaps, etc)
       GridPoint grid_point;
-      grid_points->push_back(std::move(grid_point));
+      grid_points->push_back(move(grid_point));
       grid_points->back().init(id, coords, neighbors, new EpiCell(id));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
@@ -393,8 +431,8 @@ void Tissue::construct(GridCoords grid_size) {
   barrier();
 }
 
-std::pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &header_str,
-                                              ViewObject view_object) {
+pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &header_str,
+                                         ViewObject view_object) {
   auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
   size_t tot_bytes_written = 0;

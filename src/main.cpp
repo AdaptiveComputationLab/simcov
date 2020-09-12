@@ -339,9 +339,10 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   _update_epicell_timer.stop();
 }
 
-void update_concentration(int time_step, GridPoint *grid_point,
-                          double &concentration, double decay_rate, double diffusion_coef,
-                          Tissue &tissue, void (Tissue::*inc_incoming)(GridCoords, double)) {
+void update_concentration(int time_step, GridPoint *grid_point, double &concentration,
+                          double decay_rate, double diffusion_coef,
+                          unordered_map<int64_t, array<double, 3>> &nb_concentrations_to_update,
+                          int conc_index) {
   _update_concentration_timer.start();
   if (concentration > 0) {
     concentration -= decay_rate;
@@ -354,7 +355,7 @@ void update_concentration(int time_step, GridPoint *grid_point,
       double amount_to_nb = diffusion_amount / grid_point->neighbors.size();
       for (auto &nb_coords : grid_point->neighbors) {
         assert(nb_coords != grid_point->coords);
-        (tissue.*inc_incoming)(nb_coords, amount_to_nb);
+        nb_concentrations_to_update[nb_coords.to_1d(Tissue::grid_size)][conc_index] += amount_to_nb;
       }
     }
   }
@@ -434,10 +435,14 @@ void run_sim(Tissue &tissue) {
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 50;
   _sim_stats.init();
-  SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\t<max active points  load balance>\n");
+  SLOG("# datetime     elapsed step    ", _sim_stats.header(),
+       "\t<max active points  load balance>\n");
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     if (time_step > _options->tcell_initial_delay) generate_tcells(tissue, time_step);
+    // store the total concentration increment updates for target grid points
+    // chemokine, icytokine, virus
+    unordered_map<int64_t, array<double, 3>> nb_concentrations_to_update;
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
@@ -447,21 +452,23 @@ void run_sim(Tissue &tissue) {
       // updates)
       if (grid_point->tcells && grid_point->tcells->size()) {
         for (auto &tcell : *grid_point->tcells) {
+          progress();
           update_tcell(time_step, tissue, grid_point, tcell);
         }
       }
       update_epicell(time_step, tissue, grid_point);
       update_concentration(time_step, grid_point, grid_point->chemokine,
                            _options->chemokine_decay_rate, _options->chemokine_diffusion_coef,
-                           tissue, &Tissue::inc_incoming_chemokines);
+                           nb_concentrations_to_update, 0);
       update_concentration(time_step, grid_point, grid_point->icytokine,
                            _options->icytokine_decay_rate, _options->icytokine_diffusion_coef,
-                           tissue, &Tissue::inc_incoming_icytokines);
+                           nb_concentrations_to_update, 1);
       update_concentration(time_step, grid_point, grid_point->virus,
                            _options->virus_decay_rate, _options->virus_diffusion_coef,
-                           tissue, &Tissue::inc_incoming_virus);
+                           nb_concentrations_to_update, 2);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
+    tissue.dispatch_concentrations(nb_concentrations_to_update);
     barrier();
     if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
