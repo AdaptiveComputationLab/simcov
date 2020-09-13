@@ -165,10 +165,11 @@ class Tissue {
   std::unordered_map<GridPoint*, bool> active_grid_points;
   std::unordered_map<GridPoint*, bool>::iterator active_grid_point_iter;
 
+  std::unordered_map<intrank_t, std::vector<std::pair<GridCoords, TCell>>> tcells_to_add;
+
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
 
-  static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t id,
-                                         const GridCoords &coords);
+  static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
 
   vector<GridCoords> get_neighbors(GridCoords c, GridCoords grid_size);
 
@@ -197,6 +198,8 @@ class Tissue {
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
   void add_tcell(GridCoords coords, TCell tcell);
+
+  void update_tcell_moves();
 
   void construct(GridCoords grid_size);
 

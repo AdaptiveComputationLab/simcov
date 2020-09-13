@@ -211,17 +211,12 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     if (tcell.tissue_period > 0) {
       // still alive
       GridCoords selected_coords;
-      // FIXME: I believe that T cells should be able to detect virus in incubating cells too,
-      // just with a lower probability. Note that the TCRs are binding to viral peptides, not
+      // T cells should be able to detect virus in incubating cells and expressing cells
+      // just with a lower probability in incubating. The TCRs are binding to viral peptides, not
       // virions, so these should be detectable through MHC transport even before production of
-      // complete virions within the epicell.
-      // Judy agrees. So we will model this simply as a probability that is inversely proportional
-      // to the incubation_period remaining, so as the incubation goes on, the probability of
-      // infection goes up.
-      // FIXME: should there be some probability of binding and inducing apoptosis even for
-      // expressing epicells? Seems like that would be more realistic. So maybe specify this as a
-      // parameter P and then linearly increase from 0 to P when going from first incubation to
-      // expressing
+      // complete virions within the epicell. We model this simply as a probability that is
+      // inversely proportional to the incubation_period remaining, so as the incubation goes on,
+      // the probability of infection goes up until it reaches 1.
       if (grid_point->epicell->status == EpiCellStatus::EXPRESSING ||
           grid_point->epicell->status == EpiCellStatus::INCUBATING) {
         double binding_prob = grid_point->epicell->get_binding_prob();
@@ -468,6 +463,7 @@ void run_sim(Tissue &tissue) {
                            nb_concentrations_to_update, 2);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
+    tissue.update_tcell_moves();
     tissue.dispatch_concentrations(nb_concentrations_to_update);
     barrier();
     if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
