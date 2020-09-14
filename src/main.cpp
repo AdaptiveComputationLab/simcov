@@ -466,14 +466,7 @@ void run_sim(Tissue &tissue) {
     tissue.update_tcell_moves();
     tissue.dispatch_concentrations(nb_concentrations_to_update);
     barrier();
-    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
-      chrono::duration<double> t_elapsed = NOW() - curr_t;
-      if (_options->verbose) curr_t = NOW();
-      SLOG_VERBOSE("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
-                   t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
-    }
-    if (!_options->verbose &&
-        (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1)) {
+    if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
       auto avg_actives = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() /
                          rank_n();
       auto max_actives = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
@@ -519,7 +512,8 @@ void run_sim(Tissue &tissue) {
     for (auto grid_point : to_erase) tissue.erase_active(grid_point);
     _switch_round_timer.stop();
     barrier();
-    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
+    if (_options->sample_period > 0 && (time_step % _options->sample_period == 0 ||
+        time_step == _options->num_timesteps - 1)) {
       sample(time_step, tissue, ViewObject::EPICELL);
       sample(time_step, tissue, ViewObject::TCELL_TISSUE);
       sample(time_step, tissue, ViewObject::VIRUS);

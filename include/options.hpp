@@ -239,7 +239,8 @@ class Options {
                    "apoptosis")
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
-    app.add_option("--sample-period", sample_period, "Number of timesteps between samples")
+    app.add_option("--sample-period", sample_period,
+                   "Number of timesteps between samples (set to 0 to disable sampling)")
         ->capture_default_str();
     app.add_option("--sample-resolution", sample_resolution, "Resolution for sampling")
         ->check(CLI::Range(0.0, 1.0))
