@@ -220,7 +220,7 @@ void Tissue::dispatch_concentrations(
             if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
           }
         },
-        grid_points, new_active_grid_points, upcxx::make_view(update_vector.begin(), update_vector.end()));
+        grid_points, new_active_grid_points, upcxx::make_view(update_vector));
     fut_chain = when_all(fut_chain, fut);
   }
   fut_chain.wait();
@@ -279,7 +279,7 @@ void Tissue::update_tcell_moves() {
             grid_point->add_tcell(tcell);
           }
         },
-        grid_points, new_active_grid_points, upcxx::make_view(update_vector.begin(), update_vector.end()));
+        grid_points, new_active_grid_points, upcxx::make_view(update_vector));
     //fut_chain = when_all(fut_chain, fut);
     fut.wait();
   }
