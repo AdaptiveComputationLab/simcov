@@ -207,7 +207,7 @@ void Tissue::dispatch_concentrations(
     auto fut = upcxx::rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-           vector<pair<GridCoords, array<double, 3>>> update_vector) {
+           upcxx::view<pair<GridCoords, array<double, 3>>> update_vector) {
           for (auto &update_pair : update_vector) {
             auto &coords = update_pair.first;
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
@@ -220,7 +220,7 @@ void Tissue::dispatch_concentrations(
             if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
           }
         },
-        grid_points, new_active_grid_points, update_vector);
+        grid_points, new_active_grid_points, upcxx::make_view(update_vector.begin(), update_vector.end()));
     fut_chain = when_all(fut_chain, fut);
   }
   fut_chain.wait();
@@ -262,15 +262,15 @@ void Tissue::add_tcell(GridCoords coords, TCell tcell) {
 }
 
 void Tissue::update_tcell_moves() {
-  future<> fut_chain = make_future<>();
+  //future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
   for (auto& [target_rank, update_vector] : tcells_to_add) {
     upcxx::progress();
     auto fut = upcxx::rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-           vector<pair<GridCoords, TCell>> update_vector) {
-          for (auto &[coords, tcell] : update_vector) {
+           upcxx::view<pair<GridCoords, TCell>> update_vector) {
+          for (auto [coords, tcell] : update_vector) {
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
             assert(grid_point->tcells != nullptr);
             new_active_grid_points->insert({grid_point, true});
@@ -279,10 +279,11 @@ void Tissue::update_tcell_moves() {
             grid_point->add_tcell(tcell);
           }
         },
-        grid_points, new_active_grid_points, update_vector);
-    fut_chain = when_all(fut_chain, fut);
+        grid_points, new_active_grid_points, upcxx::make_view(update_vector.begin(), update_vector.end()));
+    //fut_chain = when_all(fut_chain, fut);
+    fut.wait();
   }
-  fut_chain.wait();
+  //fut_chain.wait();
   tcells_to_add.clear();
 }
 
