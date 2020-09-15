@@ -93,7 +93,6 @@ void GridPoint::init(int64_t id, GridCoords coords, vector<GridCoords> neighbors
   this->coords = coords;
   this->neighbors = neighbors;
   this->epicell = epicell;
-  tcells = &tcells_backing_1;
 }
 
 string GridPoint::str() const {
@@ -104,27 +103,10 @@ string GridPoint::str() const {
   return oss.str();
 }
 
-void GridPoint::switch_tcells_vector() {
-  auto switch_vectors = [](vector<TCell> *tcells_backing_new,
-                           vector<TCell> *tcells_backing_old) -> vector<TCell> * {
-    tcells_backing_old->clear();
-    return tcells_backing_new;
-  };
-  if (tcells == &tcells_backing_1)
-    tcells = switch_vectors(&tcells_backing_2, &tcells_backing_1);
-  else
-    tcells = switch_vectors(&tcells_backing_1, &tcells_backing_2);
-}
-
-void GridPoint::add_tcell(TCell tcell) {
-  auto next_tcells = (tcells == &tcells_backing_1 ? &tcells_backing_2 : &tcells_backing_1);
-  next_tcells->push_back(tcell);
-}
-
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
   return (virus > 0 || incoming_virus > 0 || chemokine > 0 || incoming_chemokine > 0 ||
-          icytokine > 0 || incoming_icytokine > 0 || (tcells && tcells->size()) > 0 ||
+          icytokine > 0 || incoming_icytokine > 0 || tcells.size() > 0 ||
           epicell->is_active());
 }
 
@@ -191,11 +173,10 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
       .wait();
 }
 
-void Tissue::dispatch_concentrations(
-    unordered_map<int64_t, array<double, 3>> &concentrations_to_update) {
+void Tissue::update_concentrations(grid_to_conc_map_t &concs_to_update) {
   // accumulate updates for each target rank
   unordered_map<intrank_t, vector<pair<GridCoords, array<double, 3>>>> target_rank_updates;
-  for (auto& [coords_1d, concentrations] : concentrations_to_update) {
+  for (auto& [coords_1d, concentrations] : concs_to_update) {
     upcxx::progress();
     GridCoords coords(coords_1d, Tissue::grid_size);
     target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, concentrations});
@@ -237,11 +218,7 @@ double Tissue::get_chemokine(GridCoords coords) {
       .wait();
 }
 
-void Tissue::add_tcell(GridCoords coords, TCell tcell) {
-   tcells_to_add[get_rank_for_grid_point(coords)].push_back({coords, tcell});
-}
-
-void Tissue::update_tcell_moves() {
+void Tissue::update_tcells(rank_to_tcell_map_t &tcells_to_add) {
   //future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
   for (auto& [target_rank, update_vector] : tcells_to_add) {
@@ -252,11 +229,10 @@ void Tissue::update_tcell_moves() {
            upcxx::view<pair<GridCoords, TCell>> update_vector) {
           for (auto [coords, tcell] : update_vector) {
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-            assert(grid_point->tcells != nullptr);
             new_active_grid_points->insert({grid_point, true});
             // add the tcell to the future tcells vector, i.e. not
             // the one pointed to by tcells
-            grid_point->add_tcell(tcell);
+            grid_point->tcells.push_back(tcell);
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));
@@ -264,7 +240,6 @@ void Tissue::update_tcell_moves() {
     fut.wait();
   }
   //fut_chain.wait();
-  tcells_to_add.clear();
 }
 
 static int get_cube_block_dim(int64_t num_grid_points) {
@@ -419,7 +394,7 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
       GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
       unsigned char val = 0;
       if (view_object == ViewObject::TCELL_TISSUE) {
-        for (auto tcell : *grid_point->tcells) {
+        for (auto tcell : grid_point->tcells) {
           if (!tcell.in_vasculature) {
             val++;
             if (val == 255) break;

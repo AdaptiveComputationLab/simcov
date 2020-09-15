@@ -24,6 +24,13 @@ extern shared_ptr<Options> _options;
 using upcxx::rank_me;
 using upcxx::rank_n;
 
+using std::unordered_map;
+using std::vector;
+using std::array;
+using std::pair;
+using std::shared_ptr;
+using std::to_string;
+
 enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE, ICYTOKINE };
 
 inline string view_object_str(ViewObject view_object) {
@@ -49,9 +56,9 @@ struct GridCoords {
   GridCoords(int64_t i, const GridCoords &grid_size);
 
   // create a random grid point
-  GridCoords(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
+  GridCoords(shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
 
-  void set_rnd(std::shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
+  void set_rnd(shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
 
   bool operator==(const GridCoords &coords) {
     return x == coords.x && y == coords.y && z == coords.z;
@@ -68,7 +75,7 @@ struct GridCoords {
   }
 
   string str() const {
-    return "(" + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")";
+    return "(" + to_string(x) + ", " + to_string(y) + ", " + to_string(z) + ")";
   }
 };
 
@@ -114,22 +121,14 @@ class EpiCell {
   double get_binding_prob();
 };
 
-class GridPoint {
- private:
-  // there are two vectors of tcells, one of which contains tcells for the
-  // current round,
-  // and one of which contains tcells for the next round
-  vector<TCell> tcells_backing_1 = {};
-  vector<TCell> tcells_backing_2 = {};
- public:
+struct GridPoint {
   int64_t id;
   GridCoords coords;
   // vector for connectivity
   vector<GridCoords> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
-  // a pointer to the currently active tcells vector
-  vector<TCell> *tcells = nullptr;
+  vector<TCell> tcells;
   // we have incoming values for the concentrations so that we can update at the end of the round
   // without being subject to the vagaries of multiprocess collisions
   double virus = 0, incoming_virus = 0;
@@ -142,12 +141,13 @@ class GridPoint {
 
   string str() const;
 
-  void switch_tcells_vector();
-
-  void add_tcell(TCell tcell);
-
   bool is_active();
 };
+
+
+using grid_to_conc_map_t = unordered_map<int64_t, array<double, 3>>;
+using rank_to_tcell_map_t = unordered_map<intrank_t, vector<pair<GridCoords, TCell>>>;
+
 
 class Tissue {
  private:
@@ -159,15 +159,11 @@ class Tissue {
   vector<GridPoint>::iterator grid_point_iter;
 
   // keeps track of all grid points that need to be updated
-  using new_active_grid_points_t = upcxx::dist_object<std::unordered_map<GridPoint*, bool>>;
+  using new_active_grid_points_t = upcxx::dist_object<unordered_map<GridPoint*, bool>>;
   new_active_grid_points_t new_active_grid_points;
 
-  std::unordered_map<GridPoint*, bool> active_grid_points;
-  std::unordered_map<GridPoint*, bool>::iterator active_grid_point_iter;
-
-  std::unordered_map<intrank_t, std::vector<std::pair<GridCoords, TCell>>> tcells_to_add;
-
-  intrank_t get_rank_for_grid_point(const GridCoords &coords);
+  unordered_map<GridPoint*, bool> active_grid_points;
+  unordered_map<GridPoint*, bool>::iterator active_grid_point_iter;
 
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
 
@@ -186,10 +182,11 @@ class Tissue {
 
   int64_t get_num_local_grid_points();
 
+  intrank_t get_rank_for_grid_point(const GridCoords &coords);
+
   void inc_incoming_virus(GridCoords coords, double virus);
 
-  void dispatch_concentrations(
-      std::unordered_map<int64_t, std::array<double, 3>> &concentrations_to_update);
+  void update_concentrations(grid_to_conc_map_t &concs_to_update);
 
   double get_chemokine(GridCoords coords);
 
@@ -197,14 +194,12 @@ class Tissue {
 
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
-  void add_tcell(GridCoords coords, TCell tcell);
-
-  void update_tcell_moves();
+  void update_tcells(rank_to_tcell_map_t &tcells_to_add);
 
   void construct(GridCoords grid_size);
 
-  std::pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str,
-                                        ViewObject view_object);
+  pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str,
+                                   ViewObject view_object);
 
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
