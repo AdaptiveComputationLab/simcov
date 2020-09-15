@@ -86,16 +86,13 @@ double EpiCell::get_binding_prob() {
 string GridPoint::str() const {
   ostringstream oss;
   oss << "id " << id << ", xyz " << coords.str() << ", epi " << epicell->str() << ", v " << virus
-      << ", iv " << incoming_virus << ", c " << chemokine << ", ic " << incoming_chemokine << ", i "
-      << icytokine << ", ii " << incoming_icytokine;
+      << ", c " << chemokine << ", i " << icytokine;
   return oss.str();
 }
 
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
-  return (virus > 0 || incoming_virus > 0 || chemokine > 0 || incoming_chemokine > 0 ||
-          icytokine > 0 || incoming_icytokine > 0 || tcells.size() > 0 ||
-          epicell->is_active());
+  return (virus > 0 || chemokine > 0 || icytokine > 0 || tcells.size() > 0 || epicell->is_active());
 }
 
 
@@ -146,7 +143,7 @@ int64_t Tissue::get_num_local_grid_points() {
   return grid_points->size();
 }
 
-void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
+void Tissue::set_virus(GridCoords coords, double virus) {
   upcxx::rpc(
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
@@ -154,8 +151,8 @@ void Tissue::inc_incoming_virus(GridCoords coords, double virus) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("inc incoming virus for grid point ", grid_point, " ", grid_point->str(), "\n");
         new_active_grid_points->insert({grid_point, true});
-        grid_point->incoming_virus += virus;
-        if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
+        grid_point->virus += virus;
+        if (grid_point->virus > 1) grid_point->virus = 1;
       },
       grid_points, new_active_grid_points, coords, virus)
       .wait();
@@ -181,12 +178,12 @@ void Tissue::update_concentrations(grid_to_conc_map_t &concs_to_update) {
             auto &coords = update_pair.first;
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
             new_active_grid_points->insert({grid_point, true});
-            grid_point->incoming_chemokine += update_pair.second[0];
-            if (grid_point->incoming_chemokine > 1) grid_point->incoming_chemokine = 1;
-            grid_point->incoming_icytokine += update_pair.second[1];
-            if (grid_point->incoming_icytokine > 1) grid_point->incoming_icytokine = 1;
-            grid_point->incoming_virus += update_pair.second[2];
-            if (grid_point->incoming_virus > 1) grid_point->incoming_virus = 1;
+            grid_point->chemokine += update_pair.second[0];
+            if (grid_point->chemokine > 1) grid_point->chemokine = 1;
+            grid_point->icytokine += update_pair.second[1];
+            if (grid_point->icytokine > 1) grid_point->icytokine = 1;
+            grid_point->virus += update_pair.second[2];
+            if (grid_point->virus > 1) grid_point->virus = 1;
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));

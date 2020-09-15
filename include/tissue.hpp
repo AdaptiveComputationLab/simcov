@@ -129,11 +129,9 @@ struct GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   vector<TCell> tcells;
-  // we have incoming values for the concentrations so that we can update at the end of the round
-  // without being subject to the vagaries of multiprocess collisions
-  double virus = 0, incoming_virus = 0;
-  double chemokine = 0, incoming_chemokine = 0;
-  double icytokine = 0, incoming_icytokine = 0;
+  double virus = 0;
+  double chemokine = 0;
+  double icytokine = 0;
 
   string str() const;
 
@@ -180,7 +178,7 @@ class Tissue {
 
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
 
-  void inc_incoming_virus(GridCoords coords, double virus);
+  void set_virus(GridCoords coords, double virus);
 
   void update_concentrations(grid_to_conc_map_t &concs_to_update);
 

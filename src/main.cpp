@@ -109,9 +109,9 @@ void initial_infection(Tissue &tissue) {
   if (_options->infection_coords[0] != -1) {
     if (!rank_me()) {
       local_num_infections = 1;
-      tissue.inc_incoming_virus({_options->infection_coords[0], _options->infection_coords[1],
-                                 _options->infection_coords[2]},
-                                1.0);
+      tissue.set_virus({_options->infection_coords[0], _options->infection_coords[1],
+                        _options->infection_coords[2]},
+                       1.0);
     } else {
       local_num_infections = 0;
     }
@@ -127,7 +127,7 @@ void initial_infection(Tissue &tissue) {
       progbar.update();
       GridCoords coords(_rnd_gen, Tissue::grid_size);
       DBG("infection: ", coords.str() + "\n");
-      tissue.inc_incoming_virus(coords, 1.0);
+      tissue.set_virus(coords, 1.0);
       upcxx::progress();
     }
     progbar.done();
@@ -140,9 +140,7 @@ void initial_infection(Tissue &tissue) {
   int num_infections_found = 0;
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
-    if (grid_point->incoming_virus > 0) {
-      grid_point->virus = 1.0;
-      grid_point->incoming_virus = 0;
+    if (grid_point->virus > 0) {
       grid_point->epicell->infect();
       num_infections_found++;
       _sim_stats.incubating++;
@@ -307,11 +305,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         _sim_stats.expressing--;
       } else {
         grid_point->virus = 1.0;
-        grid_point->incoming_virus = 1.0;
         grid_point->chemokine = 1.0;
-        grid_point->incoming_chemokine = 1.0;
         grid_point->icytokine = 1.0;
-        grid_point->incoming_icytokine = 1.0;
         // apoptosis is induced directly by a tcell in update_tcell
       }
       break;
@@ -329,7 +324,6 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       } else {
         if (grid_point->epicell->is_fully_incubated()) {
           grid_point->virus = 1.0;
-          grid_point->incoming_virus = 1.0;
         }
       */
       }
@@ -511,21 +505,6 @@ void run_sim(Tissue &tissue) {
     // iterate through all active local grid points and set changes
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
-      if (grid_point->incoming_virus > 0) {
-        grid_point->virus += grid_point->incoming_virus;
-        if (grid_point->virus > 1) grid_point->virus = 1;
-        grid_point->incoming_virus = 0;
-      }
-      if (grid_point->incoming_chemokine > 0) {
-        grid_point->chemokine += grid_point->incoming_chemokine;
-        if (grid_point->chemokine > 1) grid_point->chemokine = 1;
-        grid_point->incoming_chemokine = 0;
-      }
-      if (grid_point->incoming_icytokine > 0) {
-        grid_point->icytokine += grid_point->incoming_icytokine;
-        if (grid_point->icytokine > 1) grid_point->icytokine = 1;
-        grid_point->incoming_icytokine = 0;
-      }
       _sim_stats.virus += grid_point->virus;
       _sim_stats.chemokines += grid_point->chemokine;
       _sim_stats.icytokines += grid_point->icytokine;
