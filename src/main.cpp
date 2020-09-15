@@ -181,7 +181,8 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
 }
 
 void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell,
-                  rank_to_tcell_map_t &tcells_to_add) {
+                  rank_to_tcell_map_t &tcells_to_add,
+                  unordered_map<int64_t, double> &chemokines_cache) {
   if (grid_point->icytokine > 0 && tcell.in_vasculature
       && _rnd_gen->trial_success(grid_point->icytokine)) {
     tcell.in_vasculature = false;
@@ -240,7 +241,15 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
         // not bound - follow chemokine gradient
         double highest_chemokine = 0;
         for (auto &nb_coords : grid_point->neighbors) {
-          double chemokine = tissue.get_chemokine(nb_coords);
+          double chemokine = 0;
+          int64_t nb_idx = nb_coords.to_1d(Tissue::grid_size);
+          auto it = chemokines_cache.find(nb_idx);
+          if (it == chemokines_cache.end()) {
+            chemokine = tissue.get_chemokine(nb_coords);
+            chemokines_cache.insert({nb_idx, chemokine});
+          } else {
+            chemokine = it->second;
+          }
           if (chemokine > highest_chemokine) {
             highest_chemokine = chemokine;
             selected_coords = nb_coords;
@@ -421,6 +430,7 @@ void run_sim(Tissue &tissue) {
   IntermittentTimer erase_inactive_timer(__FILENAME__ + string(":") + "erase inactive");
   IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
   IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
+  IntermittentTimer progress_timer(__FILENAME__ + string(":") + "progress");
 
   auto start_t = NOW();
   auto curr_t = start_t;
@@ -433,11 +443,13 @@ void run_sim(Tissue &tissue) {
   grid_to_conc_map_t concs_to_update;
   // store the tcells to be updated (moved)
   rank_to_tcell_map_t tcells_to_add;
+  unordered_map<int64_t, double> chemokines_cache;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
 
     tcells_to_add.clear();
     concs_to_update.clear();
+    chemokines_cache.clear();
 
     if (time_step > _options->tcell_initial_delay) {
       generate_tcell_timer.start();
@@ -450,14 +462,16 @@ void run_sim(Tissue &tissue) {
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
       DBG("updating grid point ", grid_point->str(), "\n");
+      progress_timer.start();
       upcxx::progress();
+      progress_timer.stop();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
       update_tcell_timer.start();
       if (grid_point->tcells.size()) {
         for (auto &tcell : grid_point->tcells) {
           progress();
-          update_tcell(time_step, tissue, grid_point, tcell, tcells_to_add);
+          update_tcell(time_step, tissue, grid_point, tcell, tcells_to_add, chemokines_cache);
         }
         // clear all tcells for this grid point - they'll be added back later if they don't move
         grid_point->tcells.clear();
@@ -558,6 +572,7 @@ void run_sim(Tissue &tissue) {
   erase_inactive_timer.done_all();
   sample_timer.done_all();
   log_timer.done_all();
+  progress_timer.done_all();
 
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
