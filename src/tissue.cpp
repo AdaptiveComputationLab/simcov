@@ -237,26 +237,6 @@ double Tissue::get_chemokine(GridCoords coords) {
       .wait();
 }
 
-int Tissue::get_num_tcells(GridCoords coords) {
-  return upcxx::rpc(
-             get_rank_for_grid_point(coords),
-             [](grid_points_t &grid_points, GridCoords coords) {
-               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-               if (grid_point->tcells) return (int)grid_point->tcells->size();
-               return 0;
-             },
-             grid_points, coords)
-      .wait();
-}
-
-bool Tissue::tcells_in_neighborhood(GridPoint *grid_point) {
-  if (grid_point->tcells && grid_point->tcells->size()) return true;
-  for (auto nb_coords : grid_point->neighbors) {
-    if (get_num_tcells(nb_coords)) return true;
-  }
-  return false;
-}
-
 void Tissue::add_tcell(GridCoords coords, TCell tcell) {
    tcells_to_add[get_rank_for_grid_point(coords)].push_back({coords, tcell});
 }
