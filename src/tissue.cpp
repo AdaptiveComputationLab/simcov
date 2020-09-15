@@ -83,18 +83,6 @@ double EpiCell::get_binding_prob() {
              1.0);
 }
 
-GridPoint::~GridPoint() {
-  if (epicell) delete epicell;
-}
-
-void GridPoint::init(int64_t id, GridCoords coords, vector<GridCoords> neighbors,
-                     EpiCell *epicell) {
-  this->id = id;
-  this->coords = coords;
-  this->neighbors = neighbors;
-  this->epicell = epicell;
-}
-
 string GridPoint::str() const {
   ostringstream oss;
   oss << "id " << id << ", xyz " << coords.str() << ", epi " << epicell->str() << ", v " << virus
@@ -219,7 +207,7 @@ double Tissue::get_chemokine(GridCoords coords) {
 }
 
 void Tissue::update_tcells(rank_to_tcell_map_t &tcells_to_add) {
-  //future<> fut_chain = make_future<>();
+  future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
   for (auto& [target_rank, update_vector] : tcells_to_add) {
     upcxx::progress();
@@ -236,10 +224,10 @@ void Tissue::update_tcells(rank_to_tcell_map_t &tcells_to_add) {
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));
-    //fut_chain = when_all(fut_chain, fut);
-    fut.wait();
+    fut_chain = when_all(fut_chain, fut);
+    //fut.wait();
   }
-  //fut_chain.wait();
+  fut_chain.wait();
 }
 
 static int get_cube_block_dim(int64_t num_grid_points) {
@@ -351,9 +339,7 @@ void Tissue::construct(GridCoords grid_size) {
       // FIXME: this is an epicall on every grid point.
       // They should be placed according to the underlying lung structure
       // (gaps, etc)
-      GridPoint grid_point;
-      grid_points->push_back(move(grid_point));
-      grid_points->back().init(id, coords, neighbors, new EpiCell(id));
+      grid_points->emplace_back(GridPoint({id, coords, neighbors, new EpiCell(id)}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
       ostringstream oss;

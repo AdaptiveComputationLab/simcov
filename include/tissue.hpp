@@ -135,10 +135,6 @@ struct GridPoint {
   double chemokine = 0, incoming_chemokine = 0;
   double icytokine = 0, incoming_icytokine = 0;
 
-  ~GridPoint();
-
-  void init(int64_t id, GridCoords coords, vector<GridCoords> neighbors, EpiCell *epicell);
-
   string str() const;
 
   bool is_active();
