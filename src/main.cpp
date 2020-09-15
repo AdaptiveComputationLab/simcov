@@ -430,7 +430,6 @@ void run_sim(Tissue &tissue) {
   IntermittentTimer erase_inactive_timer(__FILENAME__ + string(":") + "erase inactive");
   IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
   IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
-  IntermittentTimer progress_timer(__FILENAME__ + string(":") + "progress");
 
   auto start_t = NOW();
   auto curr_t = start_t;
@@ -462,9 +461,7 @@ void run_sim(Tissue &tissue) {
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
       DBG("updating grid point ", grid_point->str(), "\n");
-      progress_timer.start();
       upcxx::progress();
-      progress_timer.stop();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
       update_tcell_timer.start();
@@ -572,7 +569,6 @@ void run_sim(Tissue &tissue) {
   erase_inactive_timer.done_all();
   sample_timer.done_all();
   log_timer.done_all();
-  progress_timer.done_all();
 
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
