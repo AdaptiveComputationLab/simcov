@@ -489,9 +489,9 @@ void run_sim(Tissue &tissue) {
       update_concentration_timer.stop();
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
+    barrier();
     compute_updates_timer.stop();
 
-    barrier();
     dispatch_updates_timer.start();
     update_tcell_timer.start();
     tissue.update_tcells(tcells_to_add);
@@ -499,7 +499,6 @@ void run_sim(Tissue &tissue) {
     update_concentration_timer.start();
     tissue.update_concentrations(concs_to_update);
     update_concentration_timer.stop();
-    dispatch_updates_timer.stop();
 
     if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
       auto avg_actives = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() /
@@ -512,13 +511,14 @@ void run_sim(Tissue &tissue) {
       SLOG(setprecision(3), fixed, "\t< ", max_actives, " ", (double)avg_actives / max_actives,
            " >\n");
     }
-
     barrier();
+    dispatch_updates_timer.stop();
+
     add_new_actives_timer.start();
     tissue.add_new_actives();
+    barrier();
     add_new_actives_timer.stop();
 
-    barrier();
     _sim_stats.virus = 0;
     _sim_stats.chemokines = 0;
     _sim_stats.icytokines = 0;
@@ -533,9 +533,9 @@ void run_sim(Tissue &tissue) {
       if (!grid_point->is_active()) to_erase.push_back(grid_point);
     }
     for (auto grid_point : to_erase) tissue.erase_active(grid_point);
+    barrier();
     erase_inactive_timer.stop();
 
-    barrier();
     if (_options->sample_period > 0 && (time_step % _options->sample_period == 0 ||
         time_step == _options->num_timesteps - 1)) {
       sample_timer.start();
@@ -549,14 +549,14 @@ void run_sim(Tissue &tissue) {
 
     log_timer.start();
     _sim_stats.log(time_step);
+    barrier();
     log_timer.stop();
 
 #ifdef DEBUG
     DBG("check actives ", time_step, "\n");
     tissue.check_actives(time_step);
-#endif
-
     barrier();
+#endif
   }
 
   generate_tcell_timer.done_all();
