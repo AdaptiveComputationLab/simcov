@@ -93,22 +93,15 @@ bool _verbose = false;
 SimStats _sim_stats;
 shared_ptr<Options> _options;
 
-IntermittentTimer _generate_tcell_timer(__FILENAME__ + string(":") + "generate_tcells");
-IntermittentTimer _update_tcell_timer(__FILENAME__ + string(":") + "update_tcell");
-IntermittentTimer _update_epicell_timer(__FILENAME__ + string(":") + "update_epicell");
-IntermittentTimer _update_concentration_timer(__FILENAME__ + string(":") + "update_concentration");
-IntermittentTimer _sample_timer(__FILENAME__ + string(":") + "sample");
-IntermittentTimer _switch_round_timer(__FILENAME__ + string(":") + "switch_round");
-
 void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
   int local_num_infections = 0;
   if (_options->infection_coords[0] != -1) {
     if (!rank_me()) {
       local_num_infections = 1;
-      tissue.inc_incoming_virus({_options->infection_coords[0], _options->infection_coords[1],
-                                 _options->infection_coords[2]},
-                                1.0);
+      tissue.set_virus({_options->infection_coords[0], _options->infection_coords[1],
+                        _options->infection_coords[2]},
+                       1.0);
     } else {
       local_num_infections = 0;
     }
@@ -124,7 +117,7 @@ void initial_infection(Tissue &tissue) {
       progbar.update();
       GridCoords coords(_rnd_gen, Tissue::grid_size);
       DBG("infection: ", coords.str() + "\n");
-      tissue.inc_incoming_virus(coords, 1.0);
+      tissue.set_virus(coords, 1.0);
       upcxx::progress();
     }
     progbar.done();
@@ -137,9 +130,7 @@ void initial_infection(Tissue &tissue) {
   int num_infections_found = 0;
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
-    if (grid_point->incoming_virus > 0) {
-      grid_point->virus = 1.0;
-      grid_point->incoming_virus = 0;
+    if (grid_point->virus > 0) {
       grid_point->epicell->infect();
       num_infections_found++;
       _sim_stats.incubating++;
@@ -152,8 +143,12 @@ void initial_infection(Tissue &tissue) {
          _options->num_infections);
 }
 
-void generate_tcells(Tissue &tissue, int time_step) {
-  _generate_tcell_timer.start();
+void add_tcell(Tissue &tissue, GridCoords coords, TCell tcell,
+               unordered_map<intrank_t, vector<pair<GridCoords, TCell>>> &tcells_to_add) {
+  tcells_to_add[tissue.get_rank_for_grid_point(coords)].push_back({coords, tcell});
+}
+
+void generate_tcells(Tissue &tissue, int time_step, rank_to_tcell_map_t &tcells_to_add) {
   // each rank could generate some t-cells
   // we don't want to abruptly start generating tcells after the initial delay, so we ramp up
   // the generation linearly over 0.1x the initial delay
@@ -170,12 +165,11 @@ void generate_tcells(Tissue &tissue, int time_step) {
       string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
       tissue.tcells_generated++;
       // the initial position is actually meaningless
-      tissue.add_tcell(coords, TCell(tcell_id, coords));
+      add_tcell(tissue, coords, TCell(tcell_id, coords), tcells_to_add);
       _sim_stats.tcells_vasculature++;
       upcxx::progress();
     }
-  }
-  _generate_tcell_timer.stop();
+}
   barrier();
 }
 
@@ -186,8 +180,9 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
   return new_x;
 }
 
-void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell) {
-  _update_tcell_timer.start();
+void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &tcell,
+                  rank_to_tcell_map_t &tcells_to_add,
+                  unordered_map<int64_t, double> &chemokines_cache) {
   if (grid_point->icytokine > 0 && tcell.in_vasculature
       && _rnd_gen->trial_success(grid_point->icytokine)) {
     tcell.in_vasculature = false;
@@ -199,8 +194,9 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
   if (tcell.in_vasculature) {
     tcell.vascular_period--;
     if (tcell.vascular_period > 0) {
+      GridCoords coords = {_rnd_gen, Tissue::grid_size};
       // tcell is still alive - moves to any random location in the grid
-      tissue.add_tcell({_rnd_gen, Tissue::grid_size}, tcell);
+      add_tcell(tissue, coords, tcell, tcells_to_add);
     } else {
       _sim_stats.tcells_vasculature--;
       DBG(time_step, ": tcell ", tcell.id, " dies in vasculature\n");
@@ -211,17 +207,12 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
     if (tcell.tissue_period > 0) {
       // still alive
       GridCoords selected_coords;
-      // FIXME: I believe that T cells should be able to detect virus in incubating cells too,
-      // just with a lower probability. Note that the TCRs are binding to viral peptides, not
+      // T cells should be able to detect virus in incubating cells and expressing cells
+      // just with a lower probability in incubating. The TCRs are binding to viral peptides, not
       // virions, so these should be detectable through MHC transport even before production of
-      // complete virions within the epicell.
-      // Judy agrees. So we will model this simply as a probability that is inversely proportional
-      // to the incubation_period remaining, so as the incubation goes on, the probability of
-      // infection goes up.
-      // FIXME: should there be some probability of binding and inducing apoptosis even for
-      // expressing epicells? Seems like that would be more realistic. So maybe specify this as a
-      // parameter P and then linearly increase from 0 to P when going from first incubation to
-      // expressing
+      // complete virions within the epicell. We model this simply as a probability that is
+      // inversely proportional to the incubation_period remaining, so as the incubation goes on,
+      // the probability of infection goes up until it reaches 1.
       if (grid_point->epicell->status == EpiCellStatus::EXPRESSING ||
           grid_point->epicell->status == EpiCellStatus::INCUBATING) {
         double binding_prob = grid_point->epicell->get_binding_prob();
@@ -244,13 +235,21 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
         tcell.binding_period--;
         // done with binding when set to -1
         if (tcell.binding_period == 0) tcell.binding_period = -1;
-        // don't move
+        // no tcell movement - this tcell will be added back at the same coords later
         selected_coords = grid_point->coords;
       } else {
         // not bound - follow chemokine gradient
         double highest_chemokine = 0;
         for (auto &nb_coords : grid_point->neighbors) {
-          double chemokine = tissue.get_chemokine(nb_coords);
+          double chemokine = 0;
+          int64_t nb_idx = nb_coords.to_1d(Tissue::grid_size);
+          auto it = chemokines_cache.find(nb_idx);
+          if (it == chemokines_cache.end()) {
+            chemokine = tissue.get_chemokine(nb_coords);
+            chemokines_cache.insert({nb_idx, chemokine});
+          } else {
+            chemokine = it->second;
+          }
           if (chemokine > highest_chemokine) {
             highest_chemokine = chemokine;
             selected_coords = nb_coords;
@@ -271,18 +270,16 @@ void update_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, TCell &t
       DBG(time_step, ": tcell ", tcell.id, " at ", grid_point->coords.str(), " moving to ",
           selected_coords.str(), "\n");
       tcell.prev_coords = grid_point->coords;
-      tissue.add_tcell(selected_coords, tcell);
+      add_tcell(tissue, selected_coords, tcell, tcells_to_add);
     } else {
       _sim_stats.tcells_tissue--;
       DBG(time_step, ": tcell ", tcell.id, " dies in tissue at " , grid_point->coords.str(), "\n");
     }
   }
-  _update_tcell_timer.stop();
 }
 
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   if (grid_point->epicell->status == EpiCellStatus::DEAD) return;
-  _update_epicell_timer.start();
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virus > 0) {
@@ -307,11 +304,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         _sim_stats.expressing--;
       } else {
         grid_point->virus = 1.0;
-        grid_point->incoming_virus = 1.0;
         grid_point->chemokine = 1.0;
-        grid_point->incoming_chemokine = 1.0;
         grid_point->icytokine = 1.0;
-        grid_point->incoming_icytokine = 1.0;
         // apoptosis is induced directly by a tcell in update_tcell
       }
       break;
@@ -329,21 +323,17 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       } else {
         if (grid_point->epicell->is_fully_incubated()) {
           grid_point->virus = 1.0;
-          grid_point->incoming_virus = 1.0;
         }
       */
       }
       break;
     default: break;
   }
-  _update_epicell_timer.stop();
 }
 
 void update_concentration(int time_step, GridPoint *grid_point, double &concentration,
                           double decay_rate, double diffusion_coef,
-                          unordered_map<int64_t, array<double, 3>> &nb_concentrations_to_update,
-                          int conc_index) {
-  _update_concentration_timer.start();
+                          grid_to_conc_map_t &concs_to_update, int conc_index) {
   if (concentration > 0) {
     concentration -= decay_rate;
     if (concentration < 0) concentration = 0;
@@ -355,11 +345,10 @@ void update_concentration(int time_step, GridPoint *grid_point, double &concentr
       double amount_to_nb = diffusion_amount / grid_point->neighbors.size();
       for (auto &nb_coords : grid_point->neighbors) {
         assert(nb_coords != grid_point->coords);
-        nb_concentrations_to_update[nb_coords.to_1d(Tissue::grid_size)][conc_index] += amount_to_nb;
+        concs_to_update[nb_coords.to_1d(Tissue::grid_size)][conc_index] += amount_to_nb;
       }
     }
   }
-  _update_concentration_timer.stop();
 }
 
 void sample(int time_step, Tissue &tissue, ViewObject view_object) {
@@ -370,7 +359,6 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
   // color of red, going from faint to strong. From -127 to -1 are used to indicate tcell count,
   // with a color of blue, going from faint to strong. The last color (0) is used to indicate a dead
   // epicell (how do we make this a separate color?)
-  _sample_timer.start();
   // each grid point takes up a single char
   size_t tot_sz = tissue.get_num_grid_points();
   string fname = "samples/sample_" + view_object_str(view_object) + "_" + to_string(time_step) +
@@ -426,23 +414,49 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
   auto tot_bytes_written = reduce_one(bytes_written, op_fast_add, 0).wait();
   auto tot_grid_points_written = reduce_one(grid_points_written, op_fast_add, 0).wait();
   if (!rank_me()) assert(tot_grid_points_written == tissue.get_num_grid_points());
-  _sample_timer.stop();
 }
 
 void run_sim(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
+
+  IntermittentTimer generate_tcell_timer(__FILENAME__ + string(":") + "generate tcells");
+  IntermittentTimer update_tcell_timer(__FILENAME__ + string(":") + "update tcells");
+  IntermittentTimer update_epicell_timer(__FILENAME__ + string(":") + "update epicells");
+  IntermittentTimer update_concentration_timer(__FILENAME__ + string(":") +
+                                               "update concentrations");
+  IntermittentTimer compute_updates_timer(__FILENAME__ + string(":") + "compute updates");
+  IntermittentTimer dispatch_updates_timer(__FILENAME__ + string(":") + "dispatch updates");
+  IntermittentTimer add_new_actives_timer(__FILENAME__ + string(":") + "add new actives");
+  IntermittentTimer erase_inactive_timer(__FILENAME__ + string(":") + "erase inactive");
+  IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
+  IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
+
   auto start_t = NOW();
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 50;
   _sim_stats.init();
   SLOG("# datetime     elapsed step    ", _sim_stats.header(),
        "\t<max active points  load balance>\n");
+  // store the total concentration increment updates for target grid points
+  // chemokine, icytokine, virus
+  grid_to_conc_map_t concs_to_update;
+  // store the tcells to be updated (moved)
+  rank_to_tcell_map_t tcells_to_add;
+  unordered_map<int64_t, double> chemokines_cache;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
-    if (time_step > _options->tcell_initial_delay) generate_tcells(tissue, time_step);
-    // store the total concentration increment updates for target grid points
-    // chemokine, icytokine, virus
-    unordered_map<int64_t, array<double, 3>> nb_concentrations_to_update;
+
+    tcells_to_add.clear();
+    concs_to_update.clear();
+    chemokines_cache.clear();
+
+    if (time_step > _options->tcell_initial_delay) {
+      generate_tcell_timer.start();
+      generate_tcells(tissue, time_step, tcells_to_add);
+      generate_tcell_timer.stop();
+    }
+
+    compute_updates_timer.start();
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
@@ -450,34 +464,43 @@ void run_sim(Tissue &tissue) {
       upcxx::progress();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
-      if (grid_point->tcells && grid_point->tcells->size()) {
-        for (auto &tcell : *grid_point->tcells) {
+      update_tcell_timer.start();
+      if (grid_point->tcells.size()) {
+        for (auto &tcell : grid_point->tcells) {
           progress();
-          update_tcell(time_step, tissue, grid_point, tcell);
+          update_tcell(time_step, tissue, grid_point, tcell, tcells_to_add, chemokines_cache);
         }
+        // clear all tcells for this grid point - they'll be added back later if they don't move
+        grid_point->tcells.clear();
       }
+      update_tcell_timer.stop();
+      update_epicell_timer.start();
       update_epicell(time_step, tissue, grid_point);
+      update_epicell_timer.stop();
+      update_concentration_timer.start();
       update_concentration(time_step, grid_point, grid_point->chemokine,
                            _options->chemokine_decay_rate, _options->chemokine_diffusion_coef,
-                           nb_concentrations_to_update, 0);
+                           concs_to_update, 0);
       update_concentration(time_step, grid_point, grid_point->icytokine,
                            _options->icytokine_decay_rate, _options->icytokine_diffusion_coef,
-                           nb_concentrations_to_update, 1);
-      update_concentration(time_step, grid_point, grid_point->virus,
-                           _options->virus_decay_rate, _options->virus_diffusion_coef,
-                           nb_concentrations_to_update, 2);
+                           concs_to_update, 1);
+      update_concentration(time_step, grid_point, grid_point->virus, _options->virus_decay_rate,
+                           _options->virus_diffusion_coef, concs_to_update, 2);
+      update_concentration_timer.stop();
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
-    tissue.dispatch_concentrations(nb_concentrations_to_update);
     barrier();
-    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
-      chrono::duration<double> t_elapsed = NOW() - curr_t;
-      if (_options->verbose) curr_t = NOW();
-      SLOG_VERBOSE("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
-                   t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str(), "\n");
-    }
-    if (!_options->verbose &&
-        (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1)) {
+    compute_updates_timer.stop();
+
+    dispatch_updates_timer.start();
+    update_tcell_timer.start();
+    tissue.update_tcells(tcells_to_add);
+    update_tcell_timer.stop();
+    update_concentration_timer.start();
+    tissue.update_concentrations(concs_to_update);
+    update_concentration_timer.stop();
+
+    if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
       auto avg_actives = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() /
                          rank_n();
       auto max_actives = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
@@ -489,60 +512,63 @@ void run_sim(Tissue &tissue) {
            " >\n");
     }
     barrier();
+    dispatch_updates_timer.stop();
+
+    add_new_actives_timer.start();
     tissue.add_new_actives();
     barrier();
-    _switch_round_timer.start();
+    add_new_actives_timer.stop();
+
     _sim_stats.virus = 0;
     _sim_stats.chemokines = 0;
     _sim_stats.icytokines = 0;
+    erase_inactive_timer.start();
     vector<GridPoint *> to_erase = {};
     // iterate through all active local grid points and set changes
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
-      if (grid_point->tcells) grid_point->switch_tcells_vector();
-      if (grid_point->incoming_virus > 0) {
-        grid_point->virus += grid_point->incoming_virus;
-        if (grid_point->virus > 1) grid_point->virus = 1;
-        grid_point->incoming_virus = 0;
-      }
-      if (grid_point->incoming_chemokine > 0) {
-        grid_point->chemokine += grid_point->incoming_chemokine;
-        if (grid_point->chemokine > 1) grid_point->chemokine = 1;
-        grid_point->incoming_chemokine = 0;
-      }
-      if (grid_point->incoming_icytokine > 0) {
-        grid_point->icytokine += grid_point->incoming_icytokine;
-        if (grid_point->icytokine > 1) grid_point->icytokine = 1;
-        grid_point->incoming_icytokine = 0;
-      }
       _sim_stats.virus += grid_point->virus;
       _sim_stats.chemokines += grid_point->chemokine;
       _sim_stats.icytokines += grid_point->icytokine;
       if (!grid_point->is_active()) to_erase.push_back(grid_point);
     }
     for (auto grid_point : to_erase) tissue.erase_active(grid_point);
-    _switch_round_timer.stop();
     barrier();
-    if (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1) {
+    erase_inactive_timer.stop();
+
+    if (_options->sample_period > 0 && (time_step % _options->sample_period == 0 ||
+        time_step == _options->num_timesteps - 1)) {
+      sample_timer.start();
       sample(time_step, tissue, ViewObject::EPICELL);
       sample(time_step, tissue, ViewObject::TCELL_TISSUE);
       sample(time_step, tissue, ViewObject::VIRUS);
       sample(time_step, tissue, ViewObject::ICYTOKINE);
       sample(time_step, tissue, ViewObject::CHEMOKINE);
+      sample_timer.stop();
     }
+
+    log_timer.start();
     _sim_stats.log(time_step);
+    barrier();
+    log_timer.stop();
+
 #ifdef DEBUG
     DBG("check actives ", time_step, "\n");
     tissue.check_actives(time_step);
     barrier();
 #endif
   }
-  _generate_tcell_timer.done_all();
-  _update_tcell_timer.done_all();
-  _update_epicell_timer.done_all();
-  _update_concentration_timer.done_all();
-  _sample_timer.done_all();
-  _switch_round_timer.done_all();
+
+  generate_tcell_timer.done_all();
+  update_tcell_timer.done_all();
+  update_epicell_timer.done_all();
+  update_concentration_timer.done_all();
+  compute_updates_timer.done_all();
+  dispatch_updates_timer.done_all();
+  add_new_actives_timer.done_all();
+  erase_inactive_timer.done_all();
+  sample_timer.done_all();
+  log_timer.done_all();
 
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
