@@ -149,8 +149,7 @@ void add_tcell(Tissue &tissue, GridCoords coords, TCell tcell,
 }
 
 void generate_tcells(Tissue &tissue, int time_step) {
-  double ramp_up_factor = min(2.0 * ((double)time_step / _options->tcell_initial_delay - 1), 1.0);
-  double generation_rate = _options->tcell_generation_rate * ramp_up_factor;
+  double generation_rate = _options->tcell_generation_rate;
   int local_num_tcells = generation_rate / rank_n();
   int remaining_tcells = generation_rate - local_num_tcells * rank_n();
   if (rank_me() < remaining_tcells) local_num_tcells++;
@@ -254,15 +253,19 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
       if (highest_chemokine == 0) {
         auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
         selected_coords = grid_point->neighbors[rnd_nb_i];
-      } else {
-        DBG(time_step, ": tcell ", tcell->id, " at ", grid_point->coords.str(),
-            " highest nb chemokine at ", selected_coords.str(), " with ", highest_chemokine, "\n");
       }
-      DBG(time_step, ": tcell ", tcell->id, " at ", grid_point->coords.str(),
-          " attempting move to ", selected_coords.str(), "\n");
-      if (tissue.try_add_tissue_tcell(selected_coords, *tcell, false)) {
-        delete grid_point->tcell;
-        grid_point->tcell = nullptr;
+      // try a few times to find an open spot
+      for (int i = 0; i < 5; i++) {
+        if (tissue.try_add_tissue_tcell(selected_coords, *tcell, false)) {
+          delete grid_point->tcell;
+          grid_point->tcell = nullptr;
+          DBG(time_step, ": tcell ", tcell->id, " at ", grid_point->coords.str(), " move to ",
+              selected_coords.str(), "\n");
+          break;
+        }
+        // choose another location at random
+        auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
+        selected_coords = grid_point->neighbors[rnd_nb_i];
       }
     }
   }
