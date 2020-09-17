@@ -22,11 +22,10 @@ void GridCoords::set_rnd(shared_ptr<Random> rnd_gen, const GridCoords &grid_size
 }
 
 
-TCell::TCell(const string &id, GridCoords &coords) : id(id), prev_coords(coords) {
+TCell::TCell(const string &id, GridCoords &coords) : id(id) {
   vascular_period = _rnd_gen->get_normal_distr(_options->tcell_vascular_period);
   tissue_period = _rnd_gen->get_normal_distr(_options->tcell_tissue_period);
 }
-
 
 
 string EpiCell::str() {
@@ -92,8 +91,8 @@ string GridPoint::str() const {
 
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
-  return (virus > 0 || chemokine > 0 || icytokine > 0 || tcells.size() ||
-          (epicell && epicell->is_active()));
+  return ((epicell && epicell->is_active()) || virus > 0 || chemokine > 0 || icytokine > 0 ||
+          tcell);
 }
 
 
@@ -204,18 +203,8 @@ double Tissue::get_chemokine(GridCoords coords) {
       .wait();
 }
 
-future<double> Tissue::get_icytokine(GridCoords coords) {
-  return upcxx::rpc(
-             get_rank_for_grid_point(coords),
-             [](grid_points_t &grid_points, GridCoords coords) {
-               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-               return grid_point->icytokine;
-             },
-             grid_points, coords);
-}
-
-list<TCell> &Tissue::get_circulating_tcells() {
-  return *circulating_tcells;
+list<TCell> *Tissue::get_circulating_tcells() {
+  return &(*circulating_tcells);
 }
 
 void Tissue::add_circulating_tcell(GridCoords coords, TCell tcell) {
@@ -228,28 +217,21 @@ void Tissue::add_circulating_tcell(GridCoords coords, TCell tcell) {
       .wait();
 }
 
-void Tissue::update_tcells(rank_to_tcell_map_t &tcells_to_add) {
-  future<> fut_chain = make_future<>();
-  // dispatch all updates to each target rank in turn
-  for (auto& [target_rank, update_vector] : tcells_to_add) {
-    upcxx::progress();
-    auto fut = upcxx::rpc(
-        target_rank,
-        [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-           upcxx::view<pair<GridCoords, TCell>> update_vector) {
-          for (auto [coords, tcell] : update_vector) {
-            GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-            new_active_grid_points->insert({grid_point, true});
-            // add the tcell to the future tcells vector, i.e. not
-            // the one pointed to by tcells
-            grid_point->tcells.push_back(tcell);
-          }
-        },
-        grid_points, new_active_grid_points, upcxx::make_view(update_vector));
-    fut_chain = when_all(fut_chain, fut);
-    //fut.wait();
-  }
-  fut_chain.wait();
+bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate) {
+  return upcxx::rpc(
+             get_rank_for_grid_point(coords),
+             [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+                GridCoords coords, TCell tcell, bool extravasate) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
+               if (grid_point->tcell) return false;
+               if (extravasate && !_rnd_gen->trial_success(grid_point->icytokine)) return false;
+               new_active_grid_points->insert({grid_point, true});
+               tcell.moved = true;
+               grid_point->tcell = new TCell(tcell);
+               return true;
+             },
+             grid_points, new_active_grid_points, coords, tcell, extravasate)
+      .wait();
 }
 
 static int get_cube_block_dim(int64_t num_grid_points) {
@@ -402,10 +384,7 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
       GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
       unsigned char val = 0;
       if (view_object == ViewObject::TCELL_TISSUE) {
-        for (auto tcell : grid_point->tcells) {
-          val++;
-          if (val == 255) break;
-        }
+        if (grid_point->tcell) val = 255;
       } else if (view_object == ViewObject::EPICELL) {
         switch (grid_point->epicell->status) {
           case EpiCellStatus::HEALTHY: val = 0; break;

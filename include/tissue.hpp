@@ -85,9 +85,9 @@ struct TCell {
   int vascular_period = -1;
   int tissue_period = -1;
   int binding_period = -1;
-  GridCoords prev_coords;
+  bool moved = true;
 
-  UPCXX_SERIALIZED_FIELDS(id, vascular_period, tissue_period, binding_period, prev_coords);
+  UPCXX_SERIALIZED_FIELDS(id, vascular_period, tissue_period, binding_period, moved);
 
   TCell(const string &id, GridCoords &coords);
 
@@ -127,7 +127,7 @@ struct GridPoint {
   vector<GridCoords> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
-  vector<TCell> tcells;
+  TCell *tcell = nullptr;
   double virus = 0;
   double chemokine = 0;
   double icytokine = 0;
@@ -139,8 +139,6 @@ struct GridPoint {
 
 
 using grid_to_conc_map_t = unordered_map<int64_t, array<double, 3>>;
-using rank_to_tcell_map_t = unordered_map<intrank_t, vector<pair<GridCoords, TCell>>>;
-
 
 class Tissue {
  private:
@@ -184,15 +182,14 @@ class Tissue {
   void update_concentrations(grid_to_conc_map_t &concs_to_update);
 
   double get_chemokine(GridCoords coords);
-  upcxx::future<double> get_icytokine(GridCoords coords);
 
-  list<TCell> &get_circulating_tcells();
+  list<TCell> *get_circulating_tcells();
 
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
   void add_circulating_tcell(GridCoords coords, TCell tcell);
 
-  void update_tcells(rank_to_tcell_map_t &tcells_to_add);
+  bool try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate);
 
   void construct(GridCoords grid_size);
 
