@@ -27,6 +27,7 @@ using upcxx::rank_n;
 using std::unordered_map;
 using std::vector;
 using std::array;
+using std::list;
 using std::pair;
 using std::shared_ptr;
 using std::to_string;
@@ -81,14 +82,12 @@ struct GridCoords {
 
 struct TCell {
   string id;
-  bool in_vasculature = true;
   int vascular_period = -1;
   int tissue_period = -1;
   int binding_period = -1;
   GridCoords prev_coords;
 
-  UPCXX_SERIALIZED_FIELDS(id, in_vasculature, vascular_period, tissue_period, binding_period,
-                          prev_coords);
+  UPCXX_SERIALIZED_FIELDS(id, vascular_period, tissue_period, binding_period, prev_coords);
 
   TCell(const string &id, GridCoords &coords);
 
@@ -159,6 +158,8 @@ class Tissue {
   unordered_map<GridPoint*, bool> active_grid_points;
   unordered_map<GridPoint*, bool>::iterator active_grid_point_iter;
 
+  upcxx::dist_object<list<TCell>> circulating_tcells;
+
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
 
   vector<GridCoords> get_neighbors(GridCoords c, GridCoords grid_size);
@@ -168,7 +169,7 @@ class Tissue {
 
   int64_t tcells_generated = 0;
 
-  Tissue() : grid_points({}), new_active_grid_points({}) {}
+  Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcells({}) {};
 
   ~Tissue() {}
 
@@ -183,10 +184,13 @@ class Tissue {
   void update_concentrations(grid_to_conc_map_t &concs_to_update);
 
   double get_chemokine(GridCoords coords);
+  upcxx::future<double> get_icytokine(GridCoords coords);
 
-  int get_num_tcells(GridCoords coords);
+  list<TCell> &get_circulating_tcells();
 
   bool tcells_in_neighborhood(GridPoint *grid_point);
+
+  void add_circulating_tcell(GridCoords coords, TCell tcell);
 
   void update_tcells(rank_to_tcell_map_t &tcells_to_add);
 
@@ -211,6 +215,7 @@ class Tissue {
 #ifdef DEBUG
   void check_actives(int time_step);
 #endif
+
 };
 
 inline GridCoords Tissue::grid_size;

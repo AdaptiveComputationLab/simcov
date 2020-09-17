@@ -92,7 +92,8 @@ string GridPoint::str() const {
 
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
-  return (virus > 0 || chemokine > 0 || icytokine > 0 || tcells.size() > 0 || epicell->is_active());
+  return (virus > 0 || chemokine > 0 || icytokine > 0 || tcells.size() ||
+          (epicell && epicell->is_active()));
 }
 
 
@@ -200,6 +201,30 @@ double Tissue::get_chemokine(GridCoords coords) {
                return grid_point->chemokine;
              },
              grid_points, coords)
+      .wait();
+}
+
+future<double> Tissue::get_icytokine(GridCoords coords) {
+  return upcxx::rpc(
+             get_rank_for_grid_point(coords),
+             [](grid_points_t &grid_points, GridCoords coords) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
+               return grid_point->icytokine;
+             },
+             grid_points, coords);
+}
+
+list<TCell> &Tissue::get_circulating_tcells() {
+  return *circulating_tcells;
+}
+
+void Tissue::add_circulating_tcell(GridCoords coords, TCell tcell) {
+  upcxx::rpc(
+      get_rank_for_grid_point(coords),
+      [](dist_object<list<TCell>> &circulating_tcells, TCell tcell) {
+        circulating_tcells->push_back(tcell);
+      },
+      circulating_tcells, tcell)
       .wait();
 }
 
@@ -378,10 +403,8 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
       unsigned char val = 0;
       if (view_object == ViewObject::TCELL_TISSUE) {
         for (auto tcell : grid_point->tcells) {
-          if (!tcell.in_vasculature) {
-            val++;
-            if (val == 255) break;
-          }
+          val++;
+          if (val == 255) break;
         }
       } else if (view_object == ViewObject::EPICELL) {
         switch (grid_point->epicell->status) {
