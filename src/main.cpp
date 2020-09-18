@@ -207,7 +207,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
   tcell->tissue_period--;
   if (tcell->tissue_period == 0) {
     _sim_stats.tcells_tissue--;
-    DBG(time_step, ": tcell ", tcell.id, " dies in tissue at ", grid_point->coords.str(), "\n");
+    DBG(time_step, ": tcell ", tcell->id, " dies in tissue at ", grid_point->coords.str(), "\n");
     // not adding to a new location means this tcell is not preserved to the next time step
     delete grid_point->tcell;
     grid_point->tcell = nullptr;
@@ -217,7 +217,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
                                       grid_point->epicell->status == EpiCellStatus::INCUBATING)) {
     double binding_prob = grid_point->epicell->get_binding_prob();
     if (_rnd_gen->trial_success(binding_prob)) {
-      DBG(time_step, ": tcell ", tcell.id, " is inducing apoptosis at ", grid_point->coords.str(),
+      DBG(time_step, ": tcell ", tcell->id, " is inducing apoptosis at ", grid_point->coords.str(),
           "\n");
       if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) _sim_stats.expressing--;
       if (grid_point->epicell->status == EpiCellStatus::INCUBATING) _sim_stats.incubating--;
@@ -272,6 +272,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
 }
 
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
+  if (!grid_point->epicell->infectable) return;
   if (grid_point->epicell->status == EpiCellStatus::DEAD) return;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:

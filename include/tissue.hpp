@@ -106,6 +106,7 @@ class EpiCell {
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
+  bool infectable = false;
 
   EpiCell(int id) : id(id) {};
 

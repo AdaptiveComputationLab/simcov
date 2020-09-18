@@ -84,8 +84,8 @@ double EpiCell::get_binding_prob() {
 
 string GridPoint::str() const {
   ostringstream oss;
-  oss << "id " << id << ", xyz " << coords.str() << ", epi " << epicell->str() << ", v " << virus
-      << ", c " << chemokine << ", i " << icytokine;
+  oss << "id " << id << ", xyz " << coords.str() << ", epi " << (epicell ? epicell->str() : "none")
+      << ", v " << virus << ", c " << chemokine << ", i " << icytokine;
   return oss.str();
 }
 
@@ -341,10 +341,12 @@ void Tissue::construct(GridCoords grid_size) {
       assert(id < num_grid_points);
       GridCoords coords(id, Tissue::grid_size);
       auto neighbors = get_neighbors(coords, grid_size);
-      // FIXME: this is an epicall on every grid point.
+      // FIXME: this is an infectable epicall on every third grid point
       // They should be placed according to the underlying lung structure
       // (gaps, etc)
-      grid_points->emplace_back(GridPoint({id, coords, neighbors, new EpiCell(id)}));
+      EpiCell *epicell = new EpiCell(id);
+      if (!(id % 3)) epicell->infectable = true;
+      grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
       ostringstream oss;
@@ -387,12 +389,14 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
       if (view_object == ViewObject::TCELL_TISSUE) {
         if (grid_point->tcell) val = 255;
       } else if (view_object == ViewObject::EPICELL) {
-        switch (grid_point->epicell->status) {
-          case EpiCellStatus::HEALTHY: val = 0; break;
-          case EpiCellStatus::INCUBATING: val = 1; break;
-          case EpiCellStatus::EXPRESSING: val = 2; break;
-          case EpiCellStatus::APOPTOTIC: val = 3; break;
-          case EpiCellStatus::DEAD: val = 4; break;
+        if (grid_point->epicell) {
+          switch (grid_point->epicell->status) {
+            case EpiCellStatus::HEALTHY: val = 0; break;
+            case EpiCellStatus::INCUBATING: val = 1; break;
+            case EpiCellStatus::EXPRESSING: val = 2; break;
+            case EpiCellStatus::APOPTOTIC: val = 3; break;
+            case EpiCellStatus::DEAD: val = 4; break;
+          }
         }
       } else if (view_object == ViewObject::VIRUS) {
         if (grid_point->virus < 0) DIE("virus is negative ", grid_point->virus);
