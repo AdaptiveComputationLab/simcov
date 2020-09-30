@@ -13,10 +13,18 @@ from matplotlib import style
 style.use('fivethirtyeight')
 #style.use('qpaper')
 
+plt.rc('axes', titlesize=12)
+plt.rc('axes', labelsize=10)
+plt.rc('xtick', labelsize=8)
+plt.rc('ytick', labelsize=8)
+plt.rc('legend', fontsize=10)
+
+
 argparser = argparse.ArgumentParser()
 argparser.add_argument("-f", "--file", required=True, help="Stats file containing simcov results")
 #argparser.add_argument("-i", "--indexes", required=True, help="Comma-separated list of column indexes for plotting")
 argparser.add_argument("-o", "--output", required=True, help="Output file for images")
+argparser.add_argument("-c", "--compare-file", help="File for comparisons")
 options = argparser.parse_args()
 
 #columns = [int(i) for i in options.indexes.split(',')]
@@ -30,8 +38,8 @@ moddate = os.stat('cycells-test/simcov.stats')[8]
 unchanged = 0
 first = True
 
-def plot_subplot(ax, columns, title, log_scale=False):
-    graph_data = open('cycells-test/simcov.stats','r').read()
+def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
+    graph_data = open(fname,'r').read()
     lines = graph_data.split('\n')
     xs = []
     ys = []
@@ -49,8 +57,10 @@ def plot_subplot(ax, columns, title, log_scale=False):
         xs.append(float(fields[0]) / (24 * 60))
         for j in range(len(columns)):
             ys[j].append(float(fields[columns[j]]))
-    ax.clear()
+    if clear:
+        ax.clear()
     for j in range(len(columns)):
+        #print(title, labels[j], 'max ys', max(ys[j]))
         ax.plot(xs, ys[j], label=labels[j], lw=2)
     ax.legend()
     ax.set_xlabel('Time (days)')
@@ -67,9 +77,15 @@ def animate(i):
     if new_moddate != moddate or first:
         moddate = new_moddate
         first = False
-        plot_subplot(ax_epicells, [1, 2, 3], 'epithelial cells')
-        plot_subplot(ax_tcells, [5, 6], 'T cells')
-        plot_subplot(ax_virus, [9], 'viral load', log_scale=True)
+        plot_subplot('cycells-test/simcov.stats', ax_epicells, [1, 2, 3], 'epicells')
+        if options.compare_file != '':
+            plot_subplot(options.compare_file, ax_epicells, [2, 3, 5], 'epicells', clear=False)
+        plot_subplot('cycells-test/simcov.stats', ax_tcells, [5, 6], 'tcells')
+        if options.compare_file != '':
+            plot_subplot(options.compare_file, ax_tcells, [6, 7, 8], 'tcells', clear=False)
+        plot_subplot('cycells-test/simcov.stats', ax_virus, [9], 'virus')#, log_scale=True)
+        if options.compare_file != '':
+            plot_subplot(options.compare_file, ax_virus, [10], 'virus', clear=False)
     else:
         unchanged += 1
         if unchanged > 4:

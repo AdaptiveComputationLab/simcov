@@ -158,7 +158,7 @@ void Tissue::set_virus(GridCoords coords, double virus) {
       .wait();
 }
 
-void Tissue::update_concentrations(grid_to_conc_map_t &concs_to_update) {
+void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update) {
   // accumulate updates for each target rank
   unordered_map<intrank_t, vector<pair<GridCoords, array<double, 3>>>> target_rank_updates;
   for (auto& [coords_1d, concentrations] : concs_to_update) {
@@ -178,12 +178,11 @@ void Tissue::update_concentrations(grid_to_conc_map_t &concs_to_update) {
             auto &coords = update_pair.first;
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
             new_active_grid_points->insert({grid_point, true});
+            // just accumulate the concentrations. We will adjust them to be the average
+            // of all neighbors later
             grid_point->chemokine += update_pair.second[0];
-            if (grid_point->chemokine > 1) grid_point->chemokine = 1;
             grid_point->icytokine += update_pair.second[1];
-            if (grid_point->icytokine > 1) grid_point->icytokine = 1;
             grid_point->virus += update_pair.second[2];
-            if (grid_point->virus > 1) grid_point->virus = 1;
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));

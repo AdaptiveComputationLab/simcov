@@ -180,7 +180,7 @@ class Tissue {
 
   void set_virus(GridCoords coords, double virus);
 
-  void update_concentrations(grid_to_conc_map_t &concs_to_update);
+  void accumulate_concentrations(grid_to_conc_map_t &concs_to_update);
 
   double get_chemokine(GridCoords coords);
 

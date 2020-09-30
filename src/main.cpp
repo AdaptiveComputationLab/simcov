@@ -74,6 +74,10 @@ class SimStats {
     auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait() / num_grid_points;
     auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait() / num_grid_points;
     auto tot_virus = reduce_one(virus, op_fast_add, 0).wait() / num_grid_points;
+
+    // FIXME: hack for comparing to cycells
+    tot_virus *= 2.67e-16;
+
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
         << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
@@ -325,22 +329,30 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   }
 }
 
-void update_concentration(int time_step, GridPoint *grid_point, double &concentration,
-                          double decay_rate, double diffusion_coef,
-                          grid_to_conc_map_t &concs_to_update, int conc_index) {
-  if (concentration > 0) {
-    concentration -= decay_rate;
-    if (concentration < 0) concentration = 0;
-    if (concentration > 0) {
-      // diffuses, reducing concentration at source
-      double diffusion_amount = concentration * diffusion_coef;
-      concentration -= diffusion_amount;
-      // the amount diffusing spreads uniformly to all neighbors
-      double amount_to_nb = diffusion_amount / grid_point->neighbors.size();
-      for (auto &nb_coords : grid_point->neighbors) {
-        assert(nb_coords != grid_point->coords);
-        concs_to_update[nb_coords.to_1d(Tissue::grid_size)][conc_index] += amount_to_nb;
-      }
+void update_concentrations(GridPoint *grid_point, grid_to_conc_map_t &concs_to_update) {
+  // Concentrations diffuse, i.e. the concentration at any single grid point tends to the average of
+  // all the neighbors. So here we tell each neighbor what the current concentration is and later
+  // those neighbors will compute their own averages. We do it in this "push" manner because then we
+  // don't need to check the neighbors from every single grid point, but just push from ones with
+  // concentrations > 0 (i.e. active grid points)
+  if (grid_point->chemokine > 0) {
+    grid_point->chemokine -= _options->chemokine_decay_rate;
+    if (grid_point->chemokine < 0) grid_point->chemokine = 0;
+  }
+  if (grid_point->icytokine > 0) {
+    grid_point->icytokine -= _options->icytokine_decay_rate;
+    if (grid_point->icytokine < 0) grid_point->icytokine = 0;
+  }
+  if (grid_point->virus > 0) {
+    grid_point->virus -= _options->virus_decay_rate;
+    if (grid_point->virus < 0) grid_point->virus = 0;
+  }
+  if (grid_point->chemokine > 0 || grid_point->icytokine > 0 || grid_point->virus > 0) {
+    for (auto &nb_coords : grid_point->neighbors) {
+      assert(nb_coords != grid_point->coords);
+      concs_to_update[nb_coords.to_1d(Tissue::grid_size)][0] += grid_point->chemokine;
+      concs_to_update[nb_coords.to_1d(Tissue::grid_size)][1] += grid_point->icytokine;
+      concs_to_update[nb_coords.to_1d(Tissue::grid_size)][2] += grid_point->virus;
     }
   }
 }
@@ -440,6 +452,12 @@ void run_sim(Tissue &tissue) {
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
 
+
+    // FIXME: hack to match cycells, which assumes IgM present after 4 days causes 10x increase in
+    // viral decay
+    if (time_step == 4 * 24 * 60) _options->virus_decay_rate *= 3000;
+
+
     concs_to_update.clear();
     chemokines_cache.clear();
 
@@ -470,21 +488,15 @@ void run_sim(Tissue &tissue) {
       update_epicell(time_step, tissue, grid_point);
       update_epicell_timer.stop();
       update_concentration_timer.start();
-      update_concentration(time_step, grid_point, grid_point->chemokine,
-                           _options->chemokine_decay_rate, _options->chemokine_diffusion_coef,
-                           concs_to_update, 0);
-      update_concentration(time_step, grid_point, grid_point->icytokine,
-                           _options->icytokine_decay_rate, _options->icytokine_diffusion_coef,
-                           concs_to_update, 1);
-      update_concentration(time_step, grid_point, grid_point->virus, _options->virus_decay_rate,
-                           _options->virus_diffusion_coef, concs_to_update, 2);
+      update_concentrations(grid_point, concs_to_update);
       update_concentration_timer.stop();
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
     compute_updates_timer.stop();
     dispatch_updates_timer.start();
-    tissue.update_concentrations(concs_to_update);
+    tissue.accumulate_concentrations(concs_to_update);
+    barrier();
 
     if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
       auto avg_actives = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() /
@@ -513,9 +525,14 @@ void run_sim(Tissue &tissue) {
     // iterate through all active local grid points and set changes
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
-      _sim_stats.virus += grid_point->virus;
+      // set concentrations to be average of neighbors plus self
+      grid_point->chemokine /= (grid_point->neighbors.size() + 1);
+      grid_point->icytokine /= (grid_point->neighbors.size() + 1);
+      grid_point->virus /= (grid_point->neighbors.size() + 1);
+
       _sim_stats.chemokines += grid_point->chemokine;
       _sim_stats.icytokines += grid_point->icytokine;
+      _sim_stats.virus += grid_point->virus;
       if (!grid_point->is_active()) to_erase.push_back(grid_point);
     }
     for (auto grid_point : to_erase) tissue.erase_active(grid_point);
