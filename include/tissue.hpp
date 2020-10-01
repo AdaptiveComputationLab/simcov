@@ -129,9 +129,9 @@ struct GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
-  double virus = 0;
-  double chemokine = 0;
-  double icytokine = 0;
+  double virus = 0, nb_virus = 0;
+  double chemokine = 0, nb_chemokine = 0;
+  double icytokine = 0, nb_icytokine = 0;
 
   string str() const;
 
@@ -178,9 +178,9 @@ class Tissue {
 
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
 
-  void set_virus(GridCoords coords, double virus);
+  void set_infected_epicell(GridCoords coords);
 
-  void accumulate_concentrations(grid_to_conc_map_t &concs_to_update);
+  void accumulate_concentrations(grid_to_conc_map_t &concs_to_update, IntermittentTimer &timer);
 
   double get_chemokine(GridCoords coords);
 
@@ -206,7 +206,7 @@ class Tissue {
   void set_active(GridPoint *grid_point);
   void erase_active(GridPoint *grid_point);
 
-  void add_new_actives();
+  void add_new_actives(IntermittentTimer &timer);
 
   size_t get_num_actives();
 

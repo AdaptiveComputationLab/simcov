@@ -143,22 +143,23 @@ int64_t Tissue::get_num_local_grid_points() {
   return grid_points->size();
 }
 
-void Tissue::set_virus(GridCoords coords, double virus) {
+void Tissue::set_infected_epicell(GridCoords coords) {
   upcxx::rpc(
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-         GridCoords coords, double virus) {
+         GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-        DBG("inc incoming virus for grid point ", grid_point, " ", grid_point->str(), "\n");
+        DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
+        grid_point->epicell->infect();
         new_active_grid_points->insert({grid_point, true});
-        grid_point->virus += virus;
-        if (grid_point->virus > 1) grid_point->virus = 1;
       },
-      grid_points, new_active_grid_points, coords, virus)
+      grid_points, new_active_grid_points, coords)
       .wait();
 }
 
-void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update) {
+void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update,
+                                       IntermittentTimer &timer) {
+  timer.start();
   // accumulate updates for each target rank
   unordered_map<intrank_t, vector<pair<GridCoords, array<double, 3>>>> target_rank_updates;
   for (auto& [coords_1d, concentrations] : concs_to_update) {
@@ -180,15 +181,16 @@ void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update) {
             new_active_grid_points->insert({grid_point, true});
             // just accumulate the concentrations. We will adjust them to be the average
             // of all neighbors later
-            grid_point->chemokine += update_pair.second[0];
-            grid_point->icytokine += update_pair.second[1];
-            grid_point->virus += update_pair.second[2];
+            grid_point->nb_chemokine += update_pair.second[0];
+            grid_point->nb_icytokine += update_pair.second[1];
+            grid_point->nb_virus += update_pair.second[2];
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));
     fut_chain = when_all(fut_chain, fut);
   }
   fut_chain.wait();
+  timer.stop();
 }
 
 double Tissue::get_chemokine(GridCoords coords) {
@@ -223,7 +225,7 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                 GridCoords coords, TCell tcell, bool extravasate) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
-               if (extravasate && grid_point->icytokine == 0) return false;
+               if (extravasate && grid_point->icytokine < MIN_CONCENTRATION) return false;
                //if (extravasate && !_rnd_gen->trial_success(grid_point->icytokine)) return false;
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
@@ -340,11 +342,10 @@ void Tissue::construct(GridCoords grid_size) {
       assert(id < num_grid_points);
       GridCoords coords(id, Tissue::grid_size);
       auto neighbors = get_neighbors(coords, grid_size);
-      // FIXME: this is an infectable epicall on every third grid point
-      // They should be placed according to the underlying lung structure
+      // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
-      if (!(id % 3)) epicell->infectable = true;
+      epicell->infectable = true;
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
@@ -463,13 +464,15 @@ void Tissue::erase_active(GridPoint *grid_point) {
   active_grid_points.erase(grid_point);
 }
 
-void Tissue::add_new_actives() {
+void Tissue::add_new_actives(IntermittentTimer &timer) {
+  timer.start();
   DBG("add ", new_active_grid_points->size(), " new active grid points\n");
   for (auto elem : *new_active_grid_points) {
     DBG("inserting from new active ", elem.first, " ", elem.first->str(), "\n");
     active_grid_points.insert(elem);
   }
   new_active_grid_points->clear();
+  timer.stop();
 }
 
 size_t Tissue::get_num_actives() {

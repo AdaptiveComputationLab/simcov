@@ -123,19 +123,23 @@ class Options {
   vector<int> apoptosis_period{30, 3};   // 600
   vector<int> infection_period{80, 8};    // 1600
 
-  double infection_prob = 1.0;        // 0.145 gradient?
-  double virus_decay_rate = 0.14;           // 0.14
-  double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
-
   double tcell_generation_rate = 1;            // 21
   int tcell_initial_delay = 10;             // 7200
   vector<int> tcell_vascular_period{280, 28};  // 5760
   vector<int> tcell_tissue_period{6, 1};          // 120
   int tcell_binding_period = 1;        // 30
 
+  double infection_factor = 1.0;        // 0.145 gradient?
+
+  double virus_production = 0.02;      // 0.023
+  double virus_decay_rate = 0.14;           // 0.14
+  double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
+
+  double chemokine_production = 0.0005;
   double chemokine_decay_rate = 0.015;  // 0.023
   double chemokine_diffusion_coef = 0.7;  // 0.5 grid points in all directions
 
+  double icytokine_production = 0.011;
   double icytokine_decay_rate = 0.023;     // 0.023
   double icytokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
 
@@ -186,8 +190,12 @@ class Options {
         ->expected(2)
         ->check(CLI::Range(1, 50000))
         ->capture_default_str();
-    app.add_option("--infection-prob", infection_prob,
-                   "Probability of virus spreading to a neighbor")
+    app.add_option("--infection-factor", infection_factor,
+                   "Factor that virus concentration is multiplied by to get infection probability")
+//        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--virus-production", virus_production,
+                   "Amount of virus produced by expressing cell each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--virus-decay", virus_decay_rate,
@@ -198,17 +206,25 @@ class Options {
                    "Fraction of virus concentration that diffuses into neighbors each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--chemokine-decay", chemokine_decay_rate,
-                   "Amount by which chemokine concentration drops each time step")
+    app.add_option("--chemokine-production", chemokine_production,
+                   "Amount of chemokine produced by expressing cells each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--icytokine-decay", icytokine_decay_rate,
-                   "Amount by which inflamattory cytokine concentration drops each time step")
+    app.add_option("--chemokine-decay", chemokine_decay_rate,
+                   "Amount by which chemokine concentration drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--chemokine-diffusion", chemokine_diffusion_coef,
                    "Fraction of chemokine concentration that diffuses into all neighbors "
                    "each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--icytokine-production", icytokine_production,
+                   "Amount of inflammatory cytokine produced by infected cells each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--icytokine-decay", icytokine_decay_rate,
+                   "Amount by which inflamattory cytokine concentration drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--icytokine-diffusion", icytokine_diffusion_coef,

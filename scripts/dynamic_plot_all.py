@@ -38,6 +38,7 @@ moddate = os.stat('cycells-test/simcov.stats')[8]
 unchanged = 0
 first = True
 
+
 def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
     graph_data = open(fname,'r').read()
     lines = graph_data.split('\n')
@@ -61,10 +62,13 @@ def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
         ax.clear()
     for j in range(len(columns)):
         #print(title, labels[j], 'max ys', max(ys[j]))
-        ax.plot(xs, ys[j], label=labels[j], lw=2)
+        ax.plot(xs, ys[j], label=labels[j], lw=2, alpha=0.5)
     ax.legend()
     ax.set_xlabel('Time (days)')
     ax.set_title(title)
+    xticks = ax.get_xticks()
+    if xticks[1] - xticks[0] > 1:
+        ax.set_xticks(range(0, int(max(xs)) + 1, 1))
     if log_scale:
         ax.set_yscale('log')
     plt.tight_layout()
