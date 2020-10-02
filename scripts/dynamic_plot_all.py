@@ -30,9 +30,10 @@ options = argparser.parse_args()
 #columns = [int(i) for i in options.indexes.split(',')]
 
 fig = plt.figure(figsize=(12, 6))
-ax_epicells = fig.add_subplot(1, 3, 1)
-ax_tcells = fig.add_subplot(1, 3, 2)
-ax_virus = fig.add_subplot(1, 3, 3)
+ax_epicells = fig.add_subplot(2, 2, 1)
+ax_tcells = fig.add_subplot(2, 2, 2)
+ax_virus = fig.add_subplot(2, 2, 3)
+ax_chemo = fig.add_subplot(2, 2, 4)
 
 moddate = os.stat('cycells-test/simcov.stats')[8]
 unchanged = 0
@@ -81,15 +82,18 @@ def animate(i):
     if new_moddate != moddate or first:
         moddate = new_moddate
         first = False
-        plot_subplot('cycells-test/simcov.stats', ax_epicells, [1, 2, 3], 'epicells')
+        plot_subplot('cycells-test/simcov.stats', ax_epicells, [1, 2, 3], 'epicells', log_scale=True)
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_epicells, [2, 3, 5], 'epicells', clear=False)
-        plot_subplot('cycells-test/simcov.stats', ax_tcells, [5, 6], 'tcells')
+            plot_subplot(options.compare_file, ax_epicells, [2, 3, 5], 'epicells', clear=False, log_scale=True)
+        plot_subplot('cycells-test/simcov.stats', ax_tcells, [5, 6], 'tcells', log_scale=True)
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_tcells, [6, 7, 8], 'tcells', clear=False)
-        plot_subplot('cycells-test/simcov.stats', ax_virus, [9], 'virus')#, log_scale=True)
+            plot_subplot(options.compare_file, ax_tcells, [6, 7, 8], 'tcells', clear=False, log_scale=True)
+        plot_subplot('cycells-test/simcov.stats', ax_virus, [9], 'virus')
         if options.compare_file != '':
             plot_subplot(options.compare_file, ax_virus, [10], 'virus', clear=False)
+        plot_subplot('cycells-test/simcov.stats', ax_chemo, [7], 'chemokines')
+        if options.compare_file != '':
+            plot_subplot(options.compare_file, ax_chemo, [11], 'chemokines', clear=False)
     else:
         unchanged += 1
         if unchanged > 4:
