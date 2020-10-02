@@ -87,13 +87,13 @@ def animate(i):
             plot_subplot(options.compare_file, ax_epicells, [2, 3, 5], 'epicells', clear=False, log_scale=True)
         plot_subplot('cycells-test/simcov.stats', ax_tcells, [5, 6], 'tcells', log_scale=True)
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_tcells, [6, 7, 8], 'tcells', clear=False, log_scale=True)
+            plot_subplot(options.compare_file, ax_tcells, [6, 7], 'tcells', clear=False, log_scale=True)
         plot_subplot('cycells-test/simcov.stats', ax_virus, [9], 'virus')
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_virus, [10], 'virus', clear=False)
+            plot_subplot(options.compare_file, ax_virus, [9], 'virus', clear=False)
         plot_subplot('cycells-test/simcov.stats', ax_chemo, [7], 'chemokines')
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_chemo, [11], 'chemokines', clear=False)
+            plot_subplot(options.compare_file, ax_chemo, [10], 'chemokines', clear=False)
     else:
         unchanged += 1
         if unchanged > 4:

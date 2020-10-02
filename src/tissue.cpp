@@ -225,8 +225,8 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                 GridCoords coords, TCell tcell, bool extravasate) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
-               if (extravasate && grid_point->icytokine < MIN_CONCENTRATION) return false;
-               //if (extravasate && !_rnd_gen->trial_success(grid_point->icytokine)) return false;
+               //if (extravasate && grid_point->icytokine < MIN_CONCENTRATION) return false;
+               if (extravasate && !_rnd_gen->trial_success(grid_point->icytokine)) return false;
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
                grid_point->tcell = new TCell(tcell);

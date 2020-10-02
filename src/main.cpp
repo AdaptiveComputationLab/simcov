@@ -81,7 +81,11 @@ class SimStats {
     tot_icytokines /= norm_factor;
     tot_virus /= norm_factor;
     // hack to be same as CYCELLS - when doing 2D, assume a 20 micron z depth, i.e. 4x more than us
-    if (Tissue::grid_size.z == 1) tot_virus /= 4.0;
+    if (Tissue::grid_size.z == 1) {
+      tot_chemokines /= 4;
+      tot_icytokines /= 4;
+      tot_virus /= 4;
+    }
 
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
