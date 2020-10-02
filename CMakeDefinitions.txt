@@ -7,4 +7,3 @@ add_definitions(-DUSE_BYTELL)
 # min allowable concentration - set to 0 for anything below this
 add_definitions(-DMIN_CONCENTRATION=1e-6)
 
-#add_definitions(-DCYCELLS_VIRUS_STATS_ADJUST=7e-2)
