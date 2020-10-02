@@ -72,14 +72,15 @@ bool EpiCell::is_active() {
   return (status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
 }
 
-bool EpiCell::is_fully_incubated() {
-  assert(status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
-  return (incubation_period == 0);
-}
-
 double EpiCell::get_binding_prob() {
   return min((double)(initial_incubation_period - incubation_period) / initial_incubation_period,
              1.0);
+}
+
+bool EpiCell::producing_icytokines() {
+  // FIXME: a hack to match CyCells
+  if (infection_period < initial_incubation_period * 0.2) return true;
+  return false;
 }
 
 string GridPoint::str() const {
@@ -151,6 +152,7 @@ void Tissue::set_infected_epicell(GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
         grid_point->epicell->infect();
+        //grid_point->virus = _options->virus_production;
         new_active_grid_points->insert({grid_point, true});
       },
       grid_points, new_active_grid_points, coords)

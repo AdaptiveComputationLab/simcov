@@ -141,7 +141,8 @@ class Options {
   double icytokine_decay_rate = 0.023;     // 0.023
   double icytokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
 
-  double igm_factor = 200;
+  double igm_factor = 100;
+  int igm_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
@@ -229,7 +230,10 @@ class Options {
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--igm-factor", igm_factor,
-                   "IgM effect after 4 days; multiplier for virus decay")
+                   "Impact of IgM; multiplier for virus decay")
+        ->capture_default_str();
+    app.add_option("--igm-period", igm_period,
+                   "Number of time steps before IgM starts to be produced")
         ->capture_default_str();
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
                    "Number of tcells generated at each timestep")

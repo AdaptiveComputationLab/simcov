@@ -68,7 +68,7 @@ def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
     ax.set_xlabel('Time (days)')
     ax.set_title(title)
     xticks = ax.get_xticks()
-    if xticks[1] - xticks[0] > 1:
+    if xticks[1] - xticks[0] > 1 and len(xs) > 0:
         ax.set_xticks(range(0, int(max(xs)) + 1, 1))
     if log_scale:
         ax.set_yscale('log')

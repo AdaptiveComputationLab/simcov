@@ -114,10 +114,10 @@ class EpiCell {
 
   void infect();
   bool transition_to_expressing();
+  bool producing_icytokines();
   bool apoptosis_death();
   bool infection_death();
   bool is_active();
-  bool is_fully_incubated();
   double get_binding_prob();
 };
 
