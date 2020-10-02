@@ -4,8 +4,7 @@ add_definitions(-DCONFIG_USE_COLORS)
 # use the bytell hash table implementation
 add_definitions(-DUSE_BYTELL)
 
-add_definitions(-DMIN_CONCENTRATION=1.66e-23)
+# min allowable concentration - set to 0 for anything below this
+add_definitions(-DMIN_CONCENTRATION=1e-6)
 
-add_definitions(-DCYCELLS_HACKS)
-add_definitions(-DCYCELLS_VIRUS_STATS_ADJUST=1e-14)
-add_definitions(-DCYCELLS_IGM=90)
+#add_definitions(-DCYCELLS_VIRUS_STATS_ADJUST=7e-2)

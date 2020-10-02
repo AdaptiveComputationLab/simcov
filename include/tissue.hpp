@@ -172,7 +172,7 @@ class Tissue {
 
   ~Tissue() {}
 
-  int64_t get_num_grid_points();
+  static int64_t get_num_grid_points();
 
   int64_t get_num_local_grid_points();
 

@@ -129,8 +129,6 @@ class Options {
   vector<int> tcell_tissue_period{6, 1};          // 120
   int tcell_binding_period = 1;        // 30
 
-  double infection_factor = 1.0;        // 0.145 gradient?
-
   double virus_production = 0.02;      // 0.023
   double virus_decay_rate = 0.14;           // 0.14
   double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
@@ -142,6 +140,8 @@ class Options {
   double icytokine_production = 0.011;
   double icytokine_decay_rate = 0.023;     // 0.023
   double icytokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
+
+  double igm_factor = 200;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
@@ -190,10 +190,6 @@ class Options {
         ->expected(2)
         ->check(CLI::Range(1, 50000))
         ->capture_default_str();
-    app.add_option("--infection-factor", infection_factor,
-                   "Factor that virus concentration is multiplied by to get infection probability")
-//        ->check(CLI::Range(0.0, 1.0))
-        ->capture_default_str();
     app.add_option("--virus-production", virus_production,
                    "Amount of virus produced by expressing cell each time step")
         ->check(CLI::Range(0.0, 1.0))
@@ -231,6 +227,9 @@ class Options {
                    "Fraction of inflammatory cytokine concentration that diffuses into all "
                    "neighbors each time step")
         ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--igm-factor", igm_factor,
+                   "IgM effect after 4 days; multiplier for virus decay")
         ->capture_default_str();
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
                    "Number of tcells generated at each timestep")

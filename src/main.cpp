@@ -70,19 +70,22 @@ class SimStats {
     auto tot_dead = reduce_one(dead, op_fast_add, 0).wait();
     auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
     auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
-    int64_t num_grid_points = Tissue::grid_size.x * Tissue::grid_size.y * Tissue::grid_size.z;
-    auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait() / num_grid_points;
-    auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait() / num_grid_points;
-    auto tot_virus = reduce_one(virus, op_fast_add, 0).wait() / num_grid_points;
+    auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
+    auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait();
+    auto tot_virus = reduce_one(virus, op_fast_add, 0).wait();
 
-#ifdef CYCELLS_HACKS
-    tot_virus *= CYCELLS_VIRUS_STATS_ADJUST;
-#endif
+    // for reporting, adjust the total concentrations to be per mm^3 (volume)
+    // each point is 5 microns cubed
+    double norm_factor = pow(5000, 3.0) * Tissue::get_num_grid_points();
+    tot_chemokines /= norm_factor;
+    tot_icytokines /= norm_factor;
+    tot_virus /= norm_factor;
 
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
         << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
-        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_icytokines << "\t" << tot_virus;
+        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_icytokines << "\t"
+        << tot_virus;
     return oss.str();
   }
 
@@ -304,8 +307,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virus > 0) {
-        double infection_prob = grid_point->virus * _options->infection_factor;
-        if (_rnd_gen->trial_success(infection_prob)) {
+        if (_rnd_gen->trial_success(grid_point->virus)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
         }
@@ -400,6 +402,8 @@ void set_active_grid_points(Tissue &tissue) {
 
     _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.icytokines += grid_point->icytokine;
+    //if (grid_point->epicell->status != EpiCellStatus::DEAD &&
+    //    grid_point->epicell->status != EpiCellStatus::INCUBATING)
     _sim_stats.virus += grid_point->virus;
     if (!grid_point->is_active()) to_erase.push_back(grid_point);
   }
@@ -480,20 +484,15 @@ void run_sim(Tissue &tissue) {
   auto five_perc = _options->num_timesteps / 50;
   _sim_stats.init();
   SLOG("# datetime     elapsed step    ", _sim_stats.header(),
-       "\t<max active points  load balance>\n");
+       "\t<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, icytokine, virus
   grid_to_conc_map_t concs_to_update;
   unordered_map<int64_t, double> chemokines_cache;
+  bool warned_boundary = false;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
-
-#ifdef CYCELLS_HACKS
-    // hack to match cycells, which assumes IgM present after 4 days causes 10x increase in
-    // viral decay
-    if (time_step == 4 * 24 * 60) _options->virus_decay_rate *= CYCELLS_IGM;
-#endif
-
+    if (time_step == 4 * 24 * 60) _options->virus_decay_rate *= _options->igm_factor;
     concs_to_update.clear();
     chemokines_cache.clear();
     if (time_step > _options->tcell_initial_delay) {
@@ -505,6 +504,13 @@ void run_sim(Tissue &tissue) {
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
+      if (!warned_boundary && (!grid_point->coords.x || !grid_point->coords.y ||
+          (Tissue::grid_size.z > 1 && !grid_point->coords.z))) {
+        SWARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
+              " virus ", grid_point->virus, " chemokine ", grid_point->chemokine, " icytokine ",
+               grid_point->icytokine);
+        warned_boundary = true;
+      }
       DBG("updating grid point ", grid_point->str(), "\n");
       upcxx::progress();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
@@ -519,15 +525,15 @@ void run_sim(Tissue &tissue) {
     tissue.accumulate_concentrations(concs_to_update, accumulate_concentrations_timer);
     barrier();
     if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
-      auto avg_actives = (double)reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait() /
-                         rank_n();
+      auto num_actives = reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait();
+      auto perc_actives = 100.0 * num_actives / Tissue::get_num_grid_points();
       auto max_actives = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
+      auto load_balance = max_actives ? (double)num_actives / rank_n() / max_actives : 1;
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
            t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str());
-      SLOG(setprecision(3), fixed, "\t< ", max_actives, " ", (double)avg_actives / max_actives,
-           " >\n");
+      SLOG(setprecision(3), fixed, "\t< ", perc_actives, " ", load_balance, " >\n");
     }
     barrier();
     tissue.add_new_actives(add_new_actives_timer);
