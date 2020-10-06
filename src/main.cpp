@@ -83,8 +83,8 @@ class SimStats {
     // hack to be same as CYCELLS - when doing 2D, assume a 20 micron z depth, i.e. 4x more than
     // 5 micron grid point size
     if (Tissue::grid_size.z == 1) {
-      //tot_chemokines /= 4;
-      //tot_icytokines /= 4;
+      tot_chemokines /= 4;
+      tot_icytokines /= 4;
       tot_virus /= 4;
     }
 
@@ -313,6 +313,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     update_epicell_timer.stop();
     return;
   }
+  bool produce_virus = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virus > 0) {
@@ -327,20 +328,18 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         _sim_stats.incubating--;
         _sim_stats.expressing++;
       }
-      if (grid_point->epicell->producing_icytokines())
-        grid_point->icytokine = _options->icytokine_production;
+      // FIXME: according to the Levin paper, incubating cells don't produce cytokines
+      //if (grid_point->epicell->producing_icytokines())
+      //  grid_point->icytokine = min(grid_point->icytokine + _options->icytokine_production, 1.0);
+      //  //grid_point->icytokine = _options->icytokine_production;
       break;
     case EpiCellStatus::EXPRESSING:
       if (grid_point->epicell->infection_death()) {
         _sim_stats.dead++;
         _sim_stats.expressing--;
       } else {
-        grid_point->virus = _options->virus_production;
-        // FIXME: should we be adding this instead?
-        //grid_point->virus = min(grid_point->virus + _options->virus_production, 1);
-        grid_point->chemokine = _options->chemokine_production;
-        grid_point->icytokine = _options->icytokine_production;
-      }
+        produce_virus = true;
+    }
       break;
     case EpiCellStatus::APOPTOTIC:
       // FIXME: it seems that there is evidence that apoptotic cells also produce cytokines
@@ -350,15 +349,21 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         _sim_stats.dead++;
         _sim_stats.apoptotic--;
       } else {
-        // FIXME: should virions still be secreted at the same rate during apoptosis?
-        grid_point->virus = _options->virus_production;
-        // FIXME: should we be adding this instead?
-        //grid_point->virus = min(grid_point->virus + _options->virus_production, 1);
-        grid_point->chemokine = _options->chemokine_production;
-        grid_point->icytokine = _options->icytokine_production;
+        produce_virus = true;
       }
       break;
     default: break;
+  }
+  if (produce_virus) {
+    grid_point->virus = _options->virus_production;
+    // FIXME: should we be adding this instead?
+    grid_point->virus = min(grid_point->virus + _options->virus_production, MAX_CONCENTRATION);
+    //grid_point->chemokine = _options->chemokine_production;
+    //grid_point->icytokine = _options->icytokine_production;
+    grid_point->chemokine = min(grid_point->chemokine + _options->chemokine_production,
+                                MAX_CONCENTRATION);
+    grid_point->icytokine = min(grid_point->icytokine + _options->icytokine_production,
+                                MAX_CONCENTRATION);
   }
   update_epicell_timer.stop();
 }
@@ -396,7 +401,7 @@ void update_concentrations(GridPoint *grid_point, grid_to_conc_map_t &concs_to_u
 void set_concentration(double &conc, double &nb_conc, double diffusion, int num_nbs) {
   // set concentrations to be average of neighbors plus self
   conc = conc * (1.0 - diffusion) + diffusion * ((conc + nb_conc) / (num_nbs + 1));
-  conc = min(conc, 1.0);
+  conc = min(conc, MAX_CONCENTRATION);
   nb_conc = 0;
 }
 
@@ -413,7 +418,7 @@ void set_active_grid_points(Tissue &tissue) {
     set_concentration(grid_point->virus, grid_point->nb_virus,
                       _options->virus_diffusion_coef, grid_point->neighbors.size());
     // constrain maximum virus concentration in one grid point (only so much space)
-    grid_point->virus = min(grid_point->virus, _options->virus_production);
+    //grid_point->virus = min(grid_point->virus, _options->virus_production);
     _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.icytokines += grid_point->icytokine;
     _sim_stats.virus += grid_point->virus;
@@ -504,7 +509,6 @@ void run_sim(Tissue &tissue) {
   bool warned_boundary = false;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
-    // FIXME: this time period should be a parameter (4 days)
     if (time_step == _options->igm_period) _options->virus_decay_rate *= _options->igm_factor;
     concs_to_update.clear();
     chemokines_cache.clear();

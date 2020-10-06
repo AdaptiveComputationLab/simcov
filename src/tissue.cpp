@@ -152,7 +152,7 @@ void Tissue::set_infected_epicell(GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
         grid_point->epicell->infect();
-        //grid_point->virus = _options->virus_production;
+        //grid_point->virus = 0.01;//_options->virus_production;
         new_active_grid_points->insert({grid_point, true});
       },
       grid_points, new_active_grid_points, coords)
@@ -200,7 +200,8 @@ double Tissue::get_chemokine(GridCoords coords) {
              get_rank_for_grid_point(coords),
              [](grid_points_t &grid_points, GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-               return grid_point->chemokine;
+               // FIXME: both chemokine and icytokine produce chemokine gradient
+               return grid_point->chemokine + grid_point->icytokine;
              },
              grid_points, coords)
       .wait();
@@ -227,8 +228,13 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                 GridCoords coords, TCell tcell, bool extravasate) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
-               //if (extravasate && grid_point->icytokine < MIN_CONCENTRATION) return false;
-               if (extravasate && !_rnd_gen->trial_success(grid_point->icytokine)) return false;
+               if (extravasate) {
+                 /*
+                 if (!_rnd_gen->trial_success(grid_point->icytokine) &&
+                     !_rnd_gen->trial_success(grid_point->chemokine)) return false;
+                 */
+                 if (grid_point->icytokine + grid_point->chemokine < 1e-20) return false;
+               }
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
                grid_point->tcell = new TCell(tcell);

@@ -25,6 +25,7 @@ argparser.add_argument("-f", "--file", required=True, help="Stats file containin
 #argparser.add_argument("-i", "--indexes", required=True, help="Comma-separated list of column indexes for plotting")
 argparser.add_argument("-o", "--output", required=True, help="Output file for images")
 argparser.add_argument("-c", "--compare-file", help="File for comparisons")
+argparser.add_argument("-r", "--resolution", type=int, dest='resolution', help='Resolution: number of time steps per day') 
 options = argparser.parse_args()
 
 #columns = [int(i) for i in options.indexes.split(',')]
@@ -56,7 +57,7 @@ def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
         if line.startswith('#'):
             continue
         fields = line.split('\t')
-        xs.append(float(fields[0]) / (24 * 60))
+        xs.append(float(fields[0]) / options.resolution)
         for j in range(len(columns)):
             ys[j].append(float(fields[columns[j]]))
     if clear:
@@ -64,7 +65,7 @@ def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
     for j in range(len(columns)):
         #print(title, labels[j], 'max ys', max(ys[j]))
         ax.plot(xs, ys[j], label=labels[j], lw=2, alpha=0.5)
-    ax.legend()
+    ax.legend(loc='upper right')
     ax.set_xlabel('Time (days)')
     ax.set_title(title)
     xticks = ax.get_xticks()
