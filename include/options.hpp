@@ -137,10 +137,6 @@ class Options {
   double chemokine_decay_rate = 0.015;  // 0.023
   double chemokine_diffusion_coef = 0.7;  // 0.5 grid points in all directions
 
-  double icytokine_production = 0.011;
-  double icytokine_decay_rate = 0.023;     // 0.023
-  double icytokine_diffusion_coef = 0.5;  // 0.5 grid points in all directions
-
   double igm_factor = 100;
   int igm_period = 5760;
 
@@ -214,19 +210,6 @@ class Options {
     app.add_option("--chemokine-diffusion", chemokine_diffusion_coef,
                    "Fraction of chemokine concentration that diffuses into all neighbors "
                    "each time step")
-        ->check(CLI::Range(0.0, 1.0))
-        ->capture_default_str();
-    app.add_option("--icytokine-production", icytokine_production,
-                   "Amount of inflammatory cytokine produced by infected cells each time step")
-        ->check(CLI::Range(0.0, 1.0))
-        ->capture_default_str();
-    app.add_option("--icytokine-decay", icytokine_decay_rate,
-                   "Amount by which inflamattory cytokine concentration drops each time step")
-        ->check(CLI::Range(0.0, 1.0))
-        ->capture_default_str();
-    app.add_option("--icytokine-diffusion", icytokine_diffusion_coef,
-                   "Fraction of inflammatory cytokine concentration that diffuses into all "
-                   "neighbors each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--igm-factor", igm_factor,

@@ -17,7 +17,7 @@ plt.rc('axes', titlesize=12)
 plt.rc('axes', labelsize=10)
 plt.rc('xtick', labelsize=8)
 plt.rc('ytick', labelsize=8)
-plt.rc('legend', fontsize=10)
+plt.rc('legend', fontsize=8)
 
 
 argparser = argparse.ArgumentParser()
@@ -64,8 +64,8 @@ def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
         ax.clear()
     for j in range(len(columns)):
         #print(title, labels[j], 'max ys', max(ys[j]))
-        ax.plot(xs, ys[j], label=labels[j], lw=2, alpha=0.5)
-    ax.legend(loc='upper right')
+        ax.plot(xs, ys[j], label=labels[j][0:7], lw=2, alpha=0.5)
+    ax.legend(loc='upper left')
     ax.set_xlabel('Time (days)')
     ax.set_title(title)
     xticks = ax.get_xticks()
@@ -89,7 +89,7 @@ def animate(i):
         plot_subplot('cycells-test/simcov.stats', ax_tcells, [5, 6], 'tcells', log_scale=True)
         if options.compare_file != '':
             plot_subplot(options.compare_file, ax_tcells, [6, 7], 'tcells', clear=False, log_scale=True)
-        plot_subplot('cycells-test/simcov.stats', ax_virus, [9], 'virus')
+        plot_subplot('cycells-test/simcov.stats', ax_virus, [8], 'virus')
         if options.compare_file != '':
             plot_subplot(options.compare_file, ax_virus, [9], 'virus', clear=False)
         plot_subplot('cycells-test/simcov.stats', ax_chemo, [7], 'chemokines')

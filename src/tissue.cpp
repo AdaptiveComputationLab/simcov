@@ -77,23 +77,16 @@ double EpiCell::get_binding_prob() {
              1.0);
 }
 
-bool EpiCell::producing_icytokines() {
-  // FIXME: a hack to match CyCells
-  if (infection_period < initial_incubation_period * 0.2) return true;
-  return false;
-}
-
 string GridPoint::str() const {
   ostringstream oss;
   oss << "id " << id << ", xyz " << coords.str() << ", epi " << (epicell ? epicell->str() : "none")
-      << ", v " << virus << ", c " << chemokine << ", i " << icytokine;
+      << ", v " << virus << ", c " << chemokine;
   return oss.str();
 }
 
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
-  return ((epicell && epicell->is_active()) || virus > 0 || chemokine > 0 || icytokine > 0 ||
-          tcell);
+  return ((epicell && epicell->is_active()) || virus > 0 || chemokine > 0 || tcell);
 }
 
 
@@ -151,8 +144,7 @@ void Tissue::set_infected_epicell(GridCoords coords) {
          GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
-        //grid_point->epicell->infect();
-        grid_point->virus = 0.01;//_options->virus_production;
+        grid_point->virus = 0.01;
         new_active_grid_points->insert({grid_point, true});
       },
       grid_points, new_active_grid_points, coords)
@@ -163,7 +155,7 @@ void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update,
                                        IntermittentTimer &timer) {
   timer.start();
   // accumulate updates for each target rank
-  unordered_map<intrank_t, vector<pair<GridCoords, array<double, 3>>>> target_rank_updates;
+  unordered_map<intrank_t, vector<pair<GridCoords, array<double, 2>>>> target_rank_updates;
   for (auto& [coords_1d, concentrations] : concs_to_update) {
     upcxx::progress();
     GridCoords coords(coords_1d, Tissue::grid_size);
@@ -176,7 +168,7 @@ void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update,
     auto fut = upcxx::rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-           upcxx::view<pair<GridCoords, array<double, 3>>> update_vector) {
+           upcxx::view<pair<GridCoords, array<double, 2>>> update_vector) {
           for (auto &update_pair : update_vector) {
             auto &coords = update_pair.first;
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
@@ -184,13 +176,12 @@ void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update,
             // just accumulate the concentrations. We will adjust them to be the average
             // of all neighbors later
             grid_point->nb_chemokine += update_pair.second[0];
-            grid_point->nb_icytokine += update_pair.second[1];
-            grid_point->nb_virus += update_pair.second[2];
+            grid_point->nb_virus += update_pair.second[1];
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));
     fut_chain = when_all(fut_chain, fut);
-  }
+ }
   fut_chain.wait();
   timer.stop();
 }
@@ -200,8 +191,7 @@ double Tissue::get_chemokine(GridCoords coords) {
              get_rank_for_grid_point(coords),
              [](grid_points_t &grid_points, GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-               // FIXME: both chemokine and icytokine produce chemokine gradient
-               return grid_point->chemokine + grid_point->icytokine;
+               return grid_point->chemokine;
              },
              grid_points, coords)
       .wait();
@@ -228,10 +218,7 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                 GridCoords coords, TCell tcell, bool extravasate) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
-               if (extravasate) {
-                 if (!_rnd_gen->trial_success(grid_point->icytokine) &&
-                     !_rnd_gen->trial_success(grid_point->chemokine)) return false;
-               }
+               if (extravasate && !_rnd_gen->trial_success(grid_point->chemokine)) return false;
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
                grid_point->tcell = new TCell(tcell);
@@ -411,10 +398,6 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
         if (grid_point->chemokine < 0) DIE("chemokine is negative ", grid_point->chemokine);
         val = 255 * grid_point->chemokine;
         if (grid_point->chemokine > 0 && val == 0) val = 1;
-      } else if (view_object == ViewObject::ICYTOKINE) {
-        if (grid_point->icytokine < 0) DIE("icytokine is negative ", grid_point->icytokine);
-        val = 255 * grid_point->icytokine;
-        if (grid_point->icytokine > 0 && val == 0) val = 1;
       }
       grid_points_written++;
       buf[id - start_id] = val;

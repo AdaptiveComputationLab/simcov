@@ -32,7 +32,7 @@ using std::pair;
 using std::shared_ptr;
 using std::to_string;
 
-enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE, ICYTOKINE };
+enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE };
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
@@ -40,7 +40,6 @@ inline string view_object_str(ViewObject view_object) {
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";
     case ViewObject::CHEMOKINE: return "chemokine";
-    case ViewObject::ICYTOKINE: return "icytokine";
     default: DIE("Unknown view object");
   }
   return "";
@@ -114,7 +113,6 @@ class EpiCell {
 
   void infect();
   bool transition_to_expressing();
-  bool producing_icytokines();
   bool apoptosis_death();
   bool infection_death();
   bool is_active();
@@ -131,7 +129,6 @@ struct GridPoint {
   TCell *tcell = nullptr;
   double virus = 0, nb_virus = 0;
   double chemokine = 0, nb_chemokine = 0;
-  double icytokine = 0, nb_icytokine = 0;
 
   string str() const;
 
@@ -139,7 +136,7 @@ struct GridPoint {
 };
 
 
-using grid_to_conc_map_t = unordered_map<int64_t, array<double, 3>>;
+using grid_to_conc_map_t = unordered_map<int64_t, array<double, 2>>;
 
 class Tissue {
  private:

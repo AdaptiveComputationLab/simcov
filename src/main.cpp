@@ -39,7 +39,6 @@ class SimStats {
   int64_t tcells_vasculature = 0;
   int64_t tcells_tissue = 0;
   double chemokines = 0;
-  double icytokines = 0;
   double virus = 0;
 
   void init() {
@@ -58,7 +57,6 @@ class SimStats {
         << "tvas\t"
         << "ttis\t"
         << "chem\t"
-        << "icyt\t"
         << "virs";
     return oss.str();
   }
@@ -71,28 +69,24 @@ class SimStats {
     auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
     auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
     auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
-    auto tot_icytokines = reduce_one(icytokines, op_fast_add, 0).wait();
     auto tot_virus = reduce_one(virus, op_fast_add, 0).wait();
 
     // for reporting, adjust the total concentrations to be per mm^3 (volume)
     // each point is 5 microns cubed
     double norm_factor = pow(5000, 3.0) * Tissue::get_num_grid_points();
     tot_chemokines /= norm_factor;
-    tot_icytokines /= norm_factor;
     tot_virus /= norm_factor;
     // hack to be same as CYCELLS - when doing 2D, assume a 20 micron z depth, i.e. 4x more than
     // 5 micron grid point size
     if (Tissue::grid_size.z == 1) {
       tot_chemokines /= 4;
-      tot_icytokines /= 4;
       tot_virus /= 4;
     }
 
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
         << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
-        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_icytokines << "\t"
-        << tot_virus;
+        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_virus;
     return oss.str();
   }
 
@@ -328,10 +322,6 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         _sim_stats.incubating--;
         _sim_stats.expressing++;
       }
-      // FIXME: according to the Levin paper, incubating cells don't produce cytokines
-      //if (grid_point->epicell->producing_icytokines())
-      //  grid_point->icytokine = min(grid_point->icytokine + _options->icytokine_production, 1.0);
-      //  //grid_point->icytokine = _options->icytokine_production;
       break;
     case EpiCellStatus::EXPRESSING:
       if (grid_point->epicell->infection_death()) {
@@ -359,10 +349,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     // FIXME: should we be adding this instead?
     grid_point->virus = min(grid_point->virus + _options->virus_production, MAX_CONCENTRATION);
     //grid_point->chemokine = _options->chemokine_production;
-    //grid_point->icytokine = _options->icytokine_production;
     grid_point->chemokine = min(grid_point->chemokine + _options->chemokine_production,
-                                MAX_CONCENTRATION);
-    grid_point->icytokine = min(grid_point->icytokine + _options->icytokine_production,
                                 MAX_CONCENTRATION);
   }
   update_epicell_timer.stop();
@@ -379,20 +366,15 @@ void update_concentrations(GridPoint *grid_point, grid_to_conc_map_t &concs_to_u
     grid_point->chemokine *= (1.0 - _options->chemokine_decay_rate);
     if (grid_point->chemokine < MIN_CONCENTRATION) grid_point->chemokine = 0;
   }
-  if (grid_point->icytokine > 0) {
-    grid_point->icytokine *= (1.0 - _options->icytokine_decay_rate);
-    if (grid_point->icytokine < MIN_CONCENTRATION) grid_point->icytokine = 0;
-  }
   if (grid_point->virus > 0) {
     grid_point->virus *= (1.0 - _options->virus_decay_rate);
     if (grid_point->virus < MIN_CONCENTRATION) grid_point->virus = 0;
   }
-  if (grid_point->chemokine > 0 || grid_point->icytokine > 0 || grid_point->virus > 0) {
+  if (grid_point->chemokine > 0 || grid_point->virus > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
       assert(nb_coords != grid_point->coords);
       concs_to_update[nb_coords.to_1d(Tissue::grid_size)][0] += grid_point->chemokine;
-      concs_to_update[nb_coords.to_1d(Tissue::grid_size)][1] += grid_point->icytokine;
-      concs_to_update[nb_coords.to_1d(Tissue::grid_size)][2] += grid_point->virus;
+      concs_to_update[nb_coords.to_1d(Tissue::grid_size)][1] += grid_point->virus;
     }
   }
   update_concentration_timer.stop();
@@ -413,14 +395,11 @@ void set_active_grid_points(Tissue &tissue) {
        grid_point = tissue.get_next_active_grid_point()) {
     set_concentration(grid_point->chemokine, grid_point->nb_chemokine,
                       _options->chemokine_diffusion_coef, grid_point->neighbors.size());
-    set_concentration(grid_point->icytokine, grid_point->nb_icytokine,
-                      _options->icytokine_diffusion_coef, grid_point->neighbors.size());
     set_concentration(grid_point->virus, grid_point->nb_virus,
                       _options->virus_diffusion_coef, grid_point->neighbors.size());
     // constrain maximum virus concentration in one grid point (only so much space)
     //grid_point->virus = min(grid_point->virus, _options->virus_production);
     _sim_stats.chemokines += grid_point->chemokine;
-    _sim_stats.icytokines += grid_point->icytokine;
     _sim_stats.virus += grid_point->virus;
     if (!grid_point->is_active()) to_erase.push_back(grid_point);
   }
@@ -463,7 +442,6 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
     case ViewObject::VIRUS: header_oss << "virus"; break;
     case ViewObject::TCELL_TISSUE: header_oss << "t-cell-tissue"; break;
     case ViewObject::EPICELL: header_oss << "epicell"; break;
-    case ViewObject::ICYTOKINE: header_oss << "icytokine"; break;
     case ViewObject::CHEMOKINE: header_oss << "chemokine"; break;
     default: SDIE("unknown view object");
   }
@@ -503,7 +481,7 @@ void run_sim(Tissue &tissue) {
   SLOG("# datetime     elapsed step    ", _sim_stats.header(),
        "\t<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
-  // chemokine, icytokine, virus
+  // chemokine, virus
   grid_to_conc_map_t concs_to_update;
   unordered_map<int64_t, double> chemokines_cache;
   bool warned_boundary = false;
@@ -524,8 +502,7 @@ void run_sim(Tissue &tissue) {
       if (!warned_boundary && (!grid_point->coords.x || !grid_point->coords.y ||
           (Tissue::grid_size.z > 1 && !grid_point->coords.z))) {
         SWARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
-              " virus ", grid_point->virus, " chemokine ", grid_point->chemokine, " icytokine ",
-               grid_point->icytokine);
+              " virus ", grid_point->virus, " chemokine ", grid_point->chemokine);
         warned_boundary = true;
       }
       DBG("updating grid point ", grid_point->str(), "\n");
@@ -558,7 +535,6 @@ void run_sim(Tissue &tissue) {
 
     _sim_stats.virus = 0;
     _sim_stats.chemokines = 0;
-    _sim_stats.icytokines = 0;
     set_active_grid_points(tissue);
     barrier();
 
@@ -568,7 +544,6 @@ void run_sim(Tissue &tissue) {
       sample(time_step, tissue, ViewObject::EPICELL);
       sample(time_step, tissue, ViewObject::TCELL_TISSUE);
       sample(time_step, tissue, ViewObject::VIRUS);
-      sample(time_step, tissue, ViewObject::ICYTOKINE);
       sample(time_step, tissue, ViewObject::CHEMOKINE);
       sample_timer.stop();
     }
