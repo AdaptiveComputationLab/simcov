@@ -122,7 +122,7 @@ void initial_infection(Tissue &tissue) {
   if (_options->infection_coords[0] != -1) {
     if (!rank_me()) {
       local_num_infections = 1;
-      tissue.set_infected_epicell({_options->infection_coords[0], _options->infection_coords[1],
+      tissue.set_initial_infection({_options->infection_coords[0], _options->infection_coords[1],
                                    _options->infection_coords[2]});
     } else {
       local_num_infections = 0;
@@ -139,7 +139,7 @@ void initial_infection(Tissue &tissue) {
       progbar.update();
       GridCoords coords(_rnd_gen, Tissue::grid_size);
       DBG("infection: ", coords.str() + "\n");
-      tissue.set_infected_epicell(coords);
+      tissue.set_initial_infection(coords);
       upcxx::progress();
     }
     progbar.done();
@@ -311,7 +311,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virus > 0) {
-        if (_rnd_gen->trial_success(grid_point->virus)) {
+        if (_rnd_gen->trial_success(grid_point->virus * _options->infectivity)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
         }

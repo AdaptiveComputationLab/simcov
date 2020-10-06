@@ -4,7 +4,6 @@ add_definitions(-DCONFIG_USE_COLORS)
 # use the bytell hash table implementation
 add_definitions(-DUSE_BYTELL)
 
-# min allowable concentration - set to 0 for anything below this
-add_definitions(-DMIN_CONCENTRATION=1e-9)
+add_definitions(-DMIN_CONCENTRATION=1e-6)
 add_definitions(-DMAX_CONCENTRATION=1.0)
 

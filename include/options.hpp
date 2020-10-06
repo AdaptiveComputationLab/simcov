@@ -111,31 +111,33 @@ class Options {
   }
 
  public:
-  vector<int64_t> dimensions{50, 50, 1};  // 2000,2000,1
+  vector<int64_t> dimensions{50, 50, 1};
   // each time step should be about 1 minute, so one day = 1440 time steps
-  int num_timesteps = 200;   // 14400
+  int num_timesteps = 200;
   int num_infections = 3;
 
   vector<int64_t> infection_coords{-1, -1, -1};
+  double initial_infection = 0.01;
 
   // these periods are normally distributed with mean and stddev
-  vector<int> incubation_period{30, 3};  // 600, 60
-  vector<int> apoptosis_period{30, 3};   // 600
-  vector<int> infection_period{80, 8};    // 1600
+  vector<int> incubation_period{30, 3};
+  vector<int> apoptosis_period{30, 3};
+  vector<int> infection_period{80, 8};
 
-  double tcell_generation_rate = 1;            // 21
-  int tcell_initial_delay = 10;             // 7200
-  vector<int> tcell_vascular_period{280, 28};  // 5760
-  vector<int> tcell_tissue_period{6, 1};          // 120
-  int tcell_binding_period = 1;        // 30
+  double tcell_generation_rate = 1;
+  int tcell_initial_delay = 10;
+  vector<int> tcell_vascular_period{280, 28};
+  vector<int> tcell_tissue_period{6, 1};
+  int tcell_binding_period = 1;
 
-  double virus_production = 0.02;      // 0.023
-  double virus_decay_rate = 0.14;           // 0.14
-  double virus_diffusion_coef = 1.0;        // 1 grid point in all directions
+  double infectivity = 0.008;
+  double virus_production = 0.02;
+  double virus_decay_rate = 0.14;
+  double virus_diffusion_coef = 1.0;
 
   double chemokine_production = 0.0005;
-  double chemokine_decay_rate = 0.015;  // 0.023
-  double chemokine_diffusion_coef = 0.7;  // 0.5 grid points in all directions
+  double chemokine_decay_rate = 0.015;
+  double chemokine_diffusion_coef = 0.7;
 
   double igm_factor = 100;
   int igm_period = 5760;
@@ -168,6 +170,10 @@ class Options {
         ->delimiter(',')
         ->expected(3)
         ->capture_default_str();
+    app.add_option("--initial-infection", initial_infection,
+                   "Level of virus at initial infection locations")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
     app.add_option(
            "--incubation-period", incubation_period,
            "Number of time steps to expressing virus after cell is infected (average:stddev)")
@@ -186,6 +192,10 @@ class Options {
         ->delimiter(':')
         ->expected(2)
         ->check(CLI::Range(1, 50000))
+        ->capture_default_str();
+    app.add_option("--infectivity", infectivity,
+                   "Factor multiplied by virus concentration to determine probability of infection")
+        ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--virus-production", virus_production,
                    "Amount of virus produced by expressing cell each time step")

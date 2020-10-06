@@ -41,7 +41,8 @@ class Random {
   }
 
   bool trial_success(double thres) {
-    assert(thres >= 0 && thres <= 1);
+    assert(thres >= 0);
+    if (thres > 1) return true;
     if (thres == 0) return false;
     return (get_prob() <= thres);
   }

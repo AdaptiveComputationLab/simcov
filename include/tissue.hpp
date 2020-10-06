@@ -175,7 +175,7 @@ class Tissue {
 
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
 
-  void set_infected_epicell(GridCoords coords);
+  void set_initial_infection(GridCoords coords);
 
   void accumulate_concentrations(grid_to_conc_map_t &concs_to_update, IntermittentTimer &timer);
 

@@ -137,14 +137,14 @@ int64_t Tissue::get_num_local_grid_points() {
   return grid_points->size();
 }
 
-void Tissue::set_infected_epicell(GridCoords coords) {
+void Tissue::set_initial_infection(GridCoords coords) {
   upcxx::rpc(
       get_rank_for_grid_point(coords),
       [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
          GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
-        grid_point->virus = 0.01;
+        grid_point->virus = _options->initial_infection;
         new_active_grid_points->insert({grid_point, true});
       },
       grid_points, new_active_grid_points, coords)
