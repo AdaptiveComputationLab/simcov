@@ -151,8 +151,8 @@ void Tissue::set_infected_epicell(GridCoords coords) {
          GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
-        grid_point->epicell->infect();
-        //grid_point->virus = 0.01;//_options->virus_production;
+        //grid_point->epicell->infect();
+        grid_point->virus = 0.01;//_options->virus_production;
         new_active_grid_points->insert({grid_point, true});
       },
       grid_points, new_active_grid_points, coords)
@@ -229,11 +229,8 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
                if (extravasate) {
-                 /*
                  if (!_rnd_gen->trial_success(grid_point->icytokine) &&
                      !_rnd_gen->trial_success(grid_point->chemokine)) return false;
-                 */
-                 if (grid_point->icytokine + grid_point->chemokine < 1e-20) return false;
                }
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
