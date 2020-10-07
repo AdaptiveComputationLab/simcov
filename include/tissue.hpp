@@ -24,7 +24,6 @@ extern shared_ptr<Options> _options;
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-using std::unordered_map;
 using std::vector;
 using std::array;
 using std::list;
@@ -127,7 +126,7 @@ struct GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
-  double virus = 0, nb_virus = 0;
+  int64_t virions = 0, nb_virions = 0;
   double chemokine = 0, nb_chemokine = 0;
 
   string str() const;
@@ -135,8 +134,6 @@ struct GridPoint {
   bool is_active();
 };
 
-
-using grid_to_conc_map_t = unordered_map<int64_t, array<double, 2>>;
 
 class Tissue {
  private:
@@ -148,11 +145,11 @@ class Tissue {
   vector<GridPoint>::iterator grid_point_iter;
 
   // keeps track of all grid points that need to be updated
-  using new_active_grid_points_t = upcxx::dist_object<unordered_map<GridPoint*, bool>>;
+  using new_active_grid_points_t = upcxx::dist_object<HASH_TABLE<GridPoint*, bool>>;
   new_active_grid_points_t new_active_grid_points;
 
-  unordered_map<GridPoint*, bool> active_grid_points;
-  unordered_map<GridPoint*, bool>::iterator active_grid_point_iter;
+  HASH_TABLE<GridPoint*, bool> active_grid_points;
+  HASH_TABLE<GridPoint*, bool>::iterator active_grid_point_iter;
 
   upcxx::dist_object<list<TCell>> circulating_tcells;
 
@@ -169,6 +166,8 @@ class Tissue {
 
   ~Tissue() {}
 
+  void construct(GridCoords grid_size);
+
   static int64_t get_num_grid_points();
 
   int64_t get_num_local_grid_points();
@@ -177,7 +176,11 @@ class Tissue {
 
   void set_initial_infection(GridCoords coords);
 
-  void accumulate_concentrations(grid_to_conc_map_t &concs_to_update, IntermittentTimer &timer);
+  void accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_update,
+                             IntermittentTimer &timer);
+
+  void accumulate_virions(HASH_TABLE<int64_t, int64_t> &virions_to_update,
+                          IntermittentTimer &timer);
 
   double get_chemokine(GridCoords coords);
 
@@ -188,11 +191,6 @@ class Tissue {
   void add_circulating_tcell(GridCoords coords, TCell tcell);
 
   bool try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate);
-
-  void construct(GridCoords grid_size);
-
-  pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str,
-                                   ViewObject view_object);
 
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
@@ -210,6 +208,9 @@ class Tissue {
 #ifdef DEBUG
   void check_actives(int time_step);
 #endif
+
+  pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str,
+                                   ViewObject view_object);
 
 };
 

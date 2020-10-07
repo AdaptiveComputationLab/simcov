@@ -82,13 +82,13 @@ double EpiCell::get_binding_prob() {
 string GridPoint::str() const {
   ostringstream oss;
   oss << "id " << id << ", xyz " << coords.str() << ", epi " << (epicell ? epicell->str() : "none")
-      << ", v " << virus << ", c " << chemokine;
+      << ", v " << virions << ", c " << chemokine;
   return oss.str();
 }
 
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
-  return ((epicell && epicell->is_active()) || virus > 0 || chemokine > 0 || tcell);
+  return ((epicell && epicell->is_active()) || virions || chemokine > 0 || tcell);
 }
 
 
@@ -146,22 +146,22 @@ void Tissue::set_initial_infection(GridCoords coords) {
          GridCoords coords) {
         GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
         DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
-        grid_point->virus = _options->initial_infection;
+        grid_point->virions = _options->initial_infection;
         new_active_grid_points->insert({grid_point, true});
       },
       grid_points, new_active_grid_points, coords)
       .wait();
 }
 
-void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update,
-                                       IntermittentTimer &timer) {
+void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_update,
+                                   IntermittentTimer &timer) {
   timer.start();
   // accumulate updates for each target rank
-  unordered_map<intrank_t, vector<pair<GridCoords, array<double, 2>>>> target_rank_updates;
-  for (auto& [coords_1d, concentrations] : concs_to_update) {
+  HASH_TABLE<intrank_t, vector<pair<GridCoords, double>>> target_rank_updates;
+  for (auto& [coords_1d, chemokines] : chemokines_to_update) {
     upcxx::progress();
     GridCoords coords(coords_1d, Tissue::grid_size);
-    target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, concentrations});
+    target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, chemokines});
   }
   future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
@@ -170,15 +170,44 @@ void Tissue::accumulate_concentrations(grid_to_conc_map_t &concs_to_update,
     auto fut = upcxx::rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-           upcxx::view<pair<GridCoords, array<double, 2>>> update_vector) {
-          for (auto &update_pair : update_vector) {
-            auto &coords = update_pair.first;
+           upcxx::view<pair<GridCoords, double>> update_vector) {
+          for (auto &[coords, chemokine] : update_vector) {
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
             new_active_grid_points->insert({grid_point, true});
             // just accumulate the concentrations. We will adjust them to be the average
             // of all neighbors later
-            grid_point->nb_chemokine += update_pair.second[0];
-            grid_point->nb_virus += update_pair.second[1];
+            grid_point->nb_chemokine += chemokine;
+          }
+        },
+        grid_points, new_active_grid_points, upcxx::make_view(update_vector));
+    fut_chain = when_all(fut_chain, fut);
+ }
+  fut_chain.wait();
+  timer.stop();
+}
+
+void Tissue::accumulate_virions(HASH_TABLE<int64_t, int64_t> &virions_to_update,
+                                IntermittentTimer &timer) {
+  timer.start();
+  // accumulate updates for each target rank
+  HASH_TABLE<intrank_t, vector<pair<GridCoords, int64_t>>> target_rank_updates;
+  for (auto& [coords_1d, virions] : virions_to_update) {
+    upcxx::progress();
+    GridCoords coords(coords_1d, Tissue::grid_size);
+    target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, virions});
+  }
+  future<> fut_chain = make_future<>();
+  // dispatch all updates to each target rank in turn
+  for (auto& [target_rank, update_vector] : target_rank_updates) {
+    upcxx::progress();
+    auto fut = upcxx::rpc(
+        target_rank,
+        [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+           upcxx::view<pair<GridCoords, int64_t>> update_vector) {
+          for (auto &[coords, virions] : update_vector) {
+            GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
+            new_active_grid_points->insert({grid_point, true});
+            grid_point->nb_virions += virions;
           }
         },
         grid_points, new_active_grid_points, upcxx::make_view(update_vector));
@@ -393,9 +422,9 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
           }
         }
       } else if (view_object == ViewObject::VIRUS) {
-        if (grid_point->virus < 0) DIE("virus is negative ", grid_point->virus);
-        val = 255 * grid_point->virus;
-        if (grid_point->virus > 0 && val == 0) val = 1;
+        if (grid_point->virions < 0) DIE("virions are negative ", grid_point->virions);
+        val = 255 * grid_point->virions;
+        if (grid_point->virions > 0 && val == 0) val = 1;
       } else if (view_object == ViewObject::CHEMOKINE) {
         if (grid_point->chemokine < 0) DIE("chemokine is negative ", grid_point->chemokine);
         val = 255 * grid_point->chemokine;

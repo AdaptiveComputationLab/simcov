@@ -117,7 +117,7 @@ class Options {
   int num_infections = 3;
 
   vector<int64_t> infection_coords{-1, -1, -1};
-  double initial_infection = 0.01;
+  int initial_infection = 10000;
 
   // these periods are normally distributed with mean and stddev
   vector<int> incubation_period{30, 3};
@@ -131,9 +131,9 @@ class Options {
   int tcell_binding_period = 1;
 
   double infectivity = 0.008;
-  double virus_production = 0.02;
-  double virus_decay_rate = 0.14;
-  double virus_diffusion_coef = 1.0;
+  int virion_production = 2;
+  double virion_decay_rate = 0.14;
+  double virion_diffusion_coef = 1.0;
 
   double chemokine_production = 0.0005;
   double chemokine_decay_rate = 0.015;
@@ -171,12 +171,11 @@ class Options {
         ->expected(3)
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
-                   "Level of virus at initial infection locations")
-        ->check(CLI::Range(0.0, 1.0))
+                   "Number of virions at initial infection locations")
         ->capture_default_str();
     app.add_option(
            "--incubation-period", incubation_period,
-           "Number of time steps to expressing virus after cell is infected (average:stddev)")
+           "Number of time steps to expressing virions after cell is infected (average:stddev)")
         ->delimiter(':')
         ->expected(2)
         ->check(CLI::Range(1, 50000))
@@ -194,19 +193,18 @@ class Options {
         ->check(CLI::Range(1, 50000))
         ->capture_default_str();
     app.add_option("--infectivity", infectivity,
-                   "Factor multiplied by virus concentration to determine probability of infection")
+                   "Factor multiplied by number of virions to determine probability of infection")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--virus-production", virus_production,
-                   "Amount of virus produced by expressing cell each time step")
+    app.add_option("--virion-production", virion_production,
+                   "Number of virions produced by expressing cell each time step")
+        ->capture_default_str();
+    app.add_option("--virion-decay", virion_decay_rate,
+                   "Fraction by which virion count drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--virus-decay", virus_decay_rate,
-                   "Amount by which virus concentration drops each time step")
-        ->check(CLI::Range(0.0, 1.0))
-        ->capture_default_str();
-    app.add_option("--virus-diffusion", virus_diffusion_coef,
-                   "Fraction of virus concentration that diffuses into neighbors each time step")
+    app.add_option("--virion-diffusion", virion_diffusion_coef,
+                   "Fraction of virions that diffuse into all neighbors each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--chemokine-production", chemokine_production,
@@ -223,7 +221,7 @@ class Options {
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--igm-factor", igm_factor,
-                   "Impact of IgM; multiplier for virus decay")
+                   "Impact of IgM; multiplier for virion decay")
         ->capture_default_str();
     app.add_option("--igm-period", igm_period,
                    "Number of time steps before IgM starts to be produced")
@@ -280,6 +278,10 @@ class Options {
       output_dir_opt->default_val(output_dir);
     }
 
+    if (virion_decay_rate * igm_factor > 1.0) {
+      SWARN("virion-decay * igm_factor > 1");
+      return false;
+    }
     if (infection_coords[0] != -1 && num_infections > 1) {
       num_infections = 1;
       SLOG("Initial infection coords specified, setting number of infection points to 1\n");
