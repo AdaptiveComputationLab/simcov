@@ -242,8 +242,6 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
   }
   if (tcell->binding_period == -1 && (grid_point->epicell->status == EpiCellStatus::EXPRESSING ||
                                       grid_point->epicell->status == EpiCellStatus::INCUBATING)) {
-    // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
-    // incubation period, but is always 1 for expressing cells
     double binding_prob = grid_point->epicell->get_binding_prob();
     if (_rnd_gen->trial_success(binding_prob)) {
       DBG(time_step, ": tcell ", tcell->id, " is inducing apoptosis at ", grid_point->coords.str(),

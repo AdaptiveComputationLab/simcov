@@ -73,6 +73,8 @@ bool EpiCell::is_active() {
 }
 
 double EpiCell::get_binding_prob() {
+  // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
+  // incubation period, but is always 1 for expressing cells
   return min((double)(initial_incubation_period - incubation_period) / initial_incubation_period,
              1.0);
 }

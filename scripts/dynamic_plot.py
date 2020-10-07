@@ -83,10 +83,10 @@ def animate(i):
     if new_moddate != moddate or first:
         moddate = new_moddate
         first = False
-        plot_subplot('cycells-test/simcov.stats', ax_epicells, [1, 2, 3], 'epicells', log_scale=True)
+        plot_subplot('cycells-test/simcov.stats', ax_epicells, [1, 2, 3, 4], 'epicells', log_scale=True)
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_epicells, [2, 3, 5], 'epicells', clear=False, log_scale=True)
-        plot_subplot('cycells-test/simcov.stats', ax_tcells, [5, 6], 'tcells', log_scale=True)
+            plot_subplot(options.compare_file, ax_epicells, [2, 3, 5, 4], 'epicells', clear=False, log_scale=True)
+        plot_subplot('cycells-test/simcov.stats', ax_tcells, [6, 5], 'tcells', log_scale=True)
         if options.compare_file != '':
             plot_subplot(options.compare_file, ax_tcells, [6, 7], 'tcells', clear=False, log_scale=True)
         plot_subplot('cycells-test/simcov.stats', ax_virus, [8], 'virus')
