@@ -186,11 +186,11 @@ void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_up
   timer.stop();
 }
 
-void Tissue::accumulate_virions(HASH_TABLE<int64_t, int64_t> &virions_to_update,
+void Tissue::accumulate_virions(HASH_TABLE<int64_t, int> &virions_to_update,
                                 IntermittentTimer &timer) {
   timer.start();
   // accumulate updates for each target rank
-  HASH_TABLE<intrank_t, vector<pair<GridCoords, int64_t>>> target_rank_updates;
+  HASH_TABLE<intrank_t, vector<pair<GridCoords, int>>> target_rank_updates;
   for (auto& [coords_1d, virions] : virions_to_update) {
     upcxx::progress();
     GridCoords coords(coords_1d, Tissue::grid_size);
@@ -203,7 +203,7 @@ void Tissue::accumulate_virions(HASH_TABLE<int64_t, int64_t> &virions_to_update,
     auto fut = upcxx::rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-           upcxx::view<pair<GridCoords, int64_t>> update_vector) {
+           upcxx::view<pair<GridCoords, int>> update_vector) {
           for (auto &[coords, virions] : update_vector) {
             GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
             new_active_grid_points->insert({grid_point, true});

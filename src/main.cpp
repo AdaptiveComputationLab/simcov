@@ -350,7 +350,7 @@ void update_chemokines(GridPoint *grid_point,
   update_concentration_timer.stop();
 }
 
-void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int64_t> &virions_to_update) {
+void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int> &virions_to_update) {
   update_concentration_timer.start();
   grid_point->virions = grid_point->virions * (1.0 - _options->virion_decay_rate);
   if (grid_point->virions < 0) DIE("virions < 0: ", grid_point->virions);
@@ -384,8 +384,8 @@ void set_active_grid_points(Tissue &tissue) {
     diffuse<double>(grid_point->chemokine, grid_point->nb_chemokine,
                     _options->chemokine_diffusion_coef, grid_point->neighbors.size());
     grid_point->chemokine = min(grid_point->chemokine, 1.0);
-    diffuse<int64_t>(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
-                     grid_point->neighbors.size());
+    diffuse<int>(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+                 grid_point->neighbors.size());
     _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.virions += grid_point->virions;
     if (!grid_point->is_active()) to_erase.push_back(grid_point);
@@ -471,7 +471,7 @@ void run_sim(Tissue &tissue) {
   // chemokine, virions
   HASH_TABLE<int64_t, double> chemokines_to_update;
   HASH_TABLE<int64_t, double> chemokines_cache;
-  HASH_TABLE<int64_t, int64_t> virions_to_update;
+  HASH_TABLE<int64_t, int> virions_to_update;
   bool warned_boundary = false;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
