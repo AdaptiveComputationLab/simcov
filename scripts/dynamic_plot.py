@@ -26,6 +26,8 @@ argparser.add_argument("-f", "--file", required=True, help="Stats file containin
 argparser.add_argument("-o", "--output", required=True, help="Output file for images")
 argparser.add_argument("-c", "--compare-file", help="File for comparisons")
 argparser.add_argument("-r", "--resolution", type=int, dest='resolution', help='Resolution: number of time steps per day') 
+argparser.add_argument("--virus-adjust", type=float, dest='virus_adjust', default=1.54, help='Factor to adjust comparison virus levels')
+argparser.add_argument("--chemo-adjust", type=float, dest='chemo_adjust', default=910, help='Factor to adjust comparison chemokine levels')
 options = argparser.parse_args()
 
 #columns = [int(i) for i in options.indexes.split(',')]
@@ -41,7 +43,7 @@ unchanged = 0
 first = True
 
 
-def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
+def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False, adjust=1.0):
     graph_data = open(fname,'r').read()
     lines = graph_data.split('\n')
     xs = []
@@ -59,7 +61,7 @@ def plot_subplot(fname, ax, columns, title, clear=True, log_scale=False):
         fields = line.split('\t')
         xs.append(float(fields[0]) / options.resolution)
         for j in range(len(columns)):
-            ys[j].append(float(fields[columns[j]]))
+            ys[j].append(adjust * float(fields[columns[j]]))
     if clear:
         ax.clear()
     for j in range(len(columns)):
@@ -91,10 +93,10 @@ def animate(i):
             plot_subplot(options.compare_file, ax_tcells, [6, 7], 'tcells', clear=False, log_scale=True)
         plot_subplot('cycells-test/simcov.stats', ax_virus, [8], 'virus')
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_virus, [9], 'virus', clear=False)
+            plot_subplot(options.compare_file, ax_virus, [9], 'virus', clear=False, log_scale=False, adjust=options.virus_adjust)
         plot_subplot('cycells-test/simcov.stats', ax_chemo, [7], 'chemokines')
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_chemo, [10], 'chemokines', clear=False)
+            plot_subplot(options.compare_file, ax_chemo, [10], 'chemokines', clear=False, log_scale=False, adjust=options.chemo_adjust)
     else:
         unchanged += 1
         if unchanged > 4:
