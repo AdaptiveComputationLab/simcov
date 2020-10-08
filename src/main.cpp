@@ -71,11 +71,8 @@ class SimStats {
     auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
     double tot_virions = (double)reduce_one(virions, op_fast_add, 0).wait();
 
-    // for reporting, adjust the total concentrations to be per mm^3 (volume)
-    // each point is 5 microns cubed
-    double norm_factor = pow(5000, 3.0) * Tissue::get_num_grid_points();
-    tot_chemokines /= norm_factor;
-    tot_virions /= norm_factor;
+    tot_chemokines /= Tissue::get_num_grid_points();
+    tot_virions /= Tissue::get_num_grid_points();
 
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
@@ -116,8 +113,9 @@ void initial_infection(Tissue &tissue) {
   if (_options->infection_coords[0] != -1) {
     if (!rank_me()) {
       local_num_infections = 1;
-      tissue.set_initial_infection({_options->infection_coords[0], _options->infection_coords[1],
-                                    _options->infection_coords[2]});
+      GridCoords coords = {_options->infection_coords[0], _options->infection_coords[1],
+                           _options->infection_coords[2]};
+      if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
     } else {
       local_num_infections = 0;
     }
@@ -133,7 +131,7 @@ void initial_infection(Tissue &tissue) {
       progbar.update();
       GridCoords coords(_rnd_gen, Tissue::grid_size);
       DBG("infection: ", coords.str() + "\n");
-      tissue.set_initial_infection(coords);
+      if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
       upcxx::progress();
     }
     progbar.done();
@@ -227,7 +225,9 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
       DBG(time_step, ": tcell ", tcell->id, " is inducing apoptosis at ", grid_point->coords.str(),
           "\n");
       if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) _sim_stats.expressing--;
-      if (grid_point->epicell->status == EpiCellStatus::INCUBATING) _sim_stats.incubating--;
+      if (grid_point->epicell->status == EpiCellStatus::INCUBATING) {
+        _sim_stats.incubating--;
+      }
       // as soon as this is set to apoptotic, no other tcell can bind to this epicell, so we
       // ensure that only one tcell binds to an epicell at a time
       grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
@@ -363,16 +363,24 @@ void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int> &virions_to_
   update_concentration_timer.stop();
 }
 
-template<typename T>
-void diffuse(T &conc, T &nb_conc, double diffusion, int num_nbs) {
+void diffuse(double &conc, double &nb_conc, double diffusion, int num_nbs) {
   // set to be average of neighbors plus self
   // amount that diffuses
   double conc_diffused = diffusion * conc;
   // average out diffused amount across all neighbors
   double conc_per_point = (conc_diffused + diffusion * nb_conc) / (num_nbs + 1);
-  conc = conc - conc_diffused + conc_per_point;
+  // no more than 1.0
+  conc = min(conc - conc_diffused + conc_per_point, 1.0);
   if (conc < 0) DIE("conc < 0: ", conc, " diffused ", conc_diffused, " pp ", conc_per_point);
   nb_conc = 0;
+}
+
+void spread_virions(int &virions, int &nb_virions, double diffusion, int num_nbs) {
+  int virions_diffused = virions * diffusion;
+  int virions_left = virions - virions_diffused;
+  int avg_nb_virions = (virions_diffused + nb_virions * diffusion) / (num_nbs + 1);
+  virions = virions_left + avg_nb_virions;
+  nb_virions = 0;
 }
 
 void set_active_grid_points(Tissue &tissue) {
@@ -381,11 +389,10 @@ void set_active_grid_points(Tissue &tissue) {
   // iterate through all active local grid points and set changes
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
-    diffuse<double>(grid_point->chemokine, grid_point->nb_chemokine,
-                    _options->chemokine_diffusion_coef, grid_point->neighbors.size());
-    grid_point->chemokine = min(grid_point->chemokine, 1.0);
-    diffuse<int>(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
-                 grid_point->neighbors.size());
+    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
+            grid_point->neighbors.size());
+    spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+                   grid_point->neighbors.size());
     _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.virions += grid_point->virions;
     if (!grid_point->is_active()) to_erase.push_back(grid_point);

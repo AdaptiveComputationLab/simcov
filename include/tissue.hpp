@@ -174,7 +174,7 @@ class Tissue {
 
   intrank_t get_rank_for_grid_point(const GridCoords &coords);
 
-  void set_initial_infection(GridCoords coords);
+  bool set_initial_infection(GridCoords coords);
 
   void accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_update,
                              IntermittentTimer &timer);

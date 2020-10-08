@@ -75,6 +75,7 @@ bool EpiCell::is_active() {
 double EpiCell::get_binding_prob() {
   // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
   // incubation period, but is always 1 for expressing cells
+  return 1.0;
   return min((double)(initial_incubation_period - incubation_period) / initial_incubation_period,
              1.0);
 }
@@ -139,17 +140,21 @@ int64_t Tissue::get_num_local_grid_points() {
   return grid_points->size();
 }
 
-void Tissue::set_initial_infection(GridCoords coords) {
-  upcxx::rpc(
-      get_rank_for_grid_point(coords),
-      [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-         GridCoords coords) {
-        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-        DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
-        grid_point->virions = _options->initial_infection;
-        new_active_grid_points->insert({grid_point, true});
-      },
-      grid_points, new_active_grid_points, coords)
+bool Tissue::set_initial_infection(GridCoords coords) {
+  return upcxx::rpc(
+             get_rank_for_grid_point(coords),
+             [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+                GridCoords coords) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
+               DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
+               // ensure we have at least on infected cell to start
+               if (grid_point->epicell->status != EpiCellStatus::HEALTHY) return false;
+               grid_point->epicell->infect();
+               grid_point->virions = _options->initial_infection;
+               new_active_grid_points->insert({grid_point, true});
+               return true;
+             },
+             grid_points, new_active_grid_points, coords)
       .wait();
 }
 
@@ -368,7 +373,8 @@ void Tissue::construct(GridCoords grid_size) {
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
-      epicell->infectable = true;
+      if (id % 2 != 0) epicell->infectable = true;
+      else epicell->infectable = false;
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
