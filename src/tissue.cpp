@@ -75,9 +75,8 @@ bool EpiCell::is_active() {
 double EpiCell::get_binding_prob() {
   // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
   // incubation period, but is always 1 for expressing cells
-  return 1.0;
-  return min((double)(initial_incubation_period - incubation_period) / initial_incubation_period,
-             1.0);
+  if (status == EpiCellStatus::EXPRESSING) return 1.0;
+  return min(1.0 - (double)incubation_period / initial_incubation_period, 1.0);
 }
 
 string GridPoint::str() const {
