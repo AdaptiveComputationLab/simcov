@@ -139,8 +139,8 @@ class Options {
   double chemokine_decay_rate = 0.015;
   double chemokine_diffusion_coef = 0.7;
 
-  double igm_factor = 100;
-  int igm_period = 5760;
+  double antibody_factor = 100;
+  int antibody_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
@@ -220,11 +220,11 @@ class Options {
                    "each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--igm-factor", igm_factor,
-                   "Impact of IgM; multiplier for virion decay")
+    app.add_option("--antibody-factor", antibody_factor,
+                   "Impact of antibodies; multiplier for virion decay")
         ->capture_default_str();
-    app.add_option("--igm-period", igm_period,
-                   "Number of time steps before IgM starts to be produced")
+    app.add_option("--antibody-period", antibody_period,
+                   "Number of time steps before antibodies start to be produced")
         ->capture_default_str();
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
                    "Number of tcells generated at each timestep")
@@ -278,8 +278,8 @@ class Options {
       output_dir_opt->default_val(output_dir);
     }
 
-    if (virion_decay_rate * igm_factor > 1.0) {
-      SWARN("virion-decay * igm_factor > 1");
+    if (virion_decay_rate * antibody_factor > 1.0) {
+      SWARN("virion-decay * antibody_factor > 1");
       return false;
     }
     if (infection_coords[0] != -1 && num_infections > 1) {

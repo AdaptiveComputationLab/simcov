@@ -482,7 +482,8 @@ void run_sim(Tissue &tissue) {
   bool warned_boundary = false;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
-    if (time_step == _options->igm_period) _options->virion_decay_rate *= _options->igm_factor;
+    if (time_step == _options->antibody_period)
+      _options->virion_decay_rate *= _options->antibody_factor;
     chemokines_to_update.clear();
     virions_to_update.clear();
     chemokines_cache.clear();
@@ -496,8 +497,9 @@ void run_sim(Tissue &tissue) {
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
       if (!warned_boundary && (!grid_point->coords.x || !grid_point->coords.y ||
-          (Tissue::grid_size.z > 1 && !grid_point->coords.z))) {
-        SWARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
+          (Tissue::grid_size.z > 1 && !grid_point->coords.z)) &&
+          grid_point->epicell->status != EpiCellStatus::HEALTHY) {
+        WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
               " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
         warned_boundary = true;
       }

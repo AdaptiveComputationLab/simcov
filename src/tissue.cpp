@@ -36,6 +36,7 @@ string EpiCell::str() {
 
 void EpiCell::infect() {
   assert(status == EpiCellStatus::HEALTHY);
+  assert(infectable);
   status = EpiCellStatus::INCUBATING;
   infection_period = _rnd_gen->get_normal_distr(_options->infection_period);
   incubation_period = _rnd_gen->get_normal_distr(_options->incubation_period);
@@ -148,6 +149,7 @@ bool Tissue::set_initial_infection(GridCoords coords) {
                DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
                // ensure we have at least on infected cell to start
                if (grid_point->epicell->status != EpiCellStatus::HEALTHY) return false;
+               grid_point->epicell->infectable = true;
                grid_point->epicell->infect();
                grid_point->virions = _options->initial_infection;
                new_active_grid_points->insert({grid_point, true});
@@ -372,7 +374,7 @@ void Tissue::construct(GridCoords grid_size) {
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
-      if (id % 2 != 0) epicell->infectable = true;
+      if ((coords.x + coords.y + coords.z) % 2 != 0) epicell->infectable = true;
       else epicell->infectable = false;
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
