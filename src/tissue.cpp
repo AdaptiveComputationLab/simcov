@@ -374,8 +374,9 @@ void Tissue::construct(GridCoords grid_size) {
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
-      if ((coords.x + coords.y + coords.z) % 2 != 0) epicell->infectable = true;
-      else epicell->infectable = false;
+      epicell->infectable = true;
+      //if ((coords.x + coords.y + coords.z) % 2 != 0) epicell->infectable = true;
+      //else epicell->infectable = false;
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
@@ -430,8 +431,7 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
         }
       } else if (view_object == ViewObject::VIRUS) {
         if (grid_point->virions < 0) DIE("virions are negative ", grid_point->virions);
-        val = 255 * grid_point->virions;
-        if (grid_point->virions > 0 && val == 0) val = 1;
+        val = min(grid_point->virions, 255);
       } else if (view_object == ViewObject::CHEMOKINE) {
         if (grid_point->chemokine < 0) DIE("chemokine is negative ", grid_point->chemokine);
         val = 255 * grid_point->chemokine;
