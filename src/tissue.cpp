@@ -255,7 +255,8 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                 GridCoords coords, TCell tcell, bool extravasate) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
-               if (extravasate && !_rnd_gen->trial_success(grid_point->chemokine)) return false;
+               //if (extravasate && !_rnd_gen->trial_success(grid_point->chemokine)) return false;
+               if (extravasate && grid_point->chemokine < MIN_CONCENTRATION) return false;
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
                grid_point->tcell = new TCell(tcell);
@@ -494,7 +495,7 @@ void Tissue::add_new_actives(IntermittentTimer &timer) {
   timer.start();
   DBG("add ", new_active_grid_points->size(), " new active grid points\n");
   for (auto elem : *new_active_grid_points) {
-    DBG("inserting from new active ", elem.first, " ", elem.first->str(), "\n");
+    //DBG("inserting from new active ", elem.first, " ", elem.first->str(), "\n");
     active_grid_points.insert(elem);
   }
   new_active_grid_points->clear();
