@@ -250,7 +250,12 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     GridCoords selected_coords;
     // not bound - follow chemokine gradient
     double highest_chemokine = 0;
-    for (auto &nb_coords : grid_point->neighbors) {
+    // get a randomly shuffled list of neighbors so the tcell doesn't always tend to move in the
+    // same direction when there is a chemokine gradient
+    auto nbs_shuffled = grid_point->neighbors;
+    random_shuffle(nbs_shuffled.begin(), nbs_shuffled.end());
+    //for (auto &nb_coords : grid_point->neighbors) {
+    for (auto &nb_coords : nbs_shuffled) {
       double chemokine = 0;
       int64_t nb_idx = nb_coords.to_1d(Tissue::grid_size);
       auto it = chemokines_cache.find(nb_idx);
@@ -260,12 +265,12 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
       } else {
         chemokine = it->second;
       }
-      // add in some randomness when multiple possible directions
-      if (chemokine > highest_chemokine ||
-          (chemokine == highest_chemokine && _rnd_gen->trial_success(0.5))) {
+      if (chemokine > highest_chemokine) {
         highest_chemokine = chemokine;
         selected_coords = nb_coords;
       }
+      DBG(time_step, " tcell ", tcell->id, " found nb chemokine ", chemokine, " at ",
+          nb_coords.str(), "\n");
     }
     if (highest_chemokine == 0) {
       // no chemokines found - move randomly

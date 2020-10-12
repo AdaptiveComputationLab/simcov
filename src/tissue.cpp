@@ -375,9 +375,9 @@ void Tissue::construct(GridCoords grid_size) {
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
-      //epicell->infectable = true;
-      if ((coords.x + coords.y + coords.z) % 2 != 0) epicell->infectable = true;
-      else epicell->infectable = false;
+      epicell->infectable = true;
+      //if ((coords.x + coords.y + coords.z) % 2 != 0) epicell->infectable = true;
+      //else epicell->infectable = false;
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
