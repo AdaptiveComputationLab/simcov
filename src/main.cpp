@@ -129,7 +129,7 @@ void initial_infection(Tissue &tissue) {
     ProgressBar progbar(local_num_infections, "Setting initial infections");
     for (int i = 0; i < local_num_infections; i++) {
       progbar.update();
-      GridCoords coords(_rnd_gen, Tissue::grid_size);
+      GridCoords coords(_rnd_gen);
       DBG("infection: ", coords.str() + "\n");
       if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
       upcxx::progress();
@@ -156,7 +156,7 @@ void generate_tcells(Tissue &tissue, int time_step) {
   if (rank_me() == 0 && frac > 0 && _rnd_gen->trial_success(frac)) local_num_tcells++;
   if (local_num_tcells) {
     for (int i = 0; i < local_num_tcells; i++) {
-      GridCoords coords(_rnd_gen, Tissue::grid_size);
+      GridCoords coords(_rnd_gen);
       string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
       tissue.tcells_generated++;
       TCell tcell(tcell_id, coords);
@@ -187,7 +187,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue) {
       circulating_tcells->erase(it--);
       continue;
     }
-    GridCoords coords(_rnd_gen, Tissue::grid_size);
+    GridCoords coords(_rnd_gen);
     if (tissue.try_add_tissue_tcell(coords, *it, true)) {
       _sim_stats.tcells_vasculature--;
       _sim_stats.tcells_tissue++;
@@ -257,14 +257,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     //for (auto &nb_coords : grid_point->neighbors) {
     for (auto &nb_coords : nbs_shuffled) {
       double chemokine = 0;
-      int64_t nb_idx = nb_coords.to_1d(Tissue::grid_size,
-                    Tissue::block_size,
-                    Tissue::num_blocks_x,
-                    Tissue::num_blocks_y,
-                    Tissue::num_blocks_z,
-                    Tissue::block_size_x,
-                    Tissue::block_size_y,
-                    Tissue::block_size_z);
+      int64_t nb_idx = nb_coords.to_1d();
       auto it = chemokines_cache.find(nb_idx);
       if (it == chemokines_cache.end()) {
         chemokine = tissue.get_chemokine(nb_coords);
@@ -372,14 +365,7 @@ void update_chemokines(GridPoint *grid_point,
   if (grid_point->chemokine > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
       assert(nb_coords != grid_point->coords);
-      chemokines_to_update[nb_coords.to_1d(Tissue::grid_size,
-                    Tissue::block_size,
-                    Tissue::num_blocks_x,
-                    Tissue::num_blocks_y,
-                    Tissue::num_blocks_z,
-                    Tissue::block_size_x,
-                    Tissue::block_size_y,
-                    Tissue::block_size_z)] += grid_point->chemokine;
+      chemokines_to_update[nb_coords.to_1d()] += grid_point->chemokine;
     }
   }
   update_concentration_timer.stop();
@@ -392,14 +378,7 @@ void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, double> &virions_
   if (grid_point->virions > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
       assert(nb_coords != grid_point->coords);
-      virions_to_update[nb_coords.to_1d(Tissue::grid_size,
-                    Tissue::block_size,
-                    Tissue::num_blocks_x,
-                    Tissue::num_blocks_y,
-                    Tissue::num_blocks_z,
-                    Tissue::block_size_x,
-                    Tissue::block_size_y,
-                    Tissue::block_size_z)] += grid_point->virions;
+      virions_to_update[nb_coords.to_1d()] += grid_point->virions;
     }
   }
   update_concentration_timer.stop();
@@ -558,7 +537,7 @@ void run_sim(Tissue &tissue) {
       }
       */
       if (!warned_boundary && (!grid_point->coords.x || !grid_point->coords.y ||
-          (Tissue::grid_size.z > 1 && !grid_point->coords.z)) &&
+          (_grid_size->z > 1 && !grid_point->coords.z)) &&
           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
         WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
               " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
