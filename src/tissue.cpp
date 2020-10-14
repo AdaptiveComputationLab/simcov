@@ -393,12 +393,18 @@ void Tissue::construct(GridCoords grid_size) {
   if (block_dim == 1)
     SWARN("Using a block size of 1: this will result in a lot of "
           "communication. You should change the dimensions.");
+
   Tissue::block_size = (Tissue::grid_size.z > 1 ? block_dim * block_dim * block_dim :
                                                   block_dim * block_dim);
-  int64_t x_blocks = Tissue::grid_size.x / block_dim;
-  int64_t y_blocks = Tissue::grid_size.y / block_dim;
-  int64_t z_blocks = (Tissue::grid_size.z > 1 ? Tissue::grid_size.z / block_dim : 1);
+  Tissue::num_blocks_x = Tissue::grid_size.x / block_dim;
+  Tissue::num_blocks_y = Tissue::grid_size.y / block_dim;
+  Tissue::num_blocks_z = (Tissue::grid_size.z > 1 ? Tissue::grid_size.z / block_dim : 1);
+  Tissue::block_size_x = block_dim;
+  Tissue::block_size_y = block_dim;
+  Tissue::block_size_z = (Tissue::grid_size.z > 1 ? block_dim : 1);
+
   int64_t num_blocks = num_grid_points / Tissue::block_size;
+
   if (Tissue::grid_size.z > 1)
     SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " blocks of size ",
          Tissue::block_size, " (", block_dim, "^3)\n");
@@ -436,6 +442,15 @@ void Tissue::construct(GridCoords grid_size) {
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
+      auto id_1d = coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
+      if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
       ostringstream oss;
       for (auto nb_coords : neighbors) {
         oss << nb_coords.str() << " ";
@@ -503,7 +518,8 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
       grid_points_written++;
       buf[0] = val;
       int64_t inline_id = coords.to_1d_inline(Tissue::grid_size);
-      // SLOG("Writing id: ", id, " at pos ", inline_id, " with coords: ", coords.x, ", ", coords.y, ", ", coords.z, "\n");
+      // SLOG("Writing id: ", id, " at pos ", inline_id, " with coords: ", coords.x, ", ", coords.y,
+      //      ", ", coords.z, "\n");
       size_t fpos = inline_id + header_str.length();
       auto bytes_written = pwrite(fileno, buf, buf_size, fpos);
       if (bytes_written != buf_size)
@@ -576,6 +592,15 @@ size_t Tissue::get_num_actives() {
 void Tissue::check_actives(int time_step) {
   for (int64_t i = 0; i < grid_points->size(); i++) {
     GridPoint *grid_point = &(*grid_points)[i];
+    if (time_step == 0)
+      DBG("coords ", grid_point->coords.str(), " to 1d ", grid_point->coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z), "\n");
     bool found_active = (active_grid_points.find(grid_point) != active_grid_points.end());
     if (grid_point->is_active() && !found_active)
       DIE(time_step, ": active grid point ", grid_point->str(), " not found in active list");
