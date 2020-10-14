@@ -89,7 +89,7 @@ string GridPoint::str() const {
 
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
-  return ((epicell && epicell->is_active()) || virions || chemokine > 0 || tcell);
+  return ((epicell && epicell->is_active()) || virions > 0 || chemokine > 0 || tcell);
 }
 
 
@@ -192,7 +192,7 @@ void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_up
   timer.stop();
 }
 
-void Tissue::accumulate_virions(HASH_TABLE<int64_t, int> &virions_to_update,
+void Tissue::accumulate_virions(HASH_TABLE<int64_t, double> &virions_to_update,
                                 IntermittentTimer &timer) {
   timer.start();
   // accumulate updates for each target rank
@@ -432,7 +432,7 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
         }
       } else if (view_object == ViewObject::VIRUS) {
         if (grid_point->virions < 0) DIE("virions are negative ", grid_point->virions);
-        val = min(grid_point->virions, 255);
+        val = min((int)grid_point->virions, 255);
       } else if (view_object == ViewObject::CHEMOKINE) {
         if (grid_point->chemokine < 0) DIE("chemokine is negative ", grid_point->chemokine);
         val = 255 * grid_point->chemokine;

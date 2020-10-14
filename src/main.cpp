@@ -39,7 +39,7 @@ class SimStats {
   int64_t tcells_vasculature = 0;
   int64_t tcells_tissue = 0;
   double chemokines = 0;
-  int64_t virions = 0;
+  double virions = 0;
 
   void init() {
     if (!rank_me()) {
@@ -69,7 +69,7 @@ class SimStats {
     auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
     auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
     auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
-    double tot_virions = (double)reduce_one(virions, op_fast_add, 0).wait();
+    auto tot_virions = reduce_one(virions, op_fast_add, 0).wait();
 
     tot_chemokines /= Tissue::get_num_grid_points();
     tot_virions /= Tissue::get_num_grid_points();
@@ -304,10 +304,12 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     update_epicell_timer.stop();
     return;
   }
+  if (grid_point->epicell->status != EpiCellStatus::HEALTHY)
+    DBG(time_step, " epicell status ", EpiCellStatusStr[(int)grid_point->epicell->status], "\n");
   bool produce_virions = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
-      if (grid_point->virions) {
+      if (grid_point->virions > 0) {
         if (_rnd_gen->trial_success(_options->infectivity * grid_point->virions)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
@@ -369,11 +371,11 @@ void update_chemokines(GridPoint *grid_point,
   update_concentration_timer.stop();
 }
 
-void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int> &virions_to_update) {
+void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, double> &virions_to_update) {
   update_concentration_timer.start();
   grid_point->virions = grid_point->virions * (1.0 - _options->virion_decay_rate);
-  if (grid_point->virions < 0) DIE("virions < 0: ", grid_point->virions);
-  if (grid_point->virions) {
+  if (grid_point->virions < 1) grid_point->virions = 0;
+  if (grid_point->virions > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
       assert(nb_coords != grid_point->coords);
       virions_to_update[nb_coords.to_1d(Tissue::grid_size)] += grid_point->virions;
@@ -382,18 +384,19 @@ void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int> &virions_to_
   update_concentration_timer.stop();
 }
 
-void diffuse(double &conc, double &nb_conc, double diffusion, int num_nbs) {
+void diffuse(double &conc, double &nb_conc, double diffusion, int num_nbs, bool max_limit=true) {
   // set to be average of neighbors plus self
   // amount that diffuses
   double conc_diffused = diffusion * conc;
   // average out diffused amount across all neighbors
   double conc_per_point = (conc_diffused + diffusion * nb_conc) / (num_nbs + 1);
-  // no more than 1.0
-  conc = min(conc - conc_diffused + conc_per_point, 1.0);
+  conc = conc - conc_diffused + conc_per_point;
+  if (max_limit && conc > 1.0) conc = 1.0;
   if (conc < 0) DIE("conc < 0: ", conc, " diffused ", conc_diffused, " pp ", conc_per_point);
   nb_conc = 0;
 }
 
+/*
 void spread_virions(int &virions, int &nb_virions, double diffusion, int num_nbs) {
   int virions_diffused = virions * diffusion;
   int virions_left = virions - virions_diffused;
@@ -401,6 +404,7 @@ void spread_virions(int &virions, int &nb_virions, double diffusion, int num_nbs
   virions = virions_left + avg_nb_virions;
   nb_virions = 0;
 }
+*/
 
 void set_active_grid_points(Tissue &tissue) {
   set_active_points_timer.start();
@@ -410,8 +414,10 @@ void set_active_grid_points(Tissue &tissue) {
        grid_point = tissue.get_next_active_grid_point()) {
     diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
             grid_point->neighbors.size());
-    spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
-                   grid_point->neighbors.size());
+    diffuse(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+            grid_point->neighbors.size(), false);
+    if (grid_point->chemokine < MIN_CONCENTRATION) grid_point->chemokine = 0;
+    if (grid_point->virions < 1.0) grid_point->virions = 0;
     if (grid_point->tcell) grid_point->tcell->moved = false;
     _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.virions += grid_point->virions;
@@ -499,8 +505,9 @@ void run_sim(Tissue &tissue) {
   // chemokine, virions
   HASH_TABLE<int64_t, double> chemokines_to_update;
   HASH_TABLE<int64_t, double> chemokines_cache;
-  HASH_TABLE<int64_t, int> virions_to_update;
+  HASH_TABLE<int64_t, double> virions_to_update;
   bool warned_boundary = false;
+  //bool expressed = false;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     if (time_step == _options->antibody_period)
@@ -517,6 +524,18 @@ void run_sim(Tissue &tissue) {
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
+      if (grid_point->chemokine > 0)
+        DBG("chemokine\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
+            grid_point->coords.z, "\t", grid_point->chemokine, "\n");
+      if (grid_point->virions > 0)
+        DBG("virions\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
+            grid_point->coords.z, "\t", grid_point->virions, "\n");
+      /*
+      if (grid_point->virions > 0 && !expressed) {
+        expressed = true;
+        _options->virion_production = 0;
+      }
+      */
       if (!warned_boundary && (!grid_point->coords.x || !grid_point->coords.y ||
           (Tissue::grid_size.z > 1 && !grid_point->coords.z)) &&
           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
