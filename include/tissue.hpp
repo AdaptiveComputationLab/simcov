@@ -52,7 +52,14 @@ struct GridCoords {
   GridCoords(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
 
   // create a grid point from 1d
-  GridCoords(int64_t i, const GridCoords &grid_size);
+  GridCoords(int64_t i, const GridCoords &grid_size,
+                        int64_t block_size,
+                        int64_t num_blocks_x,
+                        int64_t num_blocks_y,
+                        int64_t num_blocks_z,
+                        int64_t block_size_x,
+                        int64_t block_size_y,
+                        int64_t block_size_z);
 
   // create a random grid point
   GridCoords(shared_ptr<Random> rnd_gen, const GridCoords &grid_size);
@@ -67,7 +74,28 @@ struct GridCoords {
     return x != coords.x || y != coords.y || z != coords.z;
   }
 
-  int64_t to_1d(const GridCoords &grid_size) const {
+  int64_t to_1d(const GridCoords &grid_size,
+                    int64_t block_size,
+                    int64_t num_blocks_x,
+                    int64_t num_blocks_y,
+                    int64_t num_blocks_z,
+                    int64_t block_size_x,
+                    int64_t block_size_y,
+                    int64_t block_size_z) const {
+    if (x >= grid_size.x || y >= grid_size.y || z >= grid_size.z)
+      DIE("Grid point is out of range: ", str(), " max size ", grid_size.str());
+    int64_t block_x = x/block_size_x;
+    int64_t block_y = y/block_size_y;
+    int64_t block_z = z/block_size_z;
+    int64_t block_id = block_x + block_y * num_blocks_x + block_z * num_blocks_x * num_blocks_y;
+    int64_t in_block_x = x%block_size_x;
+    int64_t in_block_y = y%block_size_y;
+    int64_t in_block_z = z%block_size_z;
+    int64_t in_block_id = in_block_x + in_block_y*block_size_x + in_block_z*block_size_x*block_size_y;
+    return in_block_id + block_id*block_size;
+  }
+
+  int64_t to_1d_inline(const GridCoords &grid_size) const {
     if (x >= grid_size.x || y >= grid_size.y || z >= grid_size.z)
       DIE("Grid point is out of range: ", str(), " max size ", grid_size.str());
     return x + y * grid_size.x + z * grid_size.x * grid_size.y;
@@ -137,8 +165,6 @@ struct GridPoint {
 
 class Tissue {
  private:
-  // these are static so they don't have to be passed in RPCs
-  static int block_size;
 
   using grid_points_t = upcxx::dist_object<vector<GridPoint>>;
   grid_points_t grid_points;
@@ -158,6 +184,9 @@ class Tissue {
   vector<GridCoords> get_neighbors(GridCoords c, GridCoords grid_size);
 
  public:
+  // these are static so they don't have to be passed in RPCs
+  static int block_size, num_blocks_x, num_blocks_y, num_blocks_z,
+            block_size_x, block_size_y, block_size_z;
   static GridCoords grid_size;
 
   int64_t tcells_generated = 0;
@@ -214,4 +243,5 @@ class Tissue {
 };
 
 inline GridCoords Tissue::grid_size;
-inline int Tissue::block_size;
+inline int Tissue::block_size, Tissue::block_size_x, Tissue::block_size_y, Tissue::block_size_z,
+            Tissue::num_blocks_x, Tissue::num_blocks_y, Tissue::num_blocks_z;

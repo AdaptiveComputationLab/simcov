@@ -2,11 +2,31 @@
 
 using namespace std;
 
-GridCoords::GridCoords(int64_t i, const GridCoords &grid_size) {
-  z = i / (grid_size.x * grid_size.y);
-  i = i % (grid_size.x * grid_size.y);
-  y = i / grid_size.x;
-  x = i % grid_size.x;
+GridCoords::GridCoords(int64_t i, const GridCoords &grid_size,
+                        int64_t block_size,
+                        int64_t num_blocks_x,
+                        int64_t num_blocks_y,
+                        int64_t num_blocks_z,
+                        int64_t block_size_x,
+                        int64_t block_size_y,
+                        int64_t block_size_z) {
+  int64_t blocknum = i/block_size;
+  int64_t block_z = blocknum/(num_blocks_x*num_blocks_y);
+  blocknum -= block_z*num_blocks_x*num_blocks_y;
+  int64_t block_y = blocknum/num_blocks_x;
+  int64_t block_x = blocknum % num_blocks_x;
+  int64_t in_block_id = i%block_size;
+  block_x *= block_size_x;
+  block_y *= block_size_y;
+  block_z *= block_size_z;
+  int64_t dz = in_block_id/(block_size_x*block_size_y);
+  in_block_id -= (dz*block_size_x*block_size_y);
+  int64_t dy = in_block_id/block_size_x;
+  int64_t dx = in_block_id%block_size_x;
+  x = block_x + dx;
+  y = block_y + dy;
+  z = block_z + dz;
+  // SLOG("block_num: ", blocknum, ", id: ", i, ", x: ", x, ", y: ", y, ", z: ", z, "\n");
 }
 
 GridCoords::GridCoords(shared_ptr<Random> rnd_gen, const GridCoords &grid_size) {
@@ -95,13 +115,27 @@ bool GridPoint::is_active() {
 
 
 intrank_t Tissue::get_rank_for_grid_point(const GridCoords &coords) {
-  int64_t id = coords.to_1d(Tissue::grid_size);
+  int64_t id = coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
   int64_t block_i = id / Tissue::block_size;
   return block_i % rank_n();
 }
 
 GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords) {
-  auto id = coords.to_1d(Tissue::grid_size);
+  auto id = coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
   int64_t block_i = id / Tissue::block_size / rank_n();
   int64_t i = id % Tissue::block_size + block_i * Tissue::block_size;
   assert(i < grid_points->size());
@@ -166,7 +200,14 @@ void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_up
   HASH_TABLE<intrank_t, vector<pair<GridCoords, double>>> target_rank_updates;
   for (auto& [coords_1d, chemokines] : chemokines_to_update) {
     upcxx::progress();
-    GridCoords coords(coords_1d, Tissue::grid_size);
+    GridCoords coords(coords_1d, Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
     target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, chemokines});
   }
   future<> fut_chain = make_future<>();
@@ -199,7 +240,14 @@ void Tissue::accumulate_virions(HASH_TABLE<int64_t, double> &virions_to_update,
   HASH_TABLE<intrank_t, vector<pair<GridCoords, int>>> target_rank_updates;
   for (auto& [coords_1d, virions] : virions_to_update) {
     upcxx::progress();
-    GridCoords coords(coords_1d, Tissue::grid_size);
+    GridCoords coords(coords_1d, Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
     target_rank_updates[get_rank_for_grid_point(coords)].push_back({coords, virions});
   }
   future<> fut_chain = make_future<>();
@@ -370,7 +418,14 @@ void Tissue::construct(GridCoords grid_size) {
     if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
       assert(id < num_grid_points);
-      GridCoords coords(id, Tissue::grid_size);
+      GridCoords coords(id, Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
       auto neighbors = get_neighbors(coords, grid_size);
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
@@ -408,14 +463,21 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
   int64_t num_grid_points = get_num_grid_points();
   int64_t num_blocks = num_grid_points / Tissue::block_size;
   int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-  size_t buf_size = Tissue::block_size;
+  size_t buf_size = 1;
   unsigned char *buf = new unsigned char[buf_size];
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * Tissue::block_size;
     if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + Tissue::block_size; id++) {
       assert(id < num_grid_points);
-      GridCoords coords(id, Tissue::grid_size);
+      GridCoords coords(id, Tissue::grid_size,
+                        Tissue::block_size,
+                        Tissue::num_blocks_x,
+                        Tissue::num_blocks_y,
+                        Tissue::num_blocks_z,
+                        Tissue::block_size_x,
+                        Tissue::block_size_y,
+                        Tissue::block_size_z);
       GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
       unsigned char val = 0;
       if (view_object == ViewObject::TCELL_TISSUE) {
@@ -439,13 +501,17 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
         if (grid_point->chemokine > 0 && val == 0) val = 1;
       }
       grid_points_written++;
-      buf[id - start_id] = val;
+      buf[0] = val;
+      int64_t inline_id = coords.to_1d_inline(Tissue::grid_size);
+      // SLOG("Writing id: ", id, " at pos ", inline_id, " with coords: ", coords.x, ", ", coords.y, ", ", coords.z, "\n");
+      size_t fpos = inline_id + header_str.length();
+      auto bytes_written = pwrite(fileno, buf, buf_size, fpos);
+      if (bytes_written != buf_size)
+      {
+        DIE("Could not write all ", buf_size, " bytes; only wrote ", bytes_written, "\n");
+      }
+      tot_bytes_written += bytes_written;
     }
-    size_t fpos = start_id + header_str.length();
-    auto bytes_written = pwrite(fileno, buf, buf_size, fpos);
-    if (bytes_written != buf_size)
-      DIE("Could not write all ", buf_size, " bytes; only wrote ", bytes_written, "\n");
-    tot_bytes_written += bytes_written;
     //DBG("wrote block ", i, ", ", bytes_written, " bytes at position ", fpos, "\n");
   }
   delete[] buf;

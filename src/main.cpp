@@ -257,7 +257,14 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     //for (auto &nb_coords : grid_point->neighbors) {
     for (auto &nb_coords : nbs_shuffled) {
       double chemokine = 0;
-      int64_t nb_idx = nb_coords.to_1d(Tissue::grid_size);
+      int64_t nb_idx = nb_coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z);
       auto it = chemokines_cache.find(nb_idx);
       if (it == chemokines_cache.end()) {
         chemokine = tissue.get_chemokine(nb_coords);
@@ -365,7 +372,14 @@ void update_chemokines(GridPoint *grid_point,
   if (grid_point->chemokine > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
       assert(nb_coords != grid_point->coords);
-      chemokines_to_update[nb_coords.to_1d(Tissue::grid_size)] += grid_point->chemokine;
+      chemokines_to_update[nb_coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z)] += grid_point->chemokine;
     }
   }
   update_concentration_timer.stop();
@@ -378,7 +392,14 @@ void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, double> &virions_
   if (grid_point->virions > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
       assert(nb_coords != grid_point->coords);
-      virions_to_update[nb_coords.to_1d(Tissue::grid_size)] += grid_point->virions;
+      virions_to_update[nb_coords.to_1d(Tissue::grid_size,
+                    Tissue::block_size,
+                    Tissue::num_blocks_x,
+                    Tissue::num_blocks_y,
+                    Tissue::num_blocks_z,
+                    Tissue::block_size_x,
+                    Tissue::block_size_y,
+                    Tissue::block_size_z)] += grid_point->virions;
     }
   }
   update_concentration_timer.stop();
