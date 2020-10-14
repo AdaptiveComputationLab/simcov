@@ -139,7 +139,7 @@ class Options {
   double chemokine_decay_rate = 0.015;
   double chemokine_diffusion_coef = 0.7;
 
-  double antibody_factor = 100;
+  double antibody_factor = 1;
   int antibody_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -279,7 +279,9 @@ class Options {
     }
 
     if (virion_decay_rate * antibody_factor > 1.0) {
-      SWARN("virion-decay * antibody_factor > 1");
+      if (!rank_me())
+        cerr << "Invalid parameter settings: virion-decay * antibody_factor > 1.\n"
+             << "Reduce either or both of those settings\n";
       return false;
     }
     if (infection_coords[0] != -1 && num_infections > 1) {
