@@ -147,6 +147,26 @@ GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, const GridCo
   return grid_point;
 }
 
+SampleData Tissue::get_grid_point_sample_data(const GridCoords &coords) {
+  return upcxx::rpc(
+             get_rank_for_grid_point(coords),
+             [](grid_points_t &grid_points, GridCoords coords) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
+               SampleData sample;
+               sample.id = grid_point->id;
+               if (grid_point->tcell) sample.has_tcell = true;
+                 if (grid_point->epicell) {
+                   sample.has_epicell = true;
+                   sample.epicell_status = grid_point->epicell->status;
+                 }
+               sample.virions = grid_point->virions;
+               sample.chemokine = grid_point->chemokine;
+               return sample;
+             },
+             grid_points, coords)
+      .wait();
+}
+
 vector<GridCoords> Tissue::get_neighbors(GridCoords c) {
   vector<GridCoords> n = {};
   int64_t newx, newy, newz;
@@ -164,10 +184,6 @@ vector<GridCoords> Tissue::get_neighbors(GridCoords c) {
     }
   }
   return n;
-}
-
-int64_t Tissue::get_num_grid_points() {
-  return _grid_size->x * _grid_size->y * _grid_size->z;
 }
 
 int64_t Tissue::get_num_local_grid_points() {
@@ -430,67 +446,21 @@ void Tissue::construct(GridCoords grid_size) {
   barrier();
 }
 
-pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &header_str,
-                                         ViewObject view_object) {
-  auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
-  size_t tot_bytes_written = 0;
-  if (!upcxx::rank_me()) {
-    tot_bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
-    if (tot_bytes_written != header_str.length())
-      DIE("Could not write all ", header_str.length(), " bytes: only wrote ", tot_bytes_written);
+void Tissue::get_samples(vector<SampleData> &samples, int64_t &start_id) {
+  int64_t num_points = get_num_grid_points();
+  int64_t num_points_per_rank = ceil((double)num_points / rank_n());
+  start_id = rank_me() * num_points_per_rank;
+  int64_t end_id = min(rank_me() * (num_points_per_rank + 1), num_points);
+  size_t buf_size = end_id - start_id;
+  samples.clear();
+  samples.reserve(buf_size);
+  // FIXME: this should be aggregated fetches per target rank
+  for (int64_t id = start_id; id < end_id; id++) {
+    GridCoords coords(id);
+    samples.emplace_back(get_grid_point_sample_data(coords));
   }
-  //DBG("Writing samples to ", fname, "\n");
-  //DBG("header size is ", header_str.length(), "\n");
-  size_t grid_points_written = 0;
-  int64_t num_grid_points = get_num_grid_points();
-  int64_t num_blocks = num_grid_points / _grid_blocks.block_size;
-  int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-  size_t buf_size = 1;
-  unsigned char *buf = new unsigned char[buf_size];
-  for (int64_t i = 0; i < blocks_per_rank; i++) {
-    int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
-    if (start_id >= num_grid_points) break;
-    for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
-      assert(id < num_grid_points);
-      GridCoords coords(id);
-      GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
-      unsigned char val = 0;
-      if (view_object == ViewObject::TCELL_TISSUE) {
-        if (grid_point->tcell) val = 255;
-      } else if (view_object == ViewObject::EPICELL) {
-        if (grid_point->epicell) {
-          switch (grid_point->epicell->status) {
-            case EpiCellStatus::HEALTHY: val = 0; break;
-            case EpiCellStatus::INCUBATING: val = 1; break;
-            case EpiCellStatus::EXPRESSING: val = 2; break;
-            case EpiCellStatus::APOPTOTIC: val = 3; break;
-            case EpiCellStatus::DEAD: val = 4; break;
-          }
-        }
-      } else if (view_object == ViewObject::VIRUS) {
-        if (grid_point->virions < 0) DIE("virions are negative ", grid_point->virions);
-        val = min(grid_point->virions, 255);
-      } else if (view_object == ViewObject::CHEMOKINE) {
-        if (grid_point->chemokine < 0) DIE("chemokine is negative ", grid_point->chemokine);
-        val = 255 * grid_point->chemokine;
-        if (grid_point->chemokine > 0 && val == 0) val = 1;
-      }
-      grid_points_written++;
-      buf[0] = val;
-      int64_t linear_id = coords.to_1d_linear();
-      DBG("Writing id: ", id, " at pos ", linear_id, " with coords: ", coords.str(), "\n");
-      size_t fpos = linear_id + header_str.length();
-      auto bytes_written = pwrite(fileno, buf, buf_size, fpos);
-      if (bytes_written != buf_size)
-        DIE("Could not write all ", buf_size, " bytes; only wrote ", bytes_written, "\n");
-      tot_bytes_written += bytes_written;
-    }
-  }
-  delete[] buf;
-  close(fileno);
-  return {tot_bytes_written, grid_points_written};
 }
+
 
 GridPoint *Tissue::get_first_local_grid_point() {
   grid_point_iter = grid_points->begin();

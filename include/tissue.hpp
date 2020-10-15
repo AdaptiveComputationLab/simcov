@@ -102,7 +102,7 @@ enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
 
 class EpiCell {
-  int64_t id;
+  int id;
   int initial_incubation_period = -1;
   int incubation_period = -1;
   int apoptosis_period = -1;
@@ -140,6 +140,16 @@ struct GridPoint {
   bool is_active();
 };
 
+struct SampleData {
+  int64_t id = -1;
+  bool has_tcell = false;
+  bool has_epicell = false;
+  EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
+  int virions = 0;
+  double chemokine = 0;
+};
+
+inline int64_t get_num_grid_points() { return _grid_size->x * _grid_size->y * _grid_size->z; }
 
 class Tissue {
  private:
@@ -157,7 +167,10 @@ class Tissue {
 
   upcxx::dist_object<list<TCell>> circulating_tcells;
 
+  // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
+
+  SampleData get_grid_point_sample_data(const GridCoords &coords);
 
   vector<GridCoords> get_neighbors(GridCoords c);
 
@@ -169,8 +182,6 @@ class Tissue {
   ~Tissue() {}
 
   void construct(GridCoords grid_size);
-
-  static int64_t get_num_grid_points();
 
   int64_t get_num_local_grid_points();
 
@@ -206,12 +217,11 @@ class Tissue {
 
   size_t get_num_actives();
 
+  void get_samples(vector<SampleData> &samples, int64_t &start_id);
+
 #ifdef DEBUG
   void check_actives(int time_step);
 #endif
-
-  pair<size_t, size_t> dump_blocks(const string &fname, const string &header_str,
-                                   ViewObject view_object);
 
 };
 

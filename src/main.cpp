@@ -71,8 +71,8 @@ class SimStats {
     auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
     double tot_virions = (double)reduce_one(virions, op_fast_add, 0).wait();
 
-    tot_chemokines /= Tissue::get_num_grid_points();
-    tot_virions /= Tissue::get_num_grid_points();
+    tot_chemokines /= get_num_grid_points();
+    tot_virions /= get_num_grid_points();
 
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
@@ -426,7 +426,52 @@ void set_active_grid_points(Tissue &tissue) {
   set_active_points_timer.stop();
 }
 
-void sample(int time_step, Tissue &tissue, ViewObject view_object) {
+void dump_samples(const string &fname, const string &header_str, vector<SampleData> &samples,
+                  int64_t start_id, ViewObject view_object) {
+  auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
+  if (!upcxx::rank_me()) {
+    size_t bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
+    if (bytes_written != header_str.length())
+      DIE("Could not write all ", header_str.length(), " bytes: only wrote ", bytes_written);
+  }
+  // each rank writes one portion of the dataset to the file
+  unsigned char *buf = new unsigned char[samples.size()];
+  DBG("Writing data from ", start_id, " to ", start_id + samples.size(), "\n");
+  for (int64_t i = 0; i < samples.size(); i++) {
+    auto &sample = samples[i];
+    unsigned char val = 0;
+    if (view_object == ViewObject::TCELL_TISSUE) {
+      if (sample.has_tcell) val = 255;
+    } else if (view_object == ViewObject::EPICELL) {
+      if (sample.has_epicell) {
+        switch (sample.epicell_status) {
+          case EpiCellStatus::HEALTHY: val = 1; break;
+          case EpiCellStatus::INCUBATING: val = 2; break;
+          case EpiCellStatus::EXPRESSING: val = 3; break;
+          case EpiCellStatus::APOPTOTIC: val = 4; break;
+          case EpiCellStatus::DEAD: val = 5; break;
+        }
+      }
+    } else if (view_object == ViewObject::VIRUS) {
+      if (sample.virions < 0) DIE("virions are negative ", sample.virions);
+      val = min(sample.virions, 255);
+    } else if (view_object == ViewObject::CHEMOKINE) {
+      if (sample.chemokine < 0) DIE("chemokine is negative ", sample.chemokine);
+      val = 255 * sample.chemokine;
+      if (sample.chemokine > 0 && val == 0) val = 1;
+    }
+    buf[i] = val;
+  }
+  size_t fpos = header_str.length() + start_id;
+  auto bytes_written = pwrite(fileno, buf, samples.size(), fpos);
+  if (bytes_written != samples.size())
+    DIE("Could not write all ", samples.size(), " bytes; only wrote ", bytes_written, "\n");
+  delete[] buf;
+  close(fileno);
+}
+
+void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
   // each rank writes its own blocks into the file at the appropriate locations. We compute the
   // location knowing that each position takes exactly 4 characters (up to 3 numbers and a space),
   // so we can work out how much space a block takes up, in order to position the data correctly.
@@ -435,7 +480,7 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
   // with a color of blue, going from faint to strong. The last color (0) is used to indicate a dead
   // epicell (how do we make this a separate color?)
   // each grid point takes up a single char
-  size_t tot_sz = tissue.get_num_grid_points();
+  size_t tot_sz = get_num_grid_points();
   string fname_snapshot = "sample_snapshot.csv";
   string fname = "samples/sample_" + view_object_str(view_object) + "_" + to_string(time_step) +
                  ".vtk";
@@ -475,20 +520,11 @@ void sample(int time_step, Tissue &tissue, ViewObject view_object) {
     if (ftruncate(fileno, tot_sz) == -1)
       DIE("Could not truncate ", fname, " to ", tot_sz, " bytes\n");
     close(fileno);
-    //DBG("Truncated sample file ", fname, " to ", tot_sz, " bytes\n");
   }
-  upcxx::barrier();
-  tot_sz = tissue.get_num_local_grid_points();
-  if (!rank_me()) tot_sz += header_oss.str().length();
   // wait until rank 0 has finished setting up the file
-  auto [bytes_written, grid_points_written] = tissue.dump_blocks(fname, header_oss.str(),
-                                                                 view_object);
-  //assert(bytes_written == tot_sz);
-  if (bytes_written != tot_sz) DIE("bytes_written ", bytes_written, " != ", tot_sz, " tot_sz");
   upcxx::barrier();
-  auto tot_bytes_written = reduce_one(bytes_written, op_fast_add, 0).wait();
-  auto tot_grid_points_written = reduce_one(grid_points_written, op_fast_add, 0).wait();
-  if (!rank_me()) assert(tot_grid_points_written == tissue.get_num_grid_points());
+  dump_samples(fname, header_oss.str(), samples, start_id, view_object);
+  upcxx::barrier();
 }
 
 void run_sim(Tissue &tissue) {
@@ -506,6 +542,7 @@ void run_sim(Tissue &tissue) {
   HASH_TABLE<int64_t, double> chemokines_cache;
   HASH_TABLE<int64_t, int> virions_to_update;
   bool warned_boundary = false;
+  vector<SampleData> samples;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     if (time_step == _options->antibody_period)
@@ -552,7 +589,7 @@ void run_sim(Tissue &tissue) {
     barrier();
     if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
       auto num_actives = reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait();
-      auto perc_actives = 100.0 * num_actives / Tissue::get_num_grid_points();
+      auto perc_actives = 100.0 * num_actives / get_num_grid_points();
       auto max_actives = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
       auto load_balance = max_actives ? (double)num_actives / rank_n() / max_actives : 1;
       chrono::duration<double> t_elapsed = NOW() - curr_t;
@@ -573,10 +610,13 @@ void run_sim(Tissue &tissue) {
     if (_options->sample_period > 0 && (time_step % _options->sample_period == 0 ||
         time_step == _options->num_timesteps - 1)) {
       sample_timer.start();
-      sample(time_step, tissue, ViewObject::EPICELL);
-      sample(time_step, tissue, ViewObject::TCELL_TISSUE);
-      sample(time_step, tissue, ViewObject::VIRUS);
-      sample(time_step, tissue, ViewObject::CHEMOKINE);
+      samples.clear();
+      int64_t start_id;
+      tissue.get_samples(samples, start_id);
+      sample(time_step, samples, start_id, ViewObject::EPICELL);
+      sample(time_step, samples, start_id, ViewObject::TCELL_TISSUE);
+      sample(time_step, samples, start_id, ViewObject::VIRUS);
+      sample(time_step, samples, start_id, ViewObject::CHEMOKINE);
       sample_timer.stop();
     }
 
