@@ -5,3 +5,4 @@ add_definitions(-DCONFIG_USE_COLORS)
 add_definitions(-DUSE_BYTELL)
 
 add_definitions(-DMIN_CONCENTRATION=1e-6)
+add_definitions(-DMAX_VIRIONS=125000)
