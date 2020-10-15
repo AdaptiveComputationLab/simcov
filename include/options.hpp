@@ -118,6 +118,7 @@ class Options {
 
   vector<int64_t> infection_coords{-1, -1, -1};
   int initial_infection = 10000;
+  int infectable_spacing = 1;
 
   // these periods are normally distributed with mean and stddev
   vector<int> incubation_period{30, 3};
@@ -173,6 +174,9 @@ class Options {
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
                    "Number of virions at initial infection locations")
+        ->capture_default_str();
+    app.add_option("--infectable-spacing", infectable_spacing,
+                   "Number of grid points to space out infectable cells")
         ->capture_default_str();
     app.add_option(
            "--incubation-period", incubation_period,

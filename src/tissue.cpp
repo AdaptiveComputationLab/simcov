@@ -43,7 +43,7 @@ int64_t GridCoords::to_1d() const {
   return in_block_id + block_id * _grid_blocks.block_size;
 }
 
-int64_t GridCoords::to_1d_inline() const {
+int64_t GridCoords::to_1d_linear() const {
   if (x >= _grid_size->x || y >= _grid_size->y || z >= _grid_size->z)
     DIE("Grid point is out of range: ", str(), " max size ", _grid_size->str());
   return x + y * _grid_size->x + z * _grid_size->x * _grid_size->y;
@@ -394,8 +394,8 @@ void Tissue::construct(GridCoords grid_size) {
 
   bool threeD = _grid_size->z > 1;
   SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
-       (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim, "^",
-       (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
+       (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim,
+       "^", (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
 
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * _grid_blocks.block_size;
@@ -412,9 +412,8 @@ void Tissue::construct(GridCoords grid_size) {
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
-      //epicell->infectable = true;
-      if ((coords.x + coords.y + coords.z) % 2 != 0) epicell->infectable = true;
-      else epicell->infectable = false;
+      if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
+        epicell->infectable = false;
       grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
@@ -479,9 +478,9 @@ pair<size_t, size_t> Tissue::dump_blocks(const string &fname, const string &head
       }
       grid_points_written++;
       buf[0] = val;
-      int64_t inline_id = coords.to_1d_inline();
-      DBG("Writing id: ", id, " at pos ", inline_id, " with coords: ", coords.str(), "\n");
-      size_t fpos = inline_id + header_str.length();
+      int64_t linear_id = coords.to_1d_linear();
+      DBG("Writing id: ", id, " at pos ", linear_id, " with coords: ", coords.str(), "\n");
+      size_t fpos = linear_id + header_str.length();
       auto bytes_written = pwrite(fileno, buf, buf_size, fpos);
       if (bytes_written != buf_size)
         DIE("Could not write all ", buf_size, " bytes; only wrote ", bytes_written, "\n");

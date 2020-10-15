@@ -77,7 +77,7 @@ struct GridCoords {
   }
 
   int64_t to_1d() const;
-  int64_t to_1d_inline() const;
+  int64_t to_1d_linear() const;
 
   string str() const {
     return "(" + to_string(x) + ", " + to_string(y) + ", " + to_string(z) + ")";
@@ -110,7 +110,7 @@ class EpiCell {
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
-  bool infectable = false;
+  bool infectable = true;
 
   EpiCell(int id) : id(id) {};
 
