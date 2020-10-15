@@ -301,7 +301,6 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
 }
 
 static int get_cube_block_dim(int64_t num_grid_points) {
-  int min_cubes_per_rank = 2;
   int block_dim = 1;
   int min_dim = min(min(_grid_size->x, _grid_size->y), _grid_size->z);
   for (int i = 1; i < min_dim; i++) {
@@ -314,8 +313,8 @@ static int get_cube_block_dim(int64_t num_grid_points) {
     size_t cube = (size_t)pow((double)i, 3.0);
     size_t num_cubes = num_grid_points / cube;
     DBG("cube size ", cube, " num cubes ", num_cubes, "\n");
-    if (num_cubes < rank_n() * min_cubes_per_rank) {
-      DBG("not enough cubes ", num_cubes, " < ", rank_n() * min_cubes_per_rank, "\n");
+    if (num_cubes < rank_n() * _options->min_blocks_per_proc) {
+      DBG("not enough cubes ", num_cubes, " < ", rank_n() * _options->min_blocks_per_proc, "\n");
       break;
     }
     // there is a remainder - this is not a perfect division
@@ -331,7 +330,6 @@ static int get_cube_block_dim(int64_t num_grid_points) {
 }
 
 static int get_square_block_dim(int64_t num_grid_points) {
-  int min_squares_per_rank = 2;
   int block_dim = 1;
   int min_dim = min(_grid_size->x, _grid_size->y);
   for (int i = 1; i < min_dim; i++) {
@@ -343,8 +341,9 @@ static int get_square_block_dim(int64_t num_grid_points) {
     size_t square = (size_t)pow((double)i, 2.0);
     size_t num_squares = num_grid_points / square;
     DBG("square size ", square, " num squares ", num_squares, "\n");
-    if (num_squares < rank_n() * min_squares_per_rank) {
-      DBG("not enough squares ", num_squares, " < ", rank_n() * min_squares_per_rank, "\n");
+    if (num_squares < rank_n() * _options->min_blocks_per_proc) {
+      DBG("not enough squares ", num_squares, " < ", rank_n() * _options->min_blocks_per_proc,
+          "\n");
       break;
     }
     // there is a remainder - this is not a perfect division

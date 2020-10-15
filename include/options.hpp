@@ -148,6 +148,7 @@ class Options {
                       get_current_time(true);
   int sample_period = 1;
   double sample_resolution = 1.0;
+  int min_blocks_per_proc = 16;
 
   bool show_progress = false;
   bool verbose = false;
@@ -254,6 +255,10 @@ class Options {
         ->capture_default_str();
     app.add_option("--sample-resolution", sample_resolution, "Resolution for sampling")
         ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option(
+           "--min-blocks-per-proc", min_blocks_per_proc,
+           "Minimum number of blocks per process - impacts performance (locality v load balance)")
         ->capture_default_str();
 
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory");
