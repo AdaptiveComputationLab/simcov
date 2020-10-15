@@ -390,15 +390,13 @@ void Tissue::construct(GridCoords grid_size) {
 
   int64_t num_blocks = num_grid_points / _grid_blocks.block_size;
 
-  if (_grid_size->z > 1)
-    SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " blocks of size ",
-         _grid_blocks.block_size, " (", block_dim, "^3)\n");
-  else
-    SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks, " squares of size ",
-         _grid_blocks.block_size, " (", block_dim, "^2)\n");
-
   int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
-  SLOG_VERBOSE("Each process has ", blocks_per_rank, " blocks\n");
+
+  bool threeD = _grid_size->z > 1;
+  SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
+       (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim, "^",
+       (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
+
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
