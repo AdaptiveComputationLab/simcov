@@ -130,6 +130,7 @@ class Options {
   vector<int> tcell_vascular_period{280, 28};
   vector<int> tcell_tissue_period{6, 1};
   int tcell_binding_period = 1;
+  double max_binding_prob = 0.1;
 
   double infectivity = 0.008;
   int virion_production = 2;
@@ -252,6 +253,9 @@ class Options {
     app.add_option("--tcell-binding-period", tcell_binding_period,
                    "Number of time steps a T cell is bound to an epithelial cell when inducing "
                    "apoptosis")
+        ->capture_default_str();
+    app.add_option("--max-binding-prob", max_binding_prob,
+                   "Max probability of a T cell binding to an infected cell in one time step")
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
     app.add_option("--sample-period", sample_period,
