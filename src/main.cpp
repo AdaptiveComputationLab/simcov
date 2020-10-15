@@ -255,7 +255,6 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     // same direction when there is a chemokine gradient
     auto nbs_shuffled = grid_point->neighbors;
     random_shuffle(nbs_shuffled.begin(), nbs_shuffled.end());
-    //for (auto &nb_coords : grid_point->neighbors) {
     for (auto &nb_coords : nbs_shuffled) {
       double chemokine = 0;
       int64_t nb_idx = nb_coords.to_1d();
@@ -332,13 +331,10 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     }
       break;
     case EpiCellStatus::APOPTOTIC:
-      // FIXME: it seems that there is evidence that apoptotic cells also produce cytokines
-      // This would be a necessary requirement for a feedback loop of damage caused by autoreactive
-      // tcells.
       if (grid_point->epicell->apoptosis_death()) {
         _sim_stats.dead++;
         _sim_stats.apoptotic--;
-      } else {
+      } else if (grid_point->epicell->was_expressing()) {
         produce_virions = true;
       }
       break;
@@ -426,60 +422,7 @@ void set_active_grid_points(Tissue &tissue) {
   set_active_points_timer.stop();
 }
 
-void dump_samples(const string &fname, const string &header_str, vector<SampleData> &samples,
-                  int64_t start_id, ViewObject view_object) {
-  auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
-  if (!upcxx::rank_me()) {
-    size_t bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
-    if (bytes_written != header_str.length())
-      DIE("Could not write all ", header_str.length(), " bytes: only wrote ", bytes_written);
-  }
-  // each rank writes one portion of the dataset to the file
-  unsigned char *buf = new unsigned char[samples.size()];
-  DBG("Writing data from ", start_id, " to ", start_id + samples.size(), "\n");
-  for (int64_t i = 0; i < samples.size(); i++) {
-    auto &sample = samples[i];
-    unsigned char val = 0;
-    if (view_object == ViewObject::TCELL_TISSUE) {
-      if (sample.has_tcell) val = 255;
-    } else if (view_object == ViewObject::EPICELL) {
-      if (sample.has_epicell) {
-        switch (sample.epicell_status) {
-          case EpiCellStatus::HEALTHY: val = 1; break;
-          case EpiCellStatus::INCUBATING: val = 2; break;
-          case EpiCellStatus::EXPRESSING: val = 3; break;
-          case EpiCellStatus::APOPTOTIC: val = 4; break;
-          case EpiCellStatus::DEAD: val = 5; break;
-        }
-      }
-    } else if (view_object == ViewObject::VIRUS) {
-      if (sample.virions < 0) DIE("virions are negative ", sample.virions);
-      val = min(sample.virions, 255);
-    } else if (view_object == ViewObject::CHEMOKINE) {
-      if (sample.chemokine < 0) DIE("chemokine is negative ", sample.chemokine);
-      val = 255 * sample.chemokine;
-      if (sample.chemokine > 0 && val == 0) val = 1;
-    }
-    buf[i] = val;
-  }
-  size_t fpos = header_str.length() + start_id;
-  auto bytes_written = pwrite(fileno, buf, samples.size(), fpos);
-  if (bytes_written != samples.size())
-    DIE("Could not write all ", samples.size(), " bytes; only wrote ", bytes_written, "\n");
-  delete[] buf;
-  close(fileno);
-}
-
 void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
-  // each rank writes its own blocks into the file at the appropriate locations. We compute the
-  // location knowing that each position takes exactly 4 characters (up to 3 numbers and a space),
-  // so we can work out how much space a block takes up, in order to position the data correctly.
-  // Each point is represented by a scalar char. From 1-127 are used to indicate viral load, with a
-  // color of red, going from faint to strong. From -127 to -1 are used to indicate tcell count,
-  // with a color of blue, going from faint to strong. The last color (0) is used to indicate a dead
-  // epicell (how do we make this a separate color?)
-  // each grid point takes up a single char
   size_t tot_sz = get_num_grid_points();
   string fname_snapshot = "sample_snapshot.csv";
   string fname = "samples/sample_" + view_object_str(view_object) + "_" + to_string(time_step) +
@@ -489,15 +432,13 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   int z_dim = _options->dimensions[2];
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
-             << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step
-             << "\n"
+             << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step << "\n"
              //<< "ASCII\n"
              << "BINARY\n"
              << "DATASET STRUCTURED_POINTS\n"
              // we add one in each dimension because these are for drawing the
              // visualization points, and our visualization entities are cells
-             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
-             << "\n"
+             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1) << "\n"
              // each cell is 5 microns
              << "SPACING 5 5 5\n"
              << "ORIGIN 0 0 0\n"
@@ -512,8 +453,9 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   }
   header_oss << " unsigned_char\n"
              << "LOOKUP_TABLE default\n";
+  auto header_str = header_oss.str();
   if (!rank_me()) {
-    tot_sz += header_oss.str().size();
+    tot_sz += header_str.size();
     // rank 0 creates the file and truncates it to the correct length
     auto fileno = open(fname.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (fileno == -1) SDIE("Cannot create file ", fname, ": ", strerror(errno), "\n");
@@ -523,7 +465,46 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   }
   // wait until rank 0 has finished setting up the file
   upcxx::barrier();
-  dump_samples(fname, header_oss.str(), samples, start_id, view_object);
+  auto fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fileno == -1) DIE("Cannot open file ", fname, ": ", strerror(errno), "\n");
+  if (!upcxx::rank_me()) {
+    size_t bytes_written = pwrite(fileno, header_str.c_str(), header_str.length(), 0);
+    if (bytes_written != header_str.length())
+      DIE("Could not write all ", header_str.length(), " bytes: only wrote ", bytes_written);
+  }
+  // each rank writes one portion of the dataset to the file
+  unsigned char *buf = new unsigned char[samples.size()];
+  //DBG(time_step, " writing data from ", start_id, " to ", start_id + samples.size(), "\n");
+  for (int64_t i = 0; i < samples.size(); i++) {
+    auto &sample = samples[i];
+    unsigned char val = 0;
+    switch (view_object) {
+      case ViewObject::TCELL_TISSUE:
+        if (sample.has_tcell) val = 255;
+        break;
+      case ViewObject::EPICELL:
+        if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
+        //if (val > 1)
+        //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");
+        break;
+      case ViewObject::VIRUS:
+        if (sample.virions < 0) DIE("virions are negative ", sample.virions);
+        val = min(sample.virions, 255);
+        break;
+      case ViewObject::CHEMOKINE:
+        if (sample.chemokine < 0) DIE("chemokine is negative ", sample.chemokine);
+        val = 255 * sample.chemokine;
+        if (sample.chemokine > 0 && val == 0) val = 1;
+        break;
+    }
+    buf[i] = val;
+  }
+  size_t fpos = header_str.length() + start_id;
+  auto bytes_written = pwrite(fileno, buf, samples.size(), fpos);
+  if (bytes_written != samples.size())
+    DIE("Could not write all ", samples.size(), " bytes; only wrote ", bytes_written, "\n");
+  delete[] buf;
+  close(fileno);
   upcxx::barrier();
 }
 

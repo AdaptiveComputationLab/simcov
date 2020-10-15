@@ -27,6 +27,13 @@ GridCoords::GridCoords(shared_ptr<Random> rnd_gen) {
   z = rnd_gen->get(0, _grid_size->z);
 }
 
+void GridCoords::from_1d_linear(int64_t i) {
+  z = i / (_grid_size->x * _grid_size->y);
+  i = i % (_grid_size->x * _grid_size->y);
+  y = i / _grid_size->x;
+  x = i % _grid_size->x;
+}
+
 int64_t GridCoords::to_1d() const {
   if (x >= _grid_size->x || y >= _grid_size->y || z >= _grid_size->z)
     DIE("Grid point is out of range: ", str(), " max size ", _grid_size->str());
@@ -87,6 +94,13 @@ bool EpiCell::transition_to_expressing() {
   return true;
 }
 
+bool EpiCell::was_expressing() {
+  // this is used to determine if the epicell was expressing before apoptosis was induced
+  assert(status == EpiCellStatus::APOPTOTIC);
+  if (incubation_period == 0) return true;
+  return false;
+}
+
 bool EpiCell::apoptosis_death() {
   assert(status == EpiCellStatus::APOPTOTIC);
   apoptosis_period--;
@@ -110,9 +124,11 @@ bool EpiCell::is_active() {
 double EpiCell::get_binding_prob() {
   // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
   // incubation period, but is always 1 for expressing cells
+  // FIXME: is this actually correct?
   if (status == EpiCellStatus::EXPRESSING) return 1.0;
   return min(1.0 - (double)incubation_period / initial_incubation_period, 1.0);
 }
+
 
 string GridPoint::str() const {
   ostringstream oss;
@@ -395,6 +411,8 @@ void Tissue::construct(GridCoords grid_size) {
     SWARN("Using a block size of 1: this will result in a lot of "
           "communication. You should change the dimensions.");
 
+//block_dim = _grid_size->x;
+
   _grid_blocks.block_size = (_grid_size->z > 1 ? block_dim * block_dim * block_dim :
                                                  block_dim * block_dim);
   _grid_blocks.num_x = _grid_size->x / block_dim;
@@ -450,13 +468,14 @@ void Tissue::get_samples(vector<SampleData> &samples, int64_t &start_id) {
   int64_t num_points = get_num_grid_points();
   int64_t num_points_per_rank = ceil((double)num_points / rank_n());
   start_id = rank_me() * num_points_per_rank;
-  int64_t end_id = min(rank_me() * (num_points_per_rank + 1), num_points);
+  int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
   size_t buf_size = end_id - start_id;
   samples.clear();
   samples.reserve(buf_size);
   // FIXME: this should be aggregated fetches per target rank
   for (int64_t id = start_id; id < end_id; id++) {
-    GridCoords coords(id);
+    GridCoords coords;
+    coords.from_1d_linear(id);
     samples.emplace_back(get_grid_point_sample_data(coords));
   }
 }

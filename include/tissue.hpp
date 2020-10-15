@@ -66,6 +66,8 @@ struct GridCoords {
   // create a random grid point
   GridCoords(shared_ptr<Random> rnd_gen);
 
+  void from_1d_linear(int64_t i);
+
   void set_rnd(shared_ptr<Random> rnd_gen);
 
   bool operator==(const GridCoords &coords) {
@@ -122,6 +124,7 @@ class EpiCell {
   bool infection_death();
   bool is_active();
   double get_binding_prob();
+  bool was_expressing();
 };
 
 struct GridPoint {
