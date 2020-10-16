@@ -52,6 +52,7 @@ def display_data(prefix, data_dir, render_view, label, color_func):
     display.UseSeparateColorMap = True
     color_bar = pvs.GetScalarBar(color_func, render_view)
     color_bar.Title = label
+    color_bar.ComponentTitle = ''
     color_bar.ScalarBarLength = 0.12
     display.SetScalarBarVisibility(render_view, True)
 
