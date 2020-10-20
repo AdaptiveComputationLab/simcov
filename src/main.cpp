@@ -115,7 +115,8 @@ void initial_infection(Tissue &tissue) {
       local_num_infections = 1;
       GridCoords coords = {_options->infection_coords[0], _options->infection_coords[1],
                            _options->infection_coords[2]};
-      if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
+      //if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
+      tissue.set_initial_infection(coords);
       // FIXME: this should really be a starting number of virions, not an infected cell
     } else {
       local_num_infections = 0;
@@ -132,7 +133,8 @@ void initial_infection(Tissue &tissue) {
       progbar.update();
       GridCoords coords(_rnd_gen);
       DBG("infection: ", coords.str() + "\n");
-      if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
+      //if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
+      tissue.set_initial_infection(coords);
       upcxx::progress();
     }
     progbar.done();

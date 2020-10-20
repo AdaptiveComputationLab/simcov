@@ -126,6 +126,9 @@ double EpiCell::get_binding_prob() {
   // incubation period, but is always 1 for expressing cells
   // FIXME: is this actually correct?
   if (status == EpiCellStatus::EXPRESSING) return _options->max_binding_prob;
+
+  //return 0;
+
   double prob = _options->max_binding_prob *
                 (1.0 - (double)incubation_period / initial_incubation_period);
   return min(prob, _options->max_binding_prob);
@@ -216,9 +219,11 @@ bool Tissue::set_initial_infection(GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
                // ensure we have at least on infected cell to start
+               /*
                if (grid_point->epicell->status != EpiCellStatus::HEALTHY) return false;
                grid_point->epicell->infectable = true;
                grid_point->epicell->infect();
+               */
                grid_point->virions = _options->initial_infection;
                new_active_grid_points->insert({grid_point, true});
                return true;
