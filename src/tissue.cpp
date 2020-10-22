@@ -132,11 +132,7 @@ bool EpiCell::is_active() {
 double EpiCell::get_binding_prob() {
   // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
   // incubation period, but is always 1 for expressing cells
-  // FIXME: is this actually correct?
   if (status == EpiCellStatus::EXPRESSING) return _options->max_binding_prob;
-
-  //return 0;
-
   double prob = _options->max_binding_prob *
                 (1.0 - (double)incubation_period / initial_incubation_period);
   return min(prob, _options->max_binding_prob);
@@ -337,7 +333,7 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
                //if (extravasate && !_rnd_gen->trial_success(grid_point->chemokine)) return false;
-               if (extravasate && grid_point->chemokine < MIN_CONCENTRATION) return false;
+               if (extravasate && grid_point->chemokine < _options->min_chemokine) return false;
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
                grid_point->tcell = new TCell(tcell);

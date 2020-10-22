@@ -26,8 +26,10 @@ argparser.add_argument("-f", "--stats-file", required=True, help="Stats file con
 argparser.add_argument("-o", "--output", required=True, help="Output file for images")
 argparser.add_argument("-c", "--compare-file", default='', help="File for comparisons")
 argparser.add_argument("-r", "--resolution", type=int, dest='resolution', default=1440, help='Resolution: number of time steps per day') 
-argparser.add_argument("--virus-scale", type=float, dest='virus_scale', default=4e18, help='Factor to scale comparison virus levels')
-argparser.add_argument("--chemo-scale", type=float, dest='chemo_scale', default=5e14, help='Factor to scale comparison chemokine levels')
+#argparser.add_argument("--virus-scale", type=float, dest='virus_scale', default=4e18, help='Factor to scale comparison virus levels')
+#argparser.add_argument("--chemo-scale", type=float, dest='chemo_scale', default=5e14, help='Factor to scale comparison chemokine levels')
+argparser.add_argument("--virus-scale", type=float, dest='virus_scale', default=1.0, help='Factor to scale comparison virus levels')
+argparser.add_argument("--chemo-scale", type=float, dest='chemo_scale', default=1.0, help='Factor to scale comparison chemokine levels')
 argparser.add_argument("--log", dest='log_scale', action="store_true", help='Use log scale for epicells and tcells')
 options = argparser.parse_args()
 
@@ -90,19 +92,23 @@ def animate(i):
         
         plot_subplot(options.stats_file, ax_epicells, [1, 2, 3, 4], 'epicells', log_scale=options.log_scale)
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_epicells, [2, 3, 5, 4], 'epicells', lw=4, alpha=0.3, clear=False, log_scale=options.log_scale)
+            #plot_subplot(options.compare_file, ax_epicells, [2, 3, 5, 4], 'epicells', lw=4, alpha=0.3, clear=False, log_scale=options.log_scale)
+            plot_subplot(options.compare_file, ax_epicells, [1, 2, 3, 4], 'epicells', lw=4, alpha=0.3, clear=False, log_scale=options.log_scale)
             
         plot_subplot(options.stats_file, ax_tcells, [6, 5], 'tcells', log_scale=options.log_scale)
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_tcells, [6, 7], 'tcells', lw=4, alpha=0.3, clear=False, log_scale=options.log_scale)
+            #plot_subplot(options.compare_file, ax_tcells, [6, 7], 'tcells', lw=4, alpha=0.3, clear=False, log_scale=options.log_scale)
+            plot_subplot(options.compare_file, ax_tcells, [6, 5], 'tcells', lw=4, alpha=0.3, clear=False, log_scale=options.log_scale)
             
         plot_subplot(options.stats_file, ax_virus, [8], 'avg virions per cell')
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_virus, [9], 'avg virions per cell', lw=4, alpha=0.3, clear=False, log_scale=False, scale=options.virus_scale)
+            #plot_subplot(options.compare_file, ax_virus, [9], 'avg virions per cell', lw=4, alpha=0.3, clear=False, log_scale=False, scale=options.virus_scale)
+            plot_subplot(options.compare_file, ax_virus, [8], 'avg virions per cell', lw=4, alpha=0.3, clear=False, log_scale=False, scale=options.virus_scale)
             
         plot_subplot(options.stats_file, ax_chemo, [7], 'avg chemokines per cell')
         if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_chemo, [10], 'avg chemokines per cell', lw=4, alpha=0.3, clear=False, log_scale=False, scale=options.chemo_scale)
+            #plot_subplot(options.compare_file, ax_chemo, [10], 'avg chemokines per cell', lw=4, alpha=0.3, clear=False, log_scale=False, scale=options.chemo_scale)
+            plot_subplot(options.compare_file, ax_chemo, [7], 'avg chemokines per cell', lw=4, alpha=0.3, clear=False, log_scale=False, scale=options.chemo_scale)
             
     else:
         unchanged += 1

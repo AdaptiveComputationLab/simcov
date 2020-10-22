@@ -253,26 +253,28 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     GridCoords selected_coords;
     // not bound - follow chemokine gradient
     double highest_chemokine = 0;
-    // get a randomly shuffled list of neighbors so the tcell doesn't always tend to move in the
-    // same direction when there is a chemokine gradient
-    auto nbs_shuffled = grid_point->neighbors;
-    random_shuffle(nbs_shuffled.begin(), nbs_shuffled.end());
-    for (auto &nb_coords : nbs_shuffled) {
-      double chemokine = 0;
-      int64_t nb_idx = nb_coords.to_1d();
-      auto it = chemokines_cache.find(nb_idx);
-      if (it == chemokines_cache.end()) {
-        chemokine = tissue.get_chemokine(nb_coords);
-        chemokines_cache.insert({nb_idx, chemokine});
-      } else {
-        chemokine = it->second;
+    if (_options->tcells_follow_gradient) {
+      // get a randomly shuffled list of neighbors so the tcell doesn't always tend to move in the
+      // same direction when there is a chemokine gradient
+      auto nbs_shuffled = grid_point->neighbors;
+      random_shuffle(nbs_shuffled.begin(), nbs_shuffled.end());
+      for (auto &nb_coords : nbs_shuffled) {
+        double chemokine = 0;
+        int64_t nb_idx = nb_coords.to_1d();
+        auto it = chemokines_cache.find(nb_idx);
+        if (it == chemokines_cache.end()) {
+          chemokine = tissue.get_chemokine(nb_coords);
+          chemokines_cache.insert({nb_idx, chemokine});
+        } else {
+          chemokine = it->second;
+        }
+        if (chemokine > highest_chemokine) {
+          highest_chemokine = chemokine;
+          selected_coords = nb_coords;
+        }
+        DBG(time_step, " tcell ", tcell->id, " found nb chemokine ", chemokine, " at ",
+            nb_coords.str(), "\n");
       }
-      if (chemokine > highest_chemokine) {
-        highest_chemokine = chemokine;
-        selected_coords = nb_coords;
-      }
-      DBG(time_step, " tcell ", tcell->id, " found nb chemokine ", chemokine, " at ",
-          nb_coords.str(), "\n");
     }
     if (highest_chemokine == 0) {
       // no chemokines found - move randomly
@@ -359,7 +361,7 @@ void update_chemokines(GridPoint *grid_point,
   // concentrations > 0 (i.e. active grid points)
   if (grid_point->chemokine > 0) {
     grid_point->chemokine *= (1.0 - _options->chemokine_decay_rate);
-    if (grid_point->chemokine < MIN_CONCENTRATION) grid_point->chemokine = 0;
+    if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
   }
   if (grid_point->chemokine > 0) {
     for (auto &nb_coords : grid_point->neighbors) {
@@ -413,7 +415,7 @@ void set_active_grid_points(Tissue &tissue) {
             grid_point->neighbors.size());
     spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
                    grid_point->neighbors.size());
-    if (grid_point->chemokine < MIN_CONCENTRATION) grid_point->chemokine = 0;
+    if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->tcell) grid_point->tcell->moved = false;
     _sim_stats.chemokines += grid_point->chemokine;

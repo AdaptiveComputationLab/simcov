@@ -140,6 +140,7 @@ class Options {
   double chemokine_production = 0.0005;
   double chemokine_decay_rate = 0.015;
   double chemokine_diffusion_coef = 0.7;
+  double min_chemokine = 1e-3;
 
   double antibody_factor = 1;
   int antibody_period = 5760;
@@ -151,6 +152,8 @@ class Options {
   int sample_period = 1;
   double sample_resolution = 1.0;
   int min_blocks_per_proc = 16;
+
+  bool tcells_follow_gradient = false;
 
   bool show_progress = false;
   bool verbose = false;
@@ -226,6 +229,10 @@ class Options {
                    "each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
+    app.add_option("--min-chemokine", min_chemokine,
+                   "Minimum chemokine concentration that triggers a T cell")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
     app.add_option("--antibody-factor", antibody_factor,
                    "Impact of antibodies; multiplier for virion decay")
         ->capture_default_str();
@@ -256,6 +263,9 @@ class Options {
         ->capture_default_str();
     app.add_option("--max-binding-prob", max_binding_prob,
                    "Max probability of a T cell binding to an infected cell in one time step")
+        ->capture_default_str();
+    app.add_flag("--tcells-follow-gradient", tcells_follow_gradient,
+                 "T cells in tissue follow the chemokine gradient")
         ->capture_default_str();
     app.add_option("-r,--seed", rnd_seed, "Random seed")->capture_default_str();
     app.add_option("--sample-period", sample_period,
