@@ -3,6 +3,7 @@
 using namespace std;
 
 GridCoords::GridCoords(int64_t i) {
+#ifdef BLOCK_PARTITION
   int64_t blocknum = i / _grid_blocks.block_size;
   int64_t block_z = blocknum / (_grid_blocks.num_x * _grid_blocks.num_y);
   blocknum -= block_z * _grid_blocks.num_x * _grid_blocks.num_y;
@@ -19,6 +20,9 @@ GridCoords::GridCoords(int64_t i) {
   x = block_x + dx;
   y = block_y + dy;
   z = block_z + dz;
+#else
+  from_1d_linear(i);
+#endif
 }
 
 GridCoords::GridCoords(shared_ptr<Random> rnd_gen) {
@@ -37,6 +41,7 @@ void GridCoords::from_1d_linear(int64_t i) {
 int64_t GridCoords::to_1d() const {
   if (x >= _grid_size->x || y >= _grid_size->y || z >= _grid_size->z)
     DIE("Grid point is out of range: ", str(), " max size ", _grid_size->str());
+#ifdef BLOCK_PARTITION
   int64_t block_x = x / _grid_blocks.size_x;
   int64_t block_y = y / _grid_blocks.size_y;
   int64_t block_z = z / _grid_blocks.size_z;
@@ -48,6 +53,9 @@ int64_t GridCoords::to_1d() const {
   int64_t in_block_id = in_block_x + in_block_y * _grid_blocks.size_x +
                         in_block_z * _grid_blocks.size_x * _grid_blocks.size_y;
   return in_block_id + block_id * _grid_blocks.block_size;
+#else
+  return to_1d_linear();
+#endif
 }
 
 int64_t GridCoords::to_1d_linear() const {

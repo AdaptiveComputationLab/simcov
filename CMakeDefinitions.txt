@@ -6,3 +6,6 @@ add_definitions(-DUSE_BYTELL)
 
 add_definitions(-DMIN_CONCENTRATION=1e-6)
 add_definitions(-DMAX_VIRIONS=125000)
+
+# if defined, partition into blocks. This should increase locality, but at the cost of load balance
+# add_definitions(-DBLOCK_PARTITION)
