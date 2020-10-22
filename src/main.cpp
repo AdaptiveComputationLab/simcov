@@ -162,7 +162,7 @@ void generate_tcells(Tissue &tissue, int time_step) {
       GridCoords coords(_rnd_gen);
       string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
       tissue.tcells_generated++;
-      TCell tcell(tcell_id, coords);
+      TCell tcell(tcell_id);
       // choose a destination rank to add the tcell to based on the inital random coords
       tissue.add_circulating_tcell(coords, tcell);
       _sim_stats.tcells_vasculature++;
@@ -184,8 +184,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue) {
   auto circulating_tcells = tissue.get_circulating_tcells();
   for (auto it = circulating_tcells->begin(); it != circulating_tcells->end(); it++) {
     progress();
-    it->vascular_period--;
-    if (it->vascular_period == 0) {
+    if (_rnd_gen->trial_success(1.0 / _options->tcell_vascular_period)) {
       _sim_stats.tcells_vasculature--;
       circulating_tcells->erase(it--);
       continue;
@@ -194,8 +193,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue) {
     if (tissue.try_add_tissue_tcell(coords, *it, true)) {
       _sim_stats.tcells_vasculature--;
       _sim_stats.tcells_tissue++;
-      DBG(time_step, " tcell ", it->id, " extravasates at ", coords.str(), " with lifespan ",
-          it->tissue_period, " will die at ", (time_step + it->tissue_period), "\n");
+      DBG(time_step, " tcell ", it->id, " extravasates at ", coords.str(), "\n");
       circulating_tcells->erase(it--);
     }
   }
@@ -212,8 +210,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     update_tcell_timer.stop();
     return;
   }
-  tcell->tissue_period--;
-  if (tcell->tissue_period == 0) {
+  if (_rnd_gen->trial_success(1.0 / _options->tcell_tissue_period)) {
     _sim_stats.tcells_tissue--;
     DBG(time_step, " tcell ", tcell->id, " dies in tissue at ", grid_point->coords.str(), "\n");
     // not adding to a new location means this tcell is not preserved to the next time step
@@ -232,7 +229,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     // not bound to an epicell
     if (grid_point->epicell && (grid_point->epicell->status == EpiCellStatus::EXPRESSING ||
         grid_point->epicell->status == EpiCellStatus::INCUBATING)) {
-      double binding_prob = grid_point->epicell->get_binding_prob();
+      double binding_prob = grid_point->epicell->get_binding_prob(time_step);
       DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
       if (_rnd_gen->trial_success(binding_prob)) {
         DBG(time_step, " tcell ", tcell->id, " is inducing apoptosis at ", grid_point->coords.str(),
@@ -315,7 +312,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virions) {
         if (_rnd_gen->trial_success(_options->infectivity * grid_point->virions)) {
-          grid_point->epicell->infect();
+          grid_point->epicell->infect(time_step);
           _sim_stats.incubating++;
         }
       }

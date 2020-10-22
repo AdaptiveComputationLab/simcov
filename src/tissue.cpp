@@ -71,56 +71,42 @@ void GridCoords::set_rnd(shared_ptr<Random> rnd_gen) {
 }
 
 
-TCell::TCell(const string &id, GridCoords &coords) : id(id) {
-  vascular_period = _rnd_gen->get_normal_distr(_options->tcell_vascular_period);
-  tissue_period = _rnd_gen->get_normal_distr(_options->tcell_tissue_period);
-}
-
-
 string EpiCell::str() {
   ostringstream oss;
   oss << id << " " << EpiCellStatusStr[(int)status];
   return oss.str();
 }
 
-void EpiCell::infect() {
+void EpiCell::infect(int time_step) {
   assert(status == EpiCellStatus::HEALTHY);
   assert(infectable);
   status = EpiCellStatus::INCUBATING;
-  infection_period = _rnd_gen->get_normal_distr(_options->infection_period);
-  incubation_period = _rnd_gen->get_normal_distr(_options->incubation_period);
-  initial_incubation_period = incubation_period;
-  apoptosis_period = _rnd_gen->get_normal_distr(_options->apoptosis_period);
+  infection_time_step = time_step;
 }
 
 bool EpiCell::transition_to_expressing() {
   assert(status == EpiCellStatus::INCUBATING);
-  incubation_period--;
-  infection_period--;
-  if (incubation_period > 0) return false;
+  if (!_rnd_gen->trial_success(1.0 / _options->incubation_period)) return false;
   status = EpiCellStatus::EXPRESSING;
+  is_expressing = true;
   return true;
 }
 
 bool EpiCell::was_expressing() {
   // this is used to determine if the epicell was expressing before apoptosis was induced
   assert(status == EpiCellStatus::APOPTOTIC);
-  if (incubation_period == 0) return true;
-  return false;
+  return is_expressing;
 }
 
 bool EpiCell::apoptosis_death() {
   assert(status == EpiCellStatus::APOPTOTIC);
-  apoptosis_period--;
-  infection_period--;
-  if (apoptosis_period > 0 && infection_period > 0) return false;
+  if (!_rnd_gen->trial_success(1.0 / _options->apoptosis_period)) return false;
   status = EpiCellStatus::DEAD;
   return true;
 }
 
 bool EpiCell::infection_death() {
-  infection_period--;
-  if (infection_period > 0) return false;
+  if (!_rnd_gen->trial_success(1.0 / _options->expressing_period)) return false;
   status = EpiCellStatus::DEAD;
   return true;
 }
@@ -129,12 +115,13 @@ bool EpiCell::is_active() {
   return (status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
 }
 
-double EpiCell::get_binding_prob() {
+double EpiCell::get_binding_prob(int time_step) {
   // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
   // incubation period, but is always 1 for expressing cells
   if (status == EpiCellStatus::EXPRESSING) return _options->max_binding_prob;
   double prob = _options->max_binding_prob *
-                (1.0 - (double)incubation_period / initial_incubation_period);
+                (1.0 - (double)(time_step - infection_time_step) / _options->incubation_period);
+  if (prob <= 0) return 0;
   return min(prob, _options->max_binding_prob);
 }
 
@@ -332,7 +319,6 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
                 GridCoords coords, TCell tcell, bool extravasate) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (grid_point->tcell) return false;
-               //if (extravasate && !_rnd_gen->trial_success(grid_point->chemokine)) return false;
                if (extravasate && grid_point->chemokine < _options->min_chemokine) return false;
                new_active_grid_points->insert({grid_point, true});
                tcell.moved = true;
@@ -417,12 +403,10 @@ void Tissue::construct(GridCoords grid_size) {
   // to load imbalance if all of the computation is
   // happening within a cube.
   int block_dim = (_grid_size->z > 1 ? get_cube_block_dim(num_grid_points) :
-                                             get_square_block_dim(num_grid_points));
+                                       get_square_block_dim(num_grid_points));
   if (block_dim == 1)
     SWARN("Using a block size of 1: this will result in a lot of "
           "communication. You should change the dimensions.");
-
-//block_dim = _grid_size->x;
 
   _grid_blocks.block_size = (_grid_size->z > 1 ? block_dim * block_dim * block_dim :
                                                  block_dim * block_dim);

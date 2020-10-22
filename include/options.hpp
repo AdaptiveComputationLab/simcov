@@ -111,39 +111,39 @@ class Options {
   }
 
  public:
-  vector<int64_t> dimensions{50, 50, 1};
+  vector<int64_t> dimensions{100, 100, 1};
   // each time step should be about 1 minute, so one day = 1440 time steps
-  int num_timesteps = 200;
-  int num_infections = 3;
+  int num_timesteps = 2000;
+  int num_infections = 1;
 
-  vector<int64_t> infection_coords{-1, -1, -1};
-  int initial_infection = 10000;
+  vector<int64_t> infection_coords{49, 49, 0};
+  int initial_infection = 1000;
   int infectable_spacing = 1;
 
   // these periods are normally distributed with mean and stddev
-  vector<int> incubation_period{30, 3};
-  vector<int> apoptosis_period{30, 3};
-  vector<int> infection_period{80, 8};
+  int incubation_period = 100;
+  int apoptosis_period = 30;
+  int expressing_period = 100;
 
-  double tcell_generation_rate = 1;
-  int tcell_initial_delay = 10;
-  vector<int> tcell_vascular_period{280, 28};
-  vector<int> tcell_tissue_period{6, 1};
-  int tcell_binding_period = 1;
+  double tcell_generation_rate = 5;
+  int tcell_initial_delay = 1000;
+  int tcell_vascular_period = 600;
+  int tcell_tissue_period = 60;
+  int tcell_binding_period = 5;
   double max_binding_prob = 0.1;
 
-  double infectivity = 0.008;
-  int virion_production = 2;
-  double virion_decay_rate = 0.14;
-  double virion_diffusion_coef = 1.0;
+  double infectivity = 0.0001;
+  int virion_production = 100;
+  double virion_decay_rate = 0.1;
+  double virion_diffusion_coef = 0.5;
 
-  double chemokine_production = 0.0005;
-  double chemokine_decay_rate = 0.015;
-  double chemokine_diffusion_coef = 0.7;
-  double min_chemokine = 1e-3;
+  double chemokine_production = 0.5;
+  double chemokine_decay_rate = 0.01;
+  double chemokine_diffusion_coef = 0.2;
+  double min_chemokine = 0.001;
 
   double antibody_factor = 1;
-  int antibody_period = 5760;
+  int antibody_period = 900;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
@@ -184,22 +184,13 @@ class Options {
         ->capture_default_str();
     app.add_option(
            "--incubation-period", incubation_period,
-           "Number of time steps to expressing virions after cell is infected (average:stddev)")
-        ->delimiter(':')
-        ->expected(2)
-        ->check(CLI::Range(1, 50000))
+           "Average number of time steps to expressing virions after cell is infected")
         ->capture_default_str();
     app.add_option("--apoptosis-period", apoptosis_period,
-                   "Number of time steps to death after apoptosis is induced (average:stddev)")
-        ->delimiter(':')
-        ->expected(2)
-        ->check(CLI::Range(1, 50000))
+                   "Average number of time steps to death after apoptosis is induced")
         ->capture_default_str();
-    app.add_option("--infected-period", infection_period,
-                   "Number of time steps to death after a cell is infected (average:stddev)")
-        ->delimiter(':')
-        ->expected(2)
-        ->check(CLI::Range(1, 50000))
+    app.add_option("--expressing-period", expressing_period,
+                   "Average number of time steps to death after a cell starts expresssing")
         ->capture_default_str();
     app.add_option("--infectivity", infectivity,
                    "Factor multiplied by number of virions to determine probability of infection")
@@ -246,16 +237,10 @@ class Options {
                    "Number of time steps before T cells start to be produced")
         ->capture_default_str();
     app.add_option("--tcell-vascular-period", tcell_vascular_period,
-                   "Number of time steps to death for a T cell in the vasculature (average:stddev)")
-        ->delimiter(':')
-        ->expected(2)
-        ->check(CLI::Range(1, 50000))
+                   "Average number of time steps to death for a T cell in the vasculature")
         ->capture_default_str();
     app.add_option("--tcell-tissue-period", tcell_tissue_period,
-                   "Number of time steps to death after a T cell extravasates (average:stddev)")
-        ->delimiter(':')
-        ->expected(2)
-        ->check(CLI::Range(1, 50000))
+                   "Average number of time steps to death after a T cell extravasates")
         ->capture_default_str();
     app.add_option("--tcell-binding-period", tcell_binding_period,
                    "Number of time steps a T cell is bound to an epithelial cell when inducing "

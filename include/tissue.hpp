@@ -88,14 +88,12 @@ struct GridCoords {
 
 struct TCell {
   string id;
-  int vascular_period = -1;
-  int tissue_period = -1;
   int binding_period = -1;
   bool moved = true;
 
-  UPCXX_SERIALIZED_FIELDS(id, vascular_period, tissue_period, binding_period, moved);
+  UPCXX_SERIALIZED_FIELDS(id, binding_period, moved);
 
-  TCell(const string &id, GridCoords &coords);
+  TCell(const string &id) : id(id) {}
 
   TCell() {}
 };
@@ -105,10 +103,8 @@ const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPT
 
 class EpiCell {
   int id;
-  int initial_incubation_period = -1;
-  int incubation_period = -1;
-  int apoptosis_period = -1;
-  int infection_period = -1;
+  int infection_time_step = -1;
+  bool is_expressing = false;
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
@@ -118,12 +114,12 @@ class EpiCell {
 
   string str();
 
-  void infect();
+  void infect(int time_stamp);
   bool transition_to_expressing();
   bool apoptosis_death();
   bool infection_death();
   bool is_active();
-  double get_binding_prob();
+  double get_binding_prob(int time_step);
   bool was_expressing();
 };
 
