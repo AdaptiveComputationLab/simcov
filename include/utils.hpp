@@ -47,8 +47,12 @@ class Random {
     return (get_prob() <= thres);
   }
 
-  int get_normal_distr(vector<int> dist_params) {
+  int get_normal(vector<int> dist_params) {
     return (int)std::normal_distribution<float>(dist_params[0], dist_params[1])(generator);
+  }
+
+  int get_poisson(int avg) {
+    return (int)std::poisson_distribution<int>(avg)(generator);
   }
 };
 

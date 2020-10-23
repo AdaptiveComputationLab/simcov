@@ -89,13 +89,15 @@ struct GridCoords {
 struct TCell {
   string id;
   int binding_period = -1;
+  int vascular_time_steps = -1;
+  int tissue_time_steps = -1;
   bool moved = true;
 
   UPCXX_SERIALIZED_FIELDS(id, binding_period, moved);
 
-  TCell(const string &id) : id(id) {}
+  TCell(const string &id);
 
-  TCell() {}
+  TCell();
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
@@ -104,13 +106,16 @@ const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPT
 class EpiCell {
   int id;
   int infection_time_step = -1;
+  int incubation_time_steps = -1;
+  int expressing_time_steps = -1;
+  int apoptotic_time_steps = -1;
   bool is_expressing = false;
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
   bool infectable = true;
 
-  EpiCell(int id) : id(id) {};
+  EpiCell(int id);
 
   string str();
 

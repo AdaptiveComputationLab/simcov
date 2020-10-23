@@ -184,7 +184,8 @@ void update_circulating_tcells(int time_step, Tissue &tissue) {
   auto circulating_tcells = tissue.get_circulating_tcells();
   for (auto it = circulating_tcells->begin(); it != circulating_tcells->end(); it++) {
     progress();
-    if (_rnd_gen->trial_success(1.0 / _options->tcell_vascular_period)) {
+    it->vascular_time_steps--;
+    if (it->vascular_time_steps == 0) {
       _sim_stats.tcells_vasculature--;
       circulating_tcells->erase(it--);
       continue;
@@ -210,7 +211,8 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     update_tcell_timer.stop();
     return;
   }
-  if (_rnd_gen->trial_success(1.0 / _options->tcell_tissue_period)) {
+  tcell->tissue_time_steps--;
+  if (tcell->tissue_time_steps == 0) {
     _sim_stats.tcells_tissue--;
     DBG(time_step, " tcell ", tcell->id, " dies in tissue at ", grid_point->coords.str(), "\n");
     // not adding to a new location means this tcell is not preserved to the next time step

@@ -71,9 +71,27 @@ void GridCoords::set_rnd(shared_ptr<Random> rnd_gen) {
 }
 
 
+TCell::TCell(const string &id) : id(id) {
+  vascular_time_steps = _rnd_gen->get_poisson(_options->tcell_vascular_period);
+  tissue_time_steps = _rnd_gen->get_poisson(_options->tcell_tissue_period);
+}
+
+TCell::TCell() {
+  vascular_time_steps = _rnd_gen->get_poisson(_options->tcell_vascular_period);
+  tissue_time_steps = _rnd_gen->get_poisson(_options->tcell_tissue_period);
+}
+
+
+EpiCell::EpiCell(int id) : id(id) {
+  incubation_time_steps = _rnd_gen->get_poisson(_options->incubation_period);
+  expressing_time_steps = _rnd_gen->get_poisson(_options->expressing_period);
+  apoptotic_time_steps = _rnd_gen->get_poisson(_options->apoptosis_period);
+}
+
 string EpiCell::str() {
   ostringstream oss;
-  oss << id << " " << EpiCellStatusStr[(int)status];
+  oss << id << " " << EpiCellStatusStr[(int)status] << " " << incubation_time_steps << " "
+      << expressing_time_steps << " " << apoptotic_time_steps;
   return oss.str();
 }
 
@@ -86,7 +104,8 @@ void EpiCell::infect(int time_step) {
 
 bool EpiCell::transition_to_expressing() {
   assert(status == EpiCellStatus::INCUBATING);
-  if (!_rnd_gen->trial_success(1.0 / _options->incubation_period)) return false;
+  incubation_time_steps--;
+  if (incubation_time_steps > 0) return false;
   status = EpiCellStatus::EXPRESSING;
   is_expressing = true;
   return true;
@@ -100,13 +119,15 @@ bool EpiCell::was_expressing() {
 
 bool EpiCell::apoptosis_death() {
   assert(status == EpiCellStatus::APOPTOTIC);
-  if (!_rnd_gen->trial_success(1.0 / _options->apoptosis_period)) return false;
+  apoptotic_time_steps--;
+  if (apoptotic_time_steps > 0) return false;
   status = EpiCellStatus::DEAD;
   return true;
 }
 
 bool EpiCell::infection_death() {
-  if (!_rnd_gen->trial_success(1.0 / _options->expressing_period)) return false;
+  expressing_time_steps--;
+  if (expressing_time_steps > 0) return false;
   status = EpiCellStatus::DEAD;
   return true;
 }
