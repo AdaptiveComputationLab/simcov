@@ -312,7 +312,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     return;
   }
   if (grid_point->epicell->status != EpiCellStatus::HEALTHY)
-    DBG(time_step, " epicell status ", EpiCellStatusStr[(int)grid_point->epicell->status], "\n");
+    DBG(time_step, " epicell ", grid_point->epicell->str(), "\n");
   bool produce_virions = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:

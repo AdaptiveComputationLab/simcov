@@ -74,6 +74,7 @@ void GridCoords::set_rnd(shared_ptr<Random> rnd_gen) {
 TCell::TCell(const string &id) : id(id) {
   vascular_time_steps = _rnd_gen->get_poisson(_options->tcell_vascular_period);
   tissue_time_steps = _rnd_gen->get_poisson(_options->tcell_tissue_period);
+  DBG("init tcell ", id, " ", vascular_time_steps, " ", tissue_time_steps, "\n");
 }
 
 TCell::TCell() {
@@ -86,6 +87,7 @@ EpiCell::EpiCell(int id) : id(id) {
   incubation_time_steps = _rnd_gen->get_poisson(_options->incubation_period);
   expressing_time_steps = _rnd_gen->get_poisson(_options->expressing_period);
   apoptotic_time_steps = _rnd_gen->get_poisson(_options->apoptosis_period);
+  DBG("init epicell ", str(), "\n");
 }
 
 string EpiCell::str() {
