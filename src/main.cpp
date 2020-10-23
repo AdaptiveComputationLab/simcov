@@ -235,7 +235,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     random_shuffle(nbs.begin(), nbs.end());
     for (auto &nb_coords : nbs) {
       DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
-      auto nb_epicell_status = tissue.try_bind_tcell(nb_coords, time_step);
+      auto nb_epicell_status = tissue.try_bind_tcell(nb_coords);
       bool bound = true;
       switch (nb_epicell_status) {
         case EpiCellStatus::EXPRESSING: _sim_stats.expressing--; break;
@@ -318,7 +318,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virions) {
         if (_rnd_gen->trial_success(_options->infectivity * grid_point->virions)) {
-          grid_point->epicell->infect(time_step);
+          grid_point->epicell->infect();
           _sim_stats.incubating++;
         }
       }

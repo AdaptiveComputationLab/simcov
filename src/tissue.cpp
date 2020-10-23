@@ -97,11 +97,10 @@ string EpiCell::str() {
   return oss.str();
 }
 
-void EpiCell::infect(int time_step) {
+void EpiCell::infect() {
   assert(status == EpiCellStatus::HEALTHY);
   assert(infectable);
   status = EpiCellStatus::INCUBATING;
-  infection_time_step = time_step;
 }
 
 bool EpiCell::transition_to_expressing() {
@@ -109,14 +108,13 @@ bool EpiCell::transition_to_expressing() {
   incubation_time_steps--;
   if (incubation_time_steps > 0) return false;
   status = EpiCellStatus::EXPRESSING;
-  is_expressing = true;
   return true;
 }
 
 bool EpiCell::was_expressing() {
   // this is used to determine if the epicell was expressing before apoptosis was induced
   assert(status == EpiCellStatus::APOPTOTIC);
-  return is_expressing;
+  return (incubation_time_steps == 0);
 }
 
 bool EpiCell::apoptosis_death() {
@@ -138,13 +136,13 @@ bool EpiCell::is_active() {
   return (status != EpiCellStatus::HEALTHY && status != EpiCellStatus::DEAD);
 }
 
-double EpiCell::get_binding_prob(int time_step) {
+double EpiCell::get_binding_prob() {
   // binding prob is linearly scaled from 0 to 1 for incubating cells over the course of the
   // incubation period, but is always 1 for expressing cells
   if (status == EpiCellStatus::EXPRESSING || status == EpiCellStatus::APOPTOTIC)
     return _options->max_binding_prob;
-  double scaling = (double)(time_step - infection_time_step) / _options->incubation_period;
-  if (scaling > 1) scaling = 1.0;
+  double scaling = 1.0 - (double)incubation_time_steps / _options->incubation_period;
+  if (scaling < 0) scaling = 0;
   double prob = _options->max_binding_prob * scaling;
   return min(prob, _options->max_binding_prob);
 }
@@ -485,11 +483,11 @@ bool Tissue::try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasa
       .wait();
 }
 
-EpiCellStatus Tissue::try_bind_tcell(GridCoords coords, int time_step) {
+EpiCellStatus Tissue::try_bind_tcell(GridCoords coords) {
   return upcxx::rpc(
              get_rank_for_grid_point(coords),
              [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points_t,
-                GridCoords coords, int time_step) {
+                GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                if (!grid_point->epicell) return EpiCellStatus::DEAD;
                if (grid_point->epicell->status == EpiCellStatus::HEALTHY ||
@@ -498,7 +496,7 @@ EpiCellStatus Tissue::try_bind_tcell(GridCoords coords, int time_step) {
 
                //if (grid_point->epicell->status == EpiCellStatus::DEAD) return EpiCellStatus::DEAD;
 
-               double binding_prob = grid_point->epicell->get_binding_prob(time_step);
+               double binding_prob = grid_point->epicell->get_binding_prob();
                if (_rnd_gen->trial_success(binding_prob)) {
                  auto prev_status = grid_point->epicell->status;
                  grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
@@ -506,7 +504,7 @@ EpiCellStatus Tissue::try_bind_tcell(GridCoords coords, int time_step) {
                }
                return EpiCellStatus::DEAD;
              },
-             grid_points, new_active_grid_points, coords, time_step)
+             grid_points, new_active_grid_points, coords)
       .wait();
 }
 

@@ -93,7 +93,7 @@ struct TCell {
   int tissue_time_steps = -1;
   bool moved = true;
 
-  UPCXX_SERIALIZED_FIELDS(id, binding_period, moved);
+  UPCXX_SERIALIZED_FIELDS(id, binding_period, vascular_time_steps, tissue_time_steps, moved);
 
   TCell(const string &id);
 
@@ -105,11 +105,9 @@ const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPT
 
 class EpiCell {
   int id;
-  int infection_time_step = -1;
   int incubation_time_steps = -1;
   int expressing_time_steps = -1;
   int apoptotic_time_steps = -1;
-  bool is_expressing = false;
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
@@ -119,12 +117,12 @@ class EpiCell {
 
   string str();
 
-  void infect(int time_stamp);
+  void infect();
   bool transition_to_expressing();
   bool apoptosis_death();
   bool infection_death();
   bool is_active();
-  double get_binding_prob(int time_step);
+  double get_binding_prob();
   bool was_expressing();
 };
 
@@ -206,7 +204,7 @@ class Tissue {
 
   bool try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate);
 
-  EpiCellStatus try_bind_tcell(GridCoords coords, int time_step);
+  EpiCellStatus try_bind_tcell(GridCoords coords);
 
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
