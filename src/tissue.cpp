@@ -387,12 +387,13 @@ static int get_square_block_dim(int64_t num_grid_points) {
   return block_dim;
 }
 
-void Tissue::construct(GridCoords grid_size) {
+Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcells({}) {
   auto remainder = [](int64_t numerator, int64_t denominator) -> bool {
     return ((double)numerator / denominator - (numerator / denominator) != 0);
   };
   BarrierTimer timer(__FILEFUNC__, false, true);
-  _grid_size = make_shared<GridCoords>(grid_size);
+  _grid_size = make_shared<GridCoords>(
+      GridCoords(_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]));
   int64_t num_grid_points = get_num_grid_points();
   // find the biggest cube that perfectly divides the grid and gives enough
   // data for at least two cubes per rank (for load

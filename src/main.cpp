@@ -652,7 +652,6 @@ int main(int argc, char **argv) {
   auto start_free_mem = get_free_mem();
   SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
   Tissue tissue;
-  tissue.construct({_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]});
   initial_infection(tissue);
   SLOG(KBLUE, "Memory used on node 0 after initialization is  ",
        get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");

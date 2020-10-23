@@ -176,11 +176,9 @@ class Tissue {
  public:
   int64_t tcells_generated = 0;
 
-  Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcells({}) {};
+  Tissue();
 
   ~Tissue() {}
-
-  void construct(GridCoords grid_size);
 
   int64_t get_num_local_grid_points();
 
