@@ -226,21 +226,25 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     // done with binding when set to -1
     if (tcell->binding_period == 0) tcell->binding_period = -1;
   } else {
-    // not bound to an epicell
-    if (grid_point->epicell && (grid_point->epicell->status == EpiCellStatus::EXPRESSING ||
-        grid_point->epicell->status == EpiCellStatus::INCUBATING)) {
-      double binding_prob = grid_point->epicell->get_binding_prob(time_step);
+    // not bound to an epicell - try to bind first with this cell then any one of the neighbors
+    auto nbs = grid_point->neighbors;
+    // include the current location
+    nbs.push_back(grid_point->coords);
+    random_shuffle(nbs.begin(), nbs.end());
+    for (auto &nb_coords : nbs) {
       DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
-      if (_rnd_gen->trial_success(binding_prob)) {
-        DBG(time_step, " tcell ", tcell->id, " is inducing apoptosis at ", grid_point->coords.str(),
-            "\n");
-        if (grid_point->epicell->status == EpiCellStatus::EXPRESSING) _sim_stats.expressing--;
-        if (grid_point->epicell->status == EpiCellStatus::INCUBATING) _sim_stats.incubating--;
-        // as soon as this is set to apoptotic, no other tcell can bind to this epicell, so we
-        // ensure that only one tcell binds to an epicell at a time
-        grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
-        _sim_stats.apoptotic++;
+      auto nb_epicell_status = tissue.try_bind_tcell(nb_coords, time_step);
+      bool bound = true;
+      switch (nb_epicell_status) {
+        case EpiCellStatus::EXPRESSING: _sim_stats.expressing--; break;
+        case EpiCellStatus::INCUBATING: _sim_stats.incubating--; break;
+        case EpiCellStatus::APOPTOTIC: _sim_stats.apoptotic--; break;
+        default: bound = false;
+      }
+      if (bound) {
+        DBG(time_step, " tcell ", tcell->id, " binds at ", grid_point->coords.str(), "\n");
         tcell->binding_period = _options->tcell_binding_period;
+        _sim_stats.apoptotic++;
       }
     }
   }
@@ -253,9 +257,9 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     if (_options->tcells_follow_gradient) {
       // get a randomly shuffled list of neighbors so the tcell doesn't always tend to move in the
       // same direction when there is a chemokine gradient
-      auto nbs_shuffled = grid_point->neighbors;
-      random_shuffle(nbs_shuffled.begin(), nbs_shuffled.end());
-      for (auto &nb_coords : nbs_shuffled) {
+      auto nbs = grid_point->neighbors;
+      random_shuffle(nbs.begin(), nbs.end());
+      for (auto &nb_coords : nbs) {
         double chemokine = 0;
         int64_t nb_idx = nb_coords.to_1d();
         auto it = chemokines_cache.find(nb_idx);

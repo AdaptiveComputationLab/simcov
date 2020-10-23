@@ -201,6 +201,8 @@ class Tissue {
 
   bool try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate);
 
+  EpiCellStatus try_bind_tcell(GridCoords coords, int time_step);
+
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
 
