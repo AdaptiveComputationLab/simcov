@@ -8,7 +8,7 @@ It requires [UPC++](https://bitbucket.org/berkeleylab/upcxx/wiki/Home), C++ and 
 
 This repo contains a submodule, so to install, it's best to run
 
-`git clone --recurse-submodules git@bitbucket.org:shofmeyr/simcov.git`
+`git clone --recurse-submodules git@github.com:AdaptiveComputationLab/simcov.git`
 
 to fully initialize the submodules.
 
