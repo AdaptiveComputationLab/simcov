@@ -53,6 +53,8 @@ For example:
 
 Any options not specified in the config file will be set to the defaults (seen when run with `-h`).
 
+When running with a config file, any parameters passed on the command line will override parameters read from the config file.
+
 
 If running in debug mode, a subdirectory
 called `per_thread` will appear, with one directory per process that contains debug information produced by that proc
