@@ -9,6 +9,7 @@
 #include "CLI11.hpp"
 #include "version.h"
 
+using std::array;
 using std::cout;
 using std::endl;
 using std::vector;
@@ -120,6 +121,7 @@ class Options {
       }
       infection_coords.push_back({stoi(coords[0]), stoi(coords[1]), stoi(coords[2])});
     }
+    return true;
   }
 
  public:
@@ -187,7 +189,7 @@ class Options {
     app.add_option("--infections", num_infections, "Number of randomly chosen starting infections")
         ->capture_default_str();
     app.add_option("--infection-coords", infection_coords_strs,
-                   "Location of multiple initial infections, of form x1,y1,z1;x2,y2,z2;... - "
+                   "Location of multiple initial infections, of form \"x1,y1,z1;x2,y2,z2;...\" - "
                    "overrides --infections")
         ->delimiter(';')
         ->capture_default_str();
@@ -309,6 +311,9 @@ class Options {
 
     if (!infection_coords_strs.empty()) {
       if (!parse_infection_coords(infection_coords_strs)) return false;
+      if (num_infections)
+        SLOG("Initial infection coordinates set; will override --infections (", num_infections,
+             ")\n");
       num_infections = infection_coords.size();
       SLOG("Initial infection coords specified, setting number of infection points to ",
            num_infections, "\n");

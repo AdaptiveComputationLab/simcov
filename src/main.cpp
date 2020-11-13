@@ -107,35 +107,23 @@ IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
   int local_num_infections = 0;
-  if (_options->infection_coords[0] != -1) {
-    if (!rank_me()) {
-      local_num_infections = 1;
-      GridCoords coords = {_options->infection_coords[0], _options->infection_coords[1],
-                           _options->infection_coords[2]};
-      // if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
-      tissue.set_initial_infection(coords);
-      // FIXME: this should really be a starting number of virions, not an infected cell
+  if (!rank_me()) {
+    // only rank 0 sets the initial infections because we'll never have very many
+    if (!_options->infection_coords.empty()) {
+      for (auto &coords : _options->infection_coords) {
+        local_num_infections++;
+        tissue.set_initial_infection({coords[0], coords[1], coords[2]});
+      }
     } else {
-      local_num_infections = 0;
+      for (int i = 0; i < _options->num_infections; i++) {
+        GridCoords coords(_rnd_gen);
+        local_num_infections++;
+        DBG("infection: ", coords.str() + "\n");
+        tissue.set_initial_infection(coords);
+      }
     }
-  } else {
-    // each rank generates a block of infection points
-    // for large dimensions, the chance of repeat sampling for a few points is very small
-    local_num_infections = _options->num_infections / rank_n();
-    int remaining_infections = _options->num_infections - local_num_infections * rank_n();
-    if (rank_me() < remaining_infections) local_num_infections++;
-    DBG("Virions in ", local_num_infections, " locations\n");
-    ProgressBar progbar(local_num_infections, "Setting initial infections");
-    for (int i = 0; i < local_num_infections; i++) {
-      progbar.update();
-      GridCoords coords(_rnd_gen);
-      DBG("infection: ", coords.str() + "\n");
-      // if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
-      tissue.set_initial_infection(coords);
-      upcxx::progress();
-    }
-    progbar.done();
   }
+  SLOG("Set ", local_num_infections, " initial infections\n");
   barrier();
   tissue.add_new_actives(add_new_actives_timer);
   barrier();
@@ -353,11 +341,11 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
 
 void update_chemokines(GridPoint *grid_point, HASH_TABLE<int64_t, double> &chemokines_to_update) {
   update_concentration_timer.start();
-  // Concentrations diffuse, i.e. the concentration at any single grid point tends to the average of
-  // all the neighbors. So here we tell each neighbor what the current concentration is and later
-  // those neighbors will compute their own averages. We do it in this "push" manner because then we
-  // don't need to check the neighbors from every single grid point, but just push from ones with
-  // concentrations > 0 (i.e. active grid points)
+  // Concentrations diffuse, i.e. the concentration at any single grid point tends to the average
+  // of all the neighbors. So here we tell each neighbor what the current concentration is and
+  // later those neighbors will compute their own averages. We do it in this "push" manner because
+  // then we don't need to check the neighbors from every single grid point, but just push from
+  // ones with concentrations > 0 (i.e. active grid points)
   if (grid_point->chemokine > 0) {
     grid_point->chemokine *= (1.0 - _options->chemokine_decay_rate);
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
@@ -428,8 +416,8 @@ void set_active_grid_points(Tissue &tissue) {
 void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
   size_t tot_sz = get_num_grid_points();
   string fname_snapshot = "sample_snapshot.csv";
-  string fname = "samples/sample_" + view_object_str(view_object) + "_" + to_string(time_step) +
-                 ".vtk";
+  string fname =
+      "samples/sample_" + view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
   int x_dim = _options->dimensions[0];
   int y_dim = _options->dimensions[1];
   int z_dim = _options->dimensions[2];
