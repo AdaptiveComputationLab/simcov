@@ -112,14 +112,17 @@ class Options {
 
   bool parse_infection_coords(vector<string> &coords_strs) {
     for (auto &coords_str : coords_strs) {
-      auto coords = splitter(",", coords_str);
-      if (coords.size() != 3) {
-        cerr << KLRED << "ERROR: " << KNORM << "incorrect number (" << coords.size()
-             << ") of coordinates in string \"" << coords_str
-             << " - should be three comma-separated (x,y,z)" << endl;
+      auto coords_and_time = splitter(",", coords_str);
+      if (coords_and_time.size() != 4) {
+        if (!rank_me()) {
+          cerr << KLRED << "ERROR: " << KNORM << "incorrect number (" << coords_and_time.size()
+               << ") of coordinates and time step in string \"" << coords_str
+               << " - should be four comma-separated (x,y,z,t) values" << endl;
+        }
         return false;
       }
-      infection_coords.push_back({stoi(coords[0]), stoi(coords[1]), stoi(coords[2])});
+      infection_coords.push_back({std::stoi(coords_and_time[0]), std::stoi(coords_and_time[1]),
+                                  std::stoi(coords_and_time[2]), std::stoi(coords_and_time[3])});
     }
     return true;
   }
@@ -130,7 +133,8 @@ class Options {
   int num_timesteps = 2000;
   int num_infections = 1;
 
-  vector<array<int, 3>> infection_coords;
+  // x,y,z location and timestep
+  vector<array<int, 4>> infection_coords;
   int initial_infection = 1000;
   int infectable_spacing = 1;
 
@@ -188,9 +192,11 @@ class Options {
         ->capture_default_str();
     app.add_option("--infections", num_infections, "Number of randomly chosen starting infections")
         ->capture_default_str();
-    app.add_option("--infection-coords", infection_coords_strs,
-                   "Location of multiple initial infections, of form \"x1,y1,z1;x2,y2,z2;...\" - "
-                   "overrides --infections")
+    app.add_option(
+           "--infection-coords", infection_coords_strs,
+           "Location of multiple initial infections, of form "
+           "\"x1,y1,z1,t1;x2,y2,z2,t2;...\" where x,y,z are grid coords and t is a timestep - "
+           "overrides --infections")
         ->delimiter(';')
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
@@ -309,6 +315,8 @@ class Options {
       return false;
     }
 
+    if (infection_coords_strs.size() == 1 && infection_coords_strs[0] == "none")
+      infection_coords_strs.clear();
     if (!infection_coords_strs.empty()) {
       if (!parse_infection_coords(infection_coords_strs)) return false;
       if (num_infections)

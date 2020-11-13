@@ -104,26 +104,28 @@ IntermittentTimer set_active_points_timer(__FILENAME__ + string(":") + "erase in
 IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
 IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 
-void initial_infection(Tissue &tissue) {
-  BarrierTimer timer(__FILEFUNC__);
-  int local_num_infections = 0;
+void seed_infection(Tissue &tissue, int time_step) {
+  // only rank 0 sets the initial infections because we'll never have very many
   if (!rank_me()) {
-    // only rank 0 sets the initial infections because we'll never have very many
-    if (!_options->infection_coords.empty()) {
-      for (auto &coords : _options->infection_coords) {
-        local_num_infections++;
-        tissue.set_initial_infection({coords[0], coords[1], coords[2]});
-      }
-    } else {
+    // if initial infections are at random locations, they all happen at the start
+    if (time_step == 0 && _options->num_infections && _options->infection_coords.empty()) {
       for (int i = 0; i < _options->num_infections; i++) {
         GridCoords coords(_rnd_gen);
-        local_num_infections++;
-        DBG("infection: ", coords.str() + "\n");
+        SLOG_VERBOSE("Time step ", time_step, ": initial infection at ", coords.str() + "\n");
         tissue.set_initial_infection(coords);
+      }
+    } else {
+      for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end();
+           it++) {
+        if ((*it)[3] == time_step) {
+          GridCoords coords({(*it)[0], (*it)[1], (*it)[2]});
+          SLOG_VERBOSE("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
+          tissue.set_initial_infection(coords);
+          _options->infection_coords.erase(it--);
+        }
       }
     }
   }
-  SLOG("Set ", local_num_infections, " initial infections\n");
   barrier();
   tissue.add_new_actives(add_new_actives_timer);
   barrier();
@@ -518,6 +520,8 @@ void run_sim(Tissue &tissue) {
   vector<SampleData> samples;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
+    seed_infection(tissue, time_step);
+    barrier();
     if (time_step == _options->antibody_period)
       _options->virion_decay_rate *= _options->antibody_factor;
     chemokines_to_update.clear();
@@ -644,7 +648,6 @@ int main(int argc, char **argv) {
   auto start_free_mem = get_free_mem();
   SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
   Tissue tissue;
-  initial_infection(tissue);
   SLOG(KBLUE, "Memory used on node 0 after initialization is  ",
        get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");
 
