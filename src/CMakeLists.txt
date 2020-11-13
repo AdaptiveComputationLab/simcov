@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
 message(STATUS "finding UPCXX for SimCov build")
 #find_package(UPCXX 2019.9.0.1 REQUIRED)
-find_package(UPCXX)
+find_package(UPCXX REQUIRED)
 if (${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.13 AND DEFINED UPCXX_LIBRARIES)
   message(STATUS "UPCXX_UTILS is using the UPCXX::upcxx library interface: ${UPCXX_LIBRARIES}")
   find_package(UPCXX)

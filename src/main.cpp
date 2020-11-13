@@ -8,10 +8,10 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <chrono>
 #include <upcxx/upcxx.hpp>
 
 using namespace std;
@@ -27,7 +27,6 @@ using namespace upcxx_utils;
 #define NOW chrono::high_resolution_clock::now
 
 class SimStats {
-
  private:
   ofstream log_file;
 
@@ -85,7 +84,6 @@ class SimStats {
     string s = to_str();
     if (!rank_me()) log_file << time_step << "\t" << s << endl;
   }
-
 };
 
 ofstream _logstream;
@@ -106,7 +104,6 @@ IntermittentTimer set_active_points_timer(__FILENAME__ + string(":") + "erase in
 IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
 IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 
-
 void initial_infection(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
   int local_num_infections = 0;
@@ -115,7 +112,7 @@ void initial_infection(Tissue &tissue) {
       local_num_infections = 1;
       GridCoords coords = {_options->infection_coords[0], _options->infection_coords[1],
                            _options->infection_coords[2]};
-      //if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
+      // if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
       tissue.set_initial_infection(coords);
       // FIXME: this should really be a starting number of virions, not an infected cell
     } else {
@@ -133,7 +130,7 @@ void initial_infection(Tissue &tissue) {
       progbar.update();
       GridCoords coords(_rnd_gen);
       DBG("infection: ", coords.str() + "\n");
-      //if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
+      // if (tissue.set_initial_infection(coords)) _sim_stats.incubating++;
       tissue.set_initial_infection(coords);
       upcxx::progress();
     }
@@ -335,7 +332,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         _sim_stats.expressing--;
       } else {
         produce_virions = true;
-    }
+      }
       break;
     case EpiCellStatus::APOPTOTIC:
       if (grid_point->epicell->apoptosis_death()) {
@@ -354,8 +351,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   update_epicell_timer.stop();
 }
 
-void update_chemokines(GridPoint *grid_point,
-                       HASH_TABLE<int64_t, double> &chemokines_to_update) {
+void update_chemokines(GridPoint *grid_point, HASH_TABLE<int64_t, double> &chemokines_to_update) {
   update_concentration_timer.start();
   // Concentrations diffuse, i.e. the concentration at any single grid point tends to the average of
   // all the neighbors. So here we tell each neighbor what the current concentration is and later
@@ -439,13 +435,15 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   int z_dim = _options->dimensions[2];
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
-             << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step << "\n"
+             << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step
+             << "\n"
              //<< "ASCII\n"
              << "BINARY\n"
              << "DATASET STRUCTURED_POINTS\n"
              // we add one in each dimension because these are for drawing the
              // visualization points, and our visualization entities are cells
-             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1) << "\n"
+             << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
+             << "\n"
              // each cell is 5 microns
              << "SPACING 5 5 5\n"
              << "ORIGIN 0 0 0\n"
@@ -481,7 +479,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   }
   // each rank writes one portion of the dataset to the file
   unsigned char *buf = new unsigned char[samples.size()];
-  //DBG(time_step, " writing data from ", start_id, " to ", start_id + samples.size(), "\n");
+  // DBG(time_step, " writing data from ", start_id, " to ", start_id + samples.size(), "\n");
   for (int64_t i = 0; i < samples.size(); i++) {
     auto &sample = samples[i];
     unsigned char val = 0;
@@ -491,7 +489,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         break;
       case ViewObject::EPICELL:
         if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
-        //if (val > 1)
+        // if (val > 1)
         //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");
         break;
       case ViewObject::VIRUS:
@@ -522,8 +520,7 @@ void run_sim(Tissue &tissue) {
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 50;
   _sim_stats.init();
-  SLOG("# datetime     elapsed step    ", _sim_stats.header(),
-       "\t<%active  lbln>\n");
+  SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\t<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, virions
   HASH_TABLE<int64_t, double> chemokines_to_update;
@@ -553,14 +550,15 @@ void run_sim(Tissue &tissue) {
       if (grid_point->virions > 0)
         DBG("virions\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
             grid_point->coords.z, "\t", grid_point->virions, "\n");
-      if (!warned_boundary && (!grid_point->coords.x || !grid_point->coords.y ||
-          (_grid_size->z > 1 && !grid_point->coords.z)) &&
+      if (!warned_boundary &&
+          (!grid_point->coords.x || !grid_point->coords.y ||
+           (_grid_size->z > 1 && !grid_point->coords.z)) &&
           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
         WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
-              " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
+             " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
         warned_boundary = true;
       }
-      //DBG("updating grid point ", grid_point->str(), "\n");
+      // DBG("updating grid point ", grid_point->str(), "\n");
       upcxx::progress();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
@@ -595,8 +593,8 @@ void run_sim(Tissue &tissue) {
     set_active_grid_points(tissue);
     barrier();
 
-    if (_options->sample_period > 0 && (time_step % _options->sample_period == 0 ||
-        time_step == _options->num_timesteps - 1)) {
+    if (_options->sample_period > 0 &&
+        (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)) {
       sample_timer.start();
       samples.clear();
       int64_t start_id;
