@@ -572,8 +572,8 @@ void run_sim(Tissue &tissue) {
       auto load_balance = max_actives ? (double)num_actives / rank_n() / max_actives : 1;
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
-      SLOG("[", get_current_time(true), " ", setprecision(2), fixed, setw(5), right,
-           t_elapsed.count(), "s]: ", setw(8), left, time_step, _sim_stats.to_str());
+      SLOG("[", get_current_time(), " ", setprecision(2), fixed, setw(5), right, t_elapsed.count(),
+           "s]: ", setw(8), left, time_step, _sim_stats.to_str());
       SLOG(setprecision(3), fixed, "\t< ", perc_actives, " ", load_balance, " >\n");
     }
     barrier();

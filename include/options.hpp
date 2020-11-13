@@ -195,9 +195,9 @@ class Options {
     app.add_option(
            "--infection-coords", infection_coords_strs,
            "Location of multiple initial infections, of form "
-           "\"x1,y1,z1,t1;x2,y2,z2,t2;...\" where x,y,z are grid coords and t is a timestep - "
+           "\"x1,y1,z1,t1 x2,y2,z2,t2;...\" where x,y,z are grid coords and t is a timestep - "
            "overrides --infections")
-        ->delimiter(';')
+        ->delimiter(' ')
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
                    "Number of virions at initial infection locations")
