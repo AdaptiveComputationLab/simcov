@@ -20,7 +20,6 @@ using namespace upcxx_utils;
 
 #define YES_NO(X) ((X) ? "YES" : "NO")
 
-
 class Options {
   vector<string> splitter(string in_pattern, string &content) {
     vector<string> split_content;
@@ -110,13 +109,26 @@ class Options {
     upcxx::barrier();
   }
 
+  bool parse_infection_coords(vector<string> &coords_strs) {
+    for (auto &coords_str : coords_strs) {
+      auto coords = splitter(",", coords_str);
+      if (coords.size() != 3) {
+        cerr << KLRED << "ERROR: " << KNORM << "incorrect number (" << coords.size()
+             << ") of coordinates in string \"" << coords_str
+             << " - should be three comma-separated (x,y,z)" << endl;
+        return false;
+      }
+      infection_coords.push_back({stoi(coords[0]), stoi(coords[1]), stoi(coords[2])});
+    }
+  }
+
  public:
-  vector<int64_t> dimensions{100, 100, 1};
+  vector<int> dimensions{100, 100, 1};
   // each time step should be about 1 minute, so one day = 1440 time steps
   int num_timesteps = 2000;
   int num_infections = 1;
 
-  vector<int64_t> infection_coords{49, 49, 0};
+  vector<array<int, 3>> infection_coords;
   int initial_infection = 1000;
   int infectable_spacing = 1;
 
@@ -162,6 +174,8 @@ class Options {
     // SIMCOV version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
     string full_version_str = "SimCov version " + string(SIMCOV_VERSION) + "-" +
                               string(SIMCOV_BRANCH) + " built on " + string(SIMCOV_BUILD_DATE);
+    vector<string> infection_coords_strs;
+
     CLI::App app(full_version_str);
     app.add_option("-d,--dim", dimensions, "Dimensions: x y z")
         ->delimiter(',')
@@ -170,11 +184,12 @@ class Options {
     app.add_option("-t,--timesteps", num_timesteps, "Number of timesteps")
         ->check(CLI::Range(1, 1000000))
         ->capture_default_str();
-    app.add_option("--infections", num_infections, "Number of starting infections")
+    app.add_option("--infections", num_infections, "Number of randomly chosen starting infections")
         ->capture_default_str();
-    app.add_option("--infection-coords", infection_coords, "Location of initial infection")
-        ->delimiter(',')
-        ->expected(3)
+    app.add_option("--infection-coords", infection_coords_strs,
+                   "Location of multiple initial infections, of form x1,y1,z1;x2,y2,z2;... - "
+                   "overrides --infections")
+        ->delimiter(';')
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
                    "Number of virions at initial infection locations")
@@ -182,9 +197,8 @@ class Options {
     app.add_option("--infectable-spacing", infectable_spacing,
                    "Number of grid points to space out infectable cells")
         ->capture_default_str();
-    app.add_option(
-           "--incubation-period", incubation_period,
-           "Average number of time steps to expressing virions after cell is infected")
+    app.add_option("--incubation-period", incubation_period,
+                   "Average number of time steps to expressing virions after cell is infected")
         ->capture_default_str();
     app.add_option("--apoptosis-period", apoptosis_period,
                    "Average number of time steps to death after apoptosis is induced")
@@ -292,9 +306,12 @@ class Options {
              << "Reduce either or both of those settings\n";
       return false;
     }
-    if (infection_coords[0] != -1 && num_infections > 1) {
-      num_infections = 1;
-      SLOG("Initial infection coords specified, setting number of infection points to 1\n");
+
+    if (!infection_coords_strs.empty()) {
+      if (!parse_infection_coords(infection_coords_strs)) return false;
+      num_infections = infection_coords.size();
+      SLOG("Initial infection coords specified, setting number of infection points to ",
+           num_infections, "\n");
     }
     setup_output_dir();
     setup_log_file();
@@ -336,4 +353,3 @@ class Options {
     return true;
   }
 };
-
