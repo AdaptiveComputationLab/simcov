@@ -1,0 +1,17 @@
+#!/bin/bash
+
+#PBS -q default
+#PBS -l nodes=1:ppn=8
+#PBS -l walltime=48:00:00
+#PBS -N simcov_test
+#PBS -j oe
+
+module load gcc-9.3.0-gcc-4.8.5-jp4ulql
+
+module load upcxx-2020.10.0-gcc-9.3.0-python3-j2xc5l4
+
+module load cmake-3.18.2-gcc-9.3.0-57ha7sw
+
+cd $PBS_O_WORKDIR
+
+upcxx-run -n $PBS_NP -N $PBS_NUM_NODES -- install/bin/simcov
