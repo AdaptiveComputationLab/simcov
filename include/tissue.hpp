@@ -100,7 +100,8 @@ struct TCell {
   TCell();
 };
 
-enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
+//TODO For now only two types of epitheleal cells, alveoli and other
+enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD, ALVEOLI };
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
 
 class EpiCell {
@@ -179,7 +180,8 @@ class Tissue {
  public:
   int64_t tcells_generated = 0;
 
-  Tissue();
+  Tissue(const std::set<int64_t> & airwayEpiCellIds,
+    const std::set<int64_t> & alveoliEpiCellIds);
 
   ~Tissue() {}
 
@@ -226,4 +228,3 @@ class Tissue {
 #endif
 
 };
-

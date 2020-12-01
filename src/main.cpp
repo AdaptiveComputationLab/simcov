@@ -18,6 +18,7 @@ using namespace std;
 
 #include "options.hpp"
 #include "tissue.hpp"
+#include "lung.hpp"
 #include "upcxx_utils.hpp"
 #include "utils.hpp"
 
@@ -435,7 +436,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
              << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
              << "\n"
              // each cell is 5 microns
-             << "SPACING 5 5 5\n"
+             << "SPACING 1 1 1\n"
              << "ORIGIN 0 0 0\n"
              << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
              << "SCALARS ";
@@ -478,7 +479,10 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         if (sample.has_tcell) val = 255;
         break;
       case ViewObject::EPICELL:
-        if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
+        if (sample.has_epicell) val = 1;
+        if (sample.epicell_status == EpiCellStatus::ALVEOLI) val += 1;
+        //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
+        //TODO if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
         // if (val > 1)
         //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");
         break;
@@ -508,7 +512,7 @@ void run_sim(Tissue &tissue) {
 
   auto start_t = NOW();
   auto curr_t = start_t;
-  auto five_perc = _options->num_timesteps / 50;
+  auto five_perc = (_options->num_timesteps >= 50) ?  _options->num_timesteps/50 : 1;
   _sim_stats.init();
   SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\t<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
@@ -545,6 +549,7 @@ void run_sim(Tissue &tissue) {
       if (!warned_boundary &&
           (!grid_point->coords.x || !grid_point->coords.y ||
            (_grid_size->z > 1 && !grid_point->coords.z)) &&
+          grid_point->epicell &&
           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
         WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
              " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
@@ -555,7 +560,7 @@ void run_sim(Tissue &tissue) {
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
       if (grid_point->tcell) update_tissue_tcell(time_step, tissue, grid_point, chemokines_cache);
-      update_epicell(time_step, tissue, grid_point);
+      if (grid_point->epicell) update_epicell(time_step, tissue, grid_point);
       update_chemokines(grid_point, chemokines_to_update);
       update_virions(grid_point, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
@@ -647,7 +652,8 @@ int main(int argc, char **argv) {
   memory_tracker.start();
   auto start_free_mem = get_free_mem();
   SLOG(KBLUE, "Starting with ", get_size_str(start_free_mem), " free on node 0", KNORM, "\n");
-  Tissue tissue;
+  Lung lung(_rnd_gen);
+  Tissue tissue(lung.getAirwayEpiCellIds(), lung.getAlveoliEpiCellIds());
   SLOG(KBLUE, "Memory used on node 0 after initialization is  ",
        get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");
 

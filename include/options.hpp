@@ -163,6 +163,9 @@ class Options {
   double antibody_factor = 1;
   int antibody_period = 900;
 
+  string lung_parameters_filepath = "./table.txt";
+  bool generate_lung_model = false;
+
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
@@ -284,6 +287,11 @@ class Options {
     app.add_option(
            "--min-blocks-per-proc", min_blocks_per_proc,
            "Minimum number of blocks per process - impacts performance (locality v load balance)")
+        ->capture_default_str();
+
+    app.add_option("--lung-parameters-filepath", lung_parameters_filepath, "File location containing lung lobe data")
+        ->capture_default_str();
+    app.add_flag("--generate-lung-model", generate_lung_model, "True, creates a new stochastic lung data file for simulation")
         ->capture_default_str();
 
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory");
