@@ -62,13 +62,13 @@ called `per_thread` will appear, with one directory per process that contains de
 Once the run has completed, the outputs can be viewed in paraview by opening the samples subdirectory of the output directory. To help with viewing, a python script can generate a paraview state file:
 
 ```
-pvpython sample-state.py --data <output_dir>/samples
+scripts/generate_paraview_state.py --data <output_dir>/samples --stats <output_dir>/simcov.stats -o paraview-state
 ```
 
-Note that the `pvpython` wrapper is needed (not just plain python).
+Note that the `pvpython` wrapper is needed (not just plain python), and is used in the script.
 
-The above command will generate a file called `samples-state.pvsm` and this can be loaded into paraview, e.g.:
+The above command will generate a file called `paraview-state.pvsm` and this can be loaded into paraview, e.g.:
 
 ```
-paraview sample-state.pvsm
+paraview paraview-state.pvsm
 ```
