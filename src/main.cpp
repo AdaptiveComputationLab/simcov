@@ -38,6 +38,7 @@ class SimStats {
   int64_t tcells_vasculature = 0;
   int64_t tcells_tissue = 0;
   double chemokines = 0;
+  int64_t num_chemo_pts = 0;
   int64_t virions = 0;
 
   void init() {
@@ -56,7 +57,8 @@ class SimStats {
         << "tvas\t"
         << "ttis\t"
         << "chem\t"
-        << "virs";
+        << "virs\t"
+        << "chempts";
     return oss.str();
   }
 
@@ -68,15 +70,15 @@ class SimStats {
     auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
     auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
     auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
+    auto tot_chemo_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     double tot_virions = (double)reduce_one(virions, op_fast_add, 0).wait();
-
     tot_chemokines /= get_num_grid_points();
     tot_virions /= get_num_grid_points();
 
     ostringstream oss;
     oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
         << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
-        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_virions;
+        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_virions << "\t" << tot_chemo_pts;
     return oss.str();
   }
 
@@ -405,6 +407,7 @@ void set_active_grid_points(Tissue &tissue) {
     spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
                    grid_point->neighbors.size());
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
+    if (grid_point->chemokine > 0) _sim_stats.num_chemo_pts++;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->tcell) grid_point->tcell->moved = false;
     _sim_stats.chemokines += grid_point->chemokine;
@@ -582,6 +585,7 @@ void run_sim(Tissue &tissue) {
 
     _sim_stats.virions = 0;
     _sim_stats.chemokines = 0;
+    _sim_stats.num_chemo_pts = 0;
     set_active_grid_points(tissue);
     barrier();
 
