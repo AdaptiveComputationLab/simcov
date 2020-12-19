@@ -5,7 +5,15 @@
 #include "lung.hpp"
 
 int main(int argc, char **argv) {
-  Lung lung(false);
+  // Create a full or parital model of the human lung
+  bool isFullModel = false;
+  if (argc == 2) {
+    std::string sel(argv[1]);
+    if (sel == "true") {
+      isFullModel = true;
+    }
+  }
+  Lung lung(isFullModel);
   // Write alveolus epithileal cells
   std::string fname = "alveolus.dat";
   auto fileno = open(fname.c_str(),
@@ -23,6 +31,7 @@ int main(int argc, char **argv) {
       (lung.getAlveoliEpiCellIds()).size(),
       bytes_written);
   }
+  close(fileno);
   // Write bronchiole epithileal cells
   fname = "bronchiole.dat";
   fileno = open(fname.c_str(),

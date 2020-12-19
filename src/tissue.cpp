@@ -264,6 +264,44 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
+
+  //TODO For now only two types of epitheleal cells, alveoli and other
+  // Read alveolus epithileal cells
+  char buf0[256];
+  std::string bname = getcwd(buf0, 256);
+  int loc_last = bname.rfind("/");
+  bname = bname.substr(0, loc_last);
+  std::string fname = bname + "/alveolus.dat";
+  auto fileno = open(fname.c_str(),
+    O_RDONLY,
+    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fileno == -1) {
+    std::printf("Cannot read file %s\n", fname.c_str());
+  }
+  int id = 0;
+  std::set<int> alveoli;
+  while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+      alveoli.insert(id);
+  }
+  close(fileno);
+  // Read bronchiole epithileal cells
+  std::set<int> airway;
+  fname = bname + "/bronchiole.dat";
+  fileno = open(fname.c_str(),
+    O_RDONLY,
+    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fileno == -1) {
+    std::printf("Cannot read file %s\n", fname.c_str());
+  }
+  id = 0;
+  while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+      airway.insert(id);
+  }
+  close(fileno);
+  SLOG("Lung model loaded ",
+    airway.size() + alveoli.size(),
+    " epithileal cells\n");
+
   // FIXME: it may be more efficient (less communication) to have contiguous blocks
   // this is the quick & dirty approach
   for (int64_t i = 0; i < blocks_per_rank; i++) {
@@ -275,10 +313,31 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
       auto neighbors = get_neighbors(coords);
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
-      EpiCell *epicell = new EpiCell(id);
-      if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
-        epicell->infectable = false;
-      grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+      //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
+      if (airway.size() > 0 || alveoli.size() > 0) {
+        if (alveoli.count(id) != 0) { // Add alveoli epi cells
+          EpiCell *epicell = new EpiCell(id);
+          if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0) {
+            epicell->infectable = false;
+          }
+          epicell->status = EpiCellStatus::ALVEOLI;
+          grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+        } else if (airway.count(id) != 0) { // Add bronchial epi cells
+            EpiCell *epicell = new EpiCell(id);
+            if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0) {
+              epicell->infectable = false;
+            }
+            grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+        } else { // Add empty space == air
+          grid_points->emplace_back(GridPoint({id, coords, neighbors, nullptr}));
+        }
+      } else {
+        EpiCell *epicell = new EpiCell(id);
+        if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0) {
+          epicell->infectable = false;
+        }
+        grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+      }
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
       auto id_1d = coords.to_1d();

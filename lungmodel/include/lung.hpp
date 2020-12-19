@@ -96,15 +96,15 @@ class Lung {
       gridSize.z = 300;
       loadEstimatedParameters();
       // Draw upper right lobe 24 gen
-      constructLobe(0, 15);//24);
+      constructLobe(0, 24);
       // Draw middle right lobe 24 gen
-      constructLobe(24, 15);//24);
+      constructLobe(24, 24);
       // Draw lower right lobe 26 gen
-      constructLobe(48, 17);//26);
+      constructLobe(48, 26);
       // Draw upper left lobe 24 gen
-      constructLobe(74, 15);//24);
+      constructLobe(74, 24);
       // Draw lower left lobe 25 gen
-      constructLobe(98, 16);//25);
+      constructLobe(98, 25);
     } else {
       scale = 1 / 5e-3; // Convert 1cm to 5um
       gridSize.x = 300;
@@ -229,7 +229,6 @@ class Lung {
      }
      return rval;
    }
-
 
    Int3D constructSegment(const Int3D &root,
      const Level &level,

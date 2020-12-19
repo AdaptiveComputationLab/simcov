@@ -99,8 +99,8 @@ struct TCell {
 
   TCell();
 };
-
-enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
+//TODO For now only two types of epitheleal cells, alveoli(1), other (2)
+enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD, ALVEOLI };
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
 
 class EpiCell {
@@ -226,4 +226,3 @@ class Tissue {
 #endif
 
 };
-
