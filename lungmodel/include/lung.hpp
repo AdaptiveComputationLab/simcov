@@ -128,7 +128,7 @@ class Lung {
 
  private:
 
-   bool isFullModel = true;
+   bool isFullModel = false;
    double scale = 1.0;
    int numAlveoli = 0;
    std::vector<Level> levels;
