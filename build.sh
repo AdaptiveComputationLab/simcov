@@ -28,7 +28,7 @@ INSTALL_PATH=${SIMCOV_INSTALL_PATH:=$rootdir/install}
 rm -rf $INSTALL_PATH/bin/simcov
 
 if [ "$1" == "clean" ]; then
-    rm -rf .build/*
+    rm -rf .build
     # if this isn't removed then the the rebuild will not work
     rm -rf $INSTALL_PATH/cmake
     exit 0
@@ -38,7 +38,7 @@ else
     if [ "$1" == "Debug" ] || [ "$1" == "Release" ]; then
         rm -rf *
         rm -rf $INSTALL_PATH/cmake
-        cmake $rootdir -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH
+        cmake $rootdir -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_CXX_COMPILER=/opt/intel/compilers_and_libraries_2020.2.254/linux/mpi/intel64/bin/mpicxx
     fi
     make -j install
 fi
