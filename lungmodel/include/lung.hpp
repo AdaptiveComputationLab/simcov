@@ -90,10 +90,8 @@ class Lung {
     this->isFullModel = isFullModel;
     this->rnd_gen = std::make_shared<Random>(753695190);
     if (isFullModel) {
-      scale = 10; // Convert 1cm to 100mm
-      gridSize.x = 300;
-      gridSize.y = 300;
-      gridSize.z = 300;
+      scale = 10; // 1cm = 10 units, 1  unit = 10^4um
+      gridSize.x = gridSize.y = gridSize.z = 300;
       loadEstimatedParameters();
       // Draw upper right lobe 24 gen
       constructLobe(0, 24);
@@ -106,14 +104,17 @@ class Lung {
       // Draw lower left lobe 25 gen
       constructLobe(98, 25);
     } else {
-      scale = 1 / 5e-3; // Convert 1cm to 5um
-      gridSize.x = 300;
-      gridSize.y = 300;
-      gridSize.z = 300;
+      scale = 200; // 1  unit = 50um, 1cm = 10^-2m = 10^4 um = 200 units
       loadEstimatedParameters();
-      // Draw last 5 generations upper right lobe 15 gen (terminal bronchiole)
-      // constructLobe(19, (24 - 19));
-      constructLobe(10, (15 - 10));
+      // Draw last 5 generations upper right lobe
+      gridSize.x = gridSize.y = gridSize.z = 100;
+      constructLobe(19, (24 - 19)); // Construct at alveolar ducts
+      // // Draw last 12 generations upper right lobe
+      // gridSize.x = gridSize.y = gridSize.z = 300;
+      // constructLobe(12, (24 - 12)); // Construct at alveolar ducts
+      // // Draw last 5 generations upper right lobe
+      // gridSize.x = gridSize.y = gridSize.z = 100;
+      // constructLobe(10, (15 - 10)); // Construct at terminal bronchiole
     }
     std::printf("Number of alveoli %d\n", numAlveoli);
   }
@@ -280,20 +281,18 @@ class Lung {
          base1.y + root.y,
          base1.z + root.z);
        // Draw alveolus
-       if (isTerminal) {
-         if (scale == 1 / 5e-3) {
-           constructAlveoli(rval, level.bAngle, rotateZ);
-           numAlveoli++;
-         }
+       if (isTerminal && scale == 200) {
+         constructAlveoli(rval, level.bAngle, rotateZ);
+         numAlveoli++;
        }
        return rval;
    }
 
    void constructAlveoli(const Int3D & pos, double bAngle, double rotateZ) {
-     // Cube dimensions for ~ 5 alveoli cubes l=w=h=290um
-     // 58 units at 5um
-     // x,y,z = [-28 28]
-     int idim = 28;
+     // Single alveolus, 6 x 6 x 6 epicells, 1  unit = 50um = 1 epicell dimension
+     // volume 300um x 300um x 300um = 27e6um^3
+     // [-3, 3]
+     int idim = 3;
      for (int x = -idim; x <= idim; x++) {
        for (int y = -idim; y <= idim; y++) {
          for (int z = 0; z < (2 * idim); z++) {

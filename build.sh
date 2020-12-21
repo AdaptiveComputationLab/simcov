@@ -38,7 +38,8 @@ else
     if [ "$1" == "Debug" ] || [ "$1" == "Release" ]; then
         rm -rf *
         rm -rf $INSTALL_PATH/cmake
-        cmake $rootdir -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_CXX_COMPILER=/opt/intel/compilers_and_libraries_2020.2.254/linux/mpi/intel64/bin/mpicxx
+        #cmake $rootdir -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_CXX_COMPILER=/opt/intel/compilers_and_libraries_2020.2.254/linux/mpi/intel64/bin/mpicxx
+        cmake $rootdir -DCMAKE_BUILD_TYPE=$1 -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH
     fi
     make -j install
 fi
