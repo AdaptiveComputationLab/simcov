@@ -8,6 +8,7 @@
 
 #include "CLI11.hpp"
 #include "version.h"
+#include "utils.hpp"
 
 using std::array;
 using std::cout;
@@ -110,19 +111,63 @@ class Options {
     upcxx::barrier();
   }
 
+  void set_random_infections(int num) {
+    for (int i = 0; i < num; i++) {
+      if (i % rank_n() != rank_me()) continue;
+      infection_coords.push_back({_rnd_gen->get(0, dimensions[0]), _rnd_gen->get(0, dimensions[1]),
+                                  _rnd_gen->get(0, dimensions[2]), 0});
+    }
+  }
+
+  void set_uniform_infections(int num) { SDIE("Not yet implemented"); }
+
   bool parse_infection_coords(vector<string> &coords_strs) {
-    for (auto &coords_str : coords_strs) {
-      auto coords_and_time = splitter(",", coords_str);
-      if (coords_and_time.size() != 4) {
-        if (!rank_me()) {
-          cerr << KLRED << "ERROR: " << KNORM << "incorrect number (" << coords_and_time.size()
-               << ") of coordinates and time step in string \"" << coords_str
-               << " - should be four comma-separated (x,y,z,t) values" << endl;
+    auto get_locations_count = [](const string &s, const string &name) -> int {
+      int num = 0;
+      if (s.compare(0, name.length(), name) == 0) {
+        string num_str = s.substr(name.length());
+        try {
+          num = std::stoi(num_str);
+        } catch (std::invalid_argument arg) {
+          num = 0;
         }
+        if (num < 1) return 0;
+      }
+      return num;
+    };
+
+    if (coords_strs.size() == 1) {
+      int num = get_locations_count(coords_strs[0], "random:");
+      if (num > 0) {
+        set_random_infections(num);
+        return true;
+      }
+      num = get_locations_count(coords_strs[0], "uniform:");
+      if (num > 0) {
+        set_uniform_infections(num);
+        return true;
+      }
+    }
+    for (int i = 0; i < coords_strs.size(); i++) {
+      if (i % rank_n() != rank_me()) continue;
+      auto coords_and_time = splitter(",", coords_strs[i]);
+      if (coords_and_time.size() == 4) {
+        try {
+          infection_coords.push_back({std::stoi(coords_and_time[0]), std::stoi(coords_and_time[1]),
+                                      std::stoi(coords_and_time[2]),
+                                      std::stoi(coords_and_time[3])});
+        } catch (std::invalid_argument arg) {
+          coords_and_time.clear();
+        }
+      }
+      if (coords_and_time.size() != 4) {
+        ostringstream oss;
+        oss << KLRED << "ERROR: " << KNORM << "incorrect specification of infection coords in "
+            << "string \"" << coords_strs[i] << "\"\n"
+            << " - should be four comma-separated (x,y,z,t) values or random:N or uniform:N\n";
+        cerr << oss.str();
         return false;
       }
-      infection_coords.push_back({std::stoi(coords_and_time[0]), std::stoi(coords_and_time[1]),
-                                  std::stoi(coords_and_time[2]), std::stoi(coords_and_time[3])});
     }
     return true;
   }
@@ -132,7 +177,6 @@ class Options {
   vector<int> whole_lung_dims{240, 120, 60};
   // each time step should be about 1 minute, so one day = 1440 time steps
   int num_timesteps = 2000;
-  int num_infections = 1;
 
   // x,y,z location and timestep
   vector<array<int, 4>> infection_coords;
@@ -195,13 +239,12 @@ class Options {
     app.add_option("-t,--timesteps", num_timesteps, "Number of timesteps")
         ->check(CLI::Range(1, 1000000))
         ->capture_default_str();
-    app.add_option("--infections", num_infections, "Number of randomly chosen starting infections")
-        ->capture_default_str();
     app.add_option(
            "--infection-coords", infection_coords_strs,
-           "Location of multiple initial infections, of form "
-           "\"x1,y1,z1,t1 x2,y2,z2,t2;...\" where x,y,z are grid coords and t is a timestep - "
-           "overrides --infections")
+           "Location of multiple initial infections, of form \"x1,y1,z1,t1 x2,y2,z2,t2...\"\n"
+           "where x,y,z are grid coords and t is a timestep, or\n"
+           "\"uniform:N\" for N uniformly distributed points or\n"
+           "\"random:N\" for N randomly distributed points")
         ->delimiter(' ')
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
@@ -306,6 +349,8 @@ class Options {
 
     upcxx::barrier();
 
+    _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
+
     if (!*output_dir_opt) {
       output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
                    to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
@@ -320,17 +365,8 @@ class Options {
       return false;
     }
 
-    if (infection_coords_strs.size() == 1 && infection_coords_strs[0] == "none")
-      infection_coords_strs.clear();
-    if (!infection_coords_strs.empty()) {
-      if (!parse_infection_coords(infection_coords_strs)) return false;
-      if (num_infections)
-        SLOG("Initial infection coordinates set; will override --infections (", num_infections,
-             ")\n");
-      num_infections = infection_coords.size();
-      SLOG("Initial infection coords specified, setting number of infection points to ",
-           num_infections, "\n");
-    }
+    if (!infection_coords_strs.empty() && !parse_infection_coords(infection_coords_strs))
+      return false;
     setup_output_dir();
     setup_log_file();
 

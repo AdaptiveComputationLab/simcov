@@ -118,25 +118,17 @@ IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
 IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 
 void seed_infection(Tissue &tissue, int time_step) {
-  // only rank 0 sets the initial infections because we'll never have very many
-  if (!rank_me()) {
-    // if initial infections are at random locations, they all happen at the start
-    if (time_step == 0 && _options->num_infections && _options->infection_coords.empty()) {
-      for (int i = 0; i < _options->num_infections; i++) {
-        GridCoords coords(_rnd_gen);
-        SLOG_VERBOSE("Time step ", time_step, ": initial infection at ", coords.str() + "\n");
-        tissue.set_initial_infection(coords);
-      }
-    } else {
-      for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end();
-           it++) {
-        if ((*it)[3] == time_step) {
-          GridCoords coords({(*it)[0], (*it)[1], (*it)[2]});
-          SLOG_VERBOSE("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
-          tissue.set_initial_infection(coords);
-          _options->infection_coords.erase(it--);
-        }
-      }
+  // _options->infection_coords contains the coords assigned just to rank_me()
+  for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
+    auto infection_coords = *it;
+    if (infection_coords[3] == time_step) {
+      GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
+
+      WARN("Time step ", time_step, ":initial infection at ", coords.str());
+
+      DBG("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
+      tissue.set_initial_infection(coords);
+      _options->infection_coords.erase(it--);
     }
   }
   barrier();
@@ -645,8 +637,6 @@ int main(int argc, char **argv) {
   _options = make_shared<Options>();
   if (!_options->load(argc, argv)) return 0;
   ProgressBar::SHOW_PROGRESS = _options->show_progress;
-
-  _rnd_gen = make_shared<Random>(_options->rnd_seed + rank_me());
 
   if (pin_thread(getpid(), local_team().rank_me()) == -1)
     WARN("Could not pin process ", getpid(), " to core ", rank_me());
