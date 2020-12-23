@@ -41,7 +41,12 @@ ax_tcells = fig.add_subplot(2, 2, 2)
 ax_virus = fig.add_subplot(2, 2, 3)
 ax_chemo = fig.add_subplot(2, 2, 4)
 
-moddate = os.stat('cycells-test/simcov.stats')[8]
+moddate = None
+try:
+    moddate = os.stat(options.stats_file)[8]
+except FileNotFoundError as err:
+    print("File not found: {0}".format(err))
+    
 unchanged = 0
 first = True
 
@@ -85,7 +90,11 @@ def animate(i):
     global moddate
     global unchanged
     global first
-    new_moddate = os.stat(options.stats_file)[8]
+    try:
+        new_moddate = os.stat(options.stats_file)[8]
+    except FileNotFoundError:
+        return
+    
     if new_moddate != moddate or first:
         moddate = new_moddate
         first = False
