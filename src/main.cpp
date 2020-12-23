@@ -44,7 +44,7 @@ class SimStats {
   void init() {
     if (!rank_me()) {
       log_file.open("simcov.stats");
-      log_file << "# time\t" << header(0) << endl;
+      log_file << "# time" << header(0) << endl;
     }
   }
 
@@ -95,7 +95,7 @@ class SimStats {
 
   void log(int time_step) {
     string s = to_str(0);
-    if (!rank_me()) log_file << time_step << "\t" << s << endl;
+    if (!rank_me()) log_file << time_step << s << endl;
   }
 };
 
