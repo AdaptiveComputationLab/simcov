@@ -44,46 +44,57 @@ class SimStats {
   void init() {
     if (!rank_me()) {
       log_file.open("simcov.stats");
-      log_file << "# time\t" << header() << endl;
+      log_file << "# time\t" << header(0) << endl;
     }
   }
 
-  string header() {
+  string header(int width) {
+    vector<string> columns = {"incb", "expr", "apop", "dead",   "tvas",
+                              "ttis", "chem", "virs", "chempts"};
     ostringstream oss;
-    oss << "incb\t"
-        << "expr\t"
-        << "apop\t"
-        << "dead\t"
-        << "tvas\t"
-        << "ttis\t"
-        << "chem\t"
-        << "virs\t"
-        << "chempts";
+    oss << left;
+    for (auto column : columns) {
+      if (width)
+        oss << setw(width) << column;
+      else
+        oss << '\t' << column;
+    }
     return oss.str();
   }
 
-  string to_str() {
-    auto tot_incubating = reduce_one(incubating, op_fast_add, 0).wait();
-    auto tot_expressing = reduce_one(expressing, op_fast_add, 0).wait();
-    auto tot_apoptotic = reduce_one(apoptotic, op_fast_add, 0).wait();
-    auto tot_dead = reduce_one(dead, op_fast_add, 0).wait();
-    auto tot_tcells_vasculature = reduce_one(tcells_vasculature, op_fast_add, 0).wait();
-    auto tot_tcells_tissue = reduce_one(tcells_tissue, op_fast_add, 0).wait();
-    auto tot_chemokines = reduce_one(chemokines, op_fast_add, 0).wait();
-    auto tot_chemo_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
-    double tot_virions = (double)reduce_one(virions, op_fast_add, 0).wait();
-    tot_chemokines /= get_num_grid_points();
-    tot_virions /= get_num_grid_points();
+  string to_str(int width) {
+    vector<int64_t> totals;
+    totals.push_back(reduce_one(incubating, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(expressing, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(apoptotic, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(dead, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
+    vector<double> totals_d;
+    totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
+    totals_d.push_back((double)reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
+    totals_d.push_back(reduce_one(num_chemo_pts, op_fast_add, 0).wait());
 
     ostringstream oss;
-    oss << left << tot_incubating << "\t" << tot_expressing << "\t" << tot_apoptotic << "\t"
-        << tot_dead << "\t" << tot_tcells_vasculature << "\t" << tot_tcells_tissue << "\t" << fixed
-        << setprecision(2) << scientific << tot_chemokines << "\t" << tot_virions << "\t" << tot_chemo_pts;
+    oss << left;
+    for (auto tot : totals) {
+      if (width)
+        oss << setw(width) << tot;
+      else
+        oss << '\t' << tot;
+    }
+    oss << fixed << setprecision(2) << scientific;
+    for (auto tot : totals_d) {
+      if (width)
+        oss << setw(width) << tot;
+      else
+        oss << '\t' << tot;
+    }
     return oss.str();
   }
 
   void log(int time_step) {
-    string s = to_str();
+    string s = to_str(0);
     if (!rank_me()) log_file << time_step << "\t" << s << endl;
   }
 };
@@ -152,7 +163,7 @@ void generate_tcells(Tissue &tissue, int time_step) {
       string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
       tissue.tcells_generated++;
       TCell tcell(tcell_id);
-      // choose a destination rank to add the tcell to based on the inital random coords
+      // choose a destination rank to add the tcell to based on the initial random coords
       tissue.add_circulating_tcell(coords, tcell);
       _sim_stats.tcells_vasculature++;
       upcxx::progress();
@@ -168,7 +179,7 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
   return new_x;
 }
 
-void update_circulating_tcells(int time_step, Tissue &tissue) {
+void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate_prob) {
   update_circulating_tcells_timer.start();
   auto circulating_tcells = tissue.get_circulating_tcells();
   for (auto it = circulating_tcells->begin(); it != circulating_tcells->end(); it++) {
@@ -180,6 +191,8 @@ void update_circulating_tcells(int time_step, Tissue &tissue) {
       continue;
     }
     GridCoords coords(_rnd_gen);
+    // prob is determined by overall size of sim compared to full lung
+    if (!_rnd_gen->trial_success(extravasate_prob)) continue;
     if (tissue.try_add_tissue_tcell(coords, *it, true)) {
       _sim_stats.tcells_vasculature--;
       _sim_stats.tcells_tissue++;
@@ -513,7 +526,13 @@ void run_sim(Tissue &tissue) {
   auto curr_t = start_t;
   auto five_perc = _options->num_timesteps / 50;
   _sim_stats.init();
-  SLOG("# datetime     elapsed step    ", _sim_stats.header(), "\t<%active  lbln>\n");
+  int64_t whole_lung_volume = (int64_t)_options->whole_lung_dims[0] *
+                              (int64_t)_options->whole_lung_dims[1] *
+                              (int64_t)_options->whole_lung_dims[2];
+  auto sim_volume = _grid_size->x * _grid_size->y * _grid_size->z;
+  double extravasate_prob = (double)sim_volume / whole_lung_volume;
+  SLOG("Probability of a T cell extravasating is ", extravasate_prob, "\n");
+  SLOG("# datetime                    step    ", _sim_stats.header(10), "<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, virions
   HASH_TABLE<int64_t, double> chemokines_to_update;
@@ -535,7 +554,7 @@ void run_sim(Tissue &tissue) {
       barrier();
     }
     compute_updates_timer.start();
-    update_circulating_tcells(time_step, tissue);
+    update_circulating_tcells(time_step, tissue, extravasate_prob);
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
@@ -575,8 +594,8 @@ void run_sim(Tissue &tissue) {
       auto load_balance = max_actives ? (double)num_actives / rank_n() / max_actives : 1;
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
-      SLOG("[", get_current_time(), " ", setprecision(2), fixed, setw(5), right, t_elapsed.count(),
-           "s]: ", setw(8), left, time_step, _sim_stats.to_str(), setprecision(3), fixed, "\t< ",
+      SLOG("[", get_current_time(), " ", setprecision(2), fixed, setw(7), right, t_elapsed.count(),
+           "s]: ", setw(8), left, time_step, _sim_stats.to_str(10), setprecision(3), fixed, "< ",
            perc_actives, " ", load_balance, " >\n");
     }
     barrier();

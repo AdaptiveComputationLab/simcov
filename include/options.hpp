@@ -129,6 +129,7 @@ class Options {
 
  public:
   vector<int> dimensions{100, 100, 1};
+  vector<int> whole_lung_dims{240, 120, 60};
   // each time step should be about 1 minute, so one day = 1440 time steps
   int num_timesteps = 2000;
   int num_infections = 1;
@@ -184,6 +185,10 @@ class Options {
 
     CLI::App app(full_version_str);
     app.add_option("-d,--dim", dimensions, "Dimensions: x y z")
+        ->delimiter(',')
+        ->expected(3)
+        ->capture_default_str();
+    app.add_option("--whole-lung-dim", whole_lung_dims, "Whole lung dimensions: x y z")
         ->delimiter(',')
         ->expected(3)
         ->capture_default_str();

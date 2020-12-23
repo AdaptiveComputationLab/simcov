@@ -24,12 +24,12 @@ extern shared_ptr<Options> _options;
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-using std::vector;
 using std::array;
 using std::list;
 using std::pair;
 using std::shared_ptr;
 using std::to_string;
+using std::vector;
 
 enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE };
 
@@ -58,7 +58,10 @@ struct GridCoords {
 
   GridCoords() {}
 
-  GridCoords(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
+  GridCoords(int64_t x, int64_t y, int64_t z)
+      : x(x)
+      , y(y)
+      , z(z) {}
 
   // create a grid point from 1d
   GridCoords(int64_t i);
@@ -101,7 +104,7 @@ struct TCell {
 };
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
-const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
+const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD"};
 
 class EpiCell {
   int id;
@@ -155,17 +158,16 @@ inline int64_t get_num_grid_points() { return _grid_size->x * _grid_size->y * _g
 
 class Tissue {
  private:
-
   using grid_points_t = upcxx::dist_object<vector<GridPoint>>;
   grid_points_t grid_points;
   vector<GridPoint>::iterator grid_point_iter;
 
   // keeps track of all grid points that need to be updated
-  using new_active_grid_points_t = upcxx::dist_object<HASH_TABLE<GridPoint*, bool>>;
+  using new_active_grid_points_t = upcxx::dist_object<HASH_TABLE<GridPoint *, bool>>;
   new_active_grid_points_t new_active_grid_points;
 
-  HASH_TABLE<GridPoint*, bool> active_grid_points;
-  HASH_TABLE<GridPoint*, bool>::iterator active_grid_point_iter;
+  HASH_TABLE<GridPoint *, bool> active_grid_points;
+  HASH_TABLE<GridPoint *, bool>::iterator active_grid_point_iter;
 
   upcxx::dist_object<list<TCell>> circulating_tcells;
 
@@ -224,6 +226,4 @@ class Tissue {
 #ifdef DEBUG
   void check_actives(int time_step);
 #endif
-
 };
-

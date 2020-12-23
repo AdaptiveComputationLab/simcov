@@ -2,11 +2,10 @@
 
 using namespace upcxx_utils;
 
+using std::min;
 using std::string;
 using std::string_view;
 using std::to_string;
-using std::min;
-
 
 int pin_thread(pid_t pid, int cid) {
   cpu_set_t cpu_set;
@@ -55,4 +54,3 @@ void dump_single_file(const string &fname, const string &out_str) {
 }
 
 std::shared_ptr<Random> _rnd_gen;
-
