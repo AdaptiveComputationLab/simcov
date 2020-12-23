@@ -144,31 +144,13 @@ void seed_infection(Tissue &tissue, int time_step) {
   barrier();
 }
 
-void add_tcell(Tissue &tissue, GridCoords coords, TCell tcell,
-               HASH_TABLE<intrank_t, vector<pair<GridCoords, TCell>>> &tcells_to_add) {
-  tcells_to_add[tissue.get_rank_for_grid_point(coords)].push_back({coords, tcell});
-}
-
 void generate_tcells(Tissue &tissue, int time_step) {
   generate_tcell_timer.start();
-  double generation_rate = _options->tcell_generation_rate;
-  int local_num_tcells = generation_rate / rank_n();
-  int remaining_tcells = generation_rate - local_num_tcells * rank_n();
-  if (rank_me() < remaining_tcells) local_num_tcells++;
-  double frac = generation_rate - floor(generation_rate);
-  if (rank_me() == 0 && frac > 0 && _rnd_gen->trial_success(frac)) local_num_tcells++;
-  if (local_num_tcells) {
-    for (int i = 0; i < local_num_tcells; i++) {
-      GridCoords coords(_rnd_gen);
-      string tcell_id = to_string(rank_me()) + "-" + to_string(tissue.tcells_generated);
-      tissue.tcells_generated++;
-      TCell tcell(tcell_id);
-      // choose a destination rank to add the tcell to based on the initial random coords
-      tissue.add_circulating_tcell(coords, tcell);
-      _sim_stats.tcells_vasculature++;
-      upcxx::progress();
-    }
-  }
+  double local_portion = _options->tcell_generation_rate / rank_n();
+  int local_num = floor(local_portion);
+  if (_rnd_gen->trial_success(local_portion - local_num)) local_num++;
+  tissue.change_num_circulating_tcells(local_num);
+  _sim_stats.tcells_vasculature += local_num;
   generate_tcell_timer.stop();
 }
 
@@ -179,27 +161,28 @@ int64_t get_rnd_coord(int64_t x, int64_t max_x) {
   return new_x;
 }
 
-void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate_prob) {
+void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate_fraction) {
   update_circulating_tcells_timer.start();
-  auto circulating_tcells = tissue.get_circulating_tcells();
-  for (auto it = circulating_tcells->begin(); it != circulating_tcells->end(); it++) {
+  auto num_circulating = tissue.get_num_circulating_tcells();
+  // tcells prob of dying in vasculature is 1/vascular_period
+  double portion_dying = (double)num_circulating / _options->tcell_vascular_period;
+  int num_dying = floor(portion_dying);
+  if (_rnd_gen->trial_success(portion_dying - num_dying)) num_dying++;
+  tissue.change_num_circulating_tcells(-num_dying);
+  _sim_stats.tcells_vasculature -= num_dying;
+  num_circulating = tissue.get_num_circulating_tcells();
+  double portion_xtravasing = extravasate_fraction * num_circulating;
+  int num_xtravasing = floor(portion_xtravasing);
+  if (_rnd_gen->trial_success(portion_xtravasing - num_xtravasing)) num_xtravasing++;
+  for (int i = 0; i < num_xtravasing; i++) {
     progress();
-    it->vascular_time_steps--;
-    if (it->vascular_time_steps == 0) {
-      _sim_stats.tcells_vasculature--;
-      circulating_tcells->erase(it--);
-      continue;
-    }
     GridCoords coords(_rnd_gen);
-    // prob is determined by overall size of sim compared to full lung
-    if (!_rnd_gen->trial_success(extravasate_prob)) continue;
-    if (tissue.try_add_tissue_tcell(coords, *it, true)) {
-      _sim_stats.tcells_vasculature--;
+    if (tissue.try_add_new_tissue_tcell(coords)) {
       _sim_stats.tcells_tissue++;
-      DBG(time_step, " tcell ", it->id, " extravasates at ", coords.str(), "\n");
-      circulating_tcells->erase(it--);
+      DBG(time_step, " tcell extravasates at ", coords.str(), "\n");
     }
   }
+  _sim_stats.tcells_vasculature = num_circulating;
   update_circulating_tcells_timer.stop();
 }
 
@@ -291,7 +274,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     }
     // try a few times to find an open spot
     for (int i = 0; i < 5; i++) {
-      if (tissue.try_add_tissue_tcell(selected_coords, *tcell, false)) {
+      if (tissue.try_add_tissue_tcell(selected_coords, *tcell)) {
         DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
             selected_coords.str(), "\n");
         delete grid_point->tcell;
@@ -530,8 +513,8 @@ void run_sim(Tissue &tissue) {
                               (int64_t)_options->whole_lung_dims[1] *
                               (int64_t)_options->whole_lung_dims[2];
   auto sim_volume = _grid_size->x * _grid_size->y * _grid_size->z;
-  double extravasate_prob = (double)sim_volume / whole_lung_volume;
-  SLOG("Probability of a T cell extravasating is ", extravasate_prob, "\n");
+  double extravasate_fraction = (double)sim_volume / whole_lung_volume;
+  SLOG("Fraction of circulating T cells extravasating is ", extravasate_fraction, "\n");
   SLOG("# datetime                    step    ", _sim_stats.header(10), "<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, virions
@@ -554,7 +537,7 @@ void run_sim(Tissue &tissue) {
       barrier();
     }
     compute_updates_timer.start();
-    update_circulating_tcells(time_step, tissue, extravasate_prob);
+    update_circulating_tcells(time_step, tissue, extravasate_fraction);
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {

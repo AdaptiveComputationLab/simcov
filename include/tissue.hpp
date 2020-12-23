@@ -92,11 +92,10 @@ struct GridCoords {
 struct TCell {
   string id;
   int binding_period = -1;
-  int vascular_time_steps = -1;
   int tissue_time_steps = -1;
   bool moved = true;
 
-  UPCXX_SERIALIZED_FIELDS(id, binding_period, vascular_time_steps, tissue_time_steps, moved);
+  UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved);
 
   TCell(const string &id);
 
@@ -169,7 +168,8 @@ class Tissue {
   HASH_TABLE<GridPoint *, bool> active_grid_points;
   HASH_TABLE<GridPoint *, bool>::iterator active_grid_point_iter;
 
-  upcxx::dist_object<list<TCell>> circulating_tcells;
+  int64_t num_circulating_tcells;
+  upcxx::dist_object<int64_t> tcells_generated;
 
   // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
@@ -179,8 +179,6 @@ class Tissue {
   vector<GridCoords> get_neighbors(GridCoords c);
 
  public:
-  int64_t tcells_generated = 0;
-
   Tissue();
 
   ~Tissue() {}
@@ -198,13 +196,15 @@ class Tissue {
 
   double get_chemokine(GridCoords coords);
 
-  list<TCell> *get_circulating_tcells();
-
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
-  void add_circulating_tcell(GridCoords coords, TCell tcell);
+  int64_t get_num_circulating_tcells();
 
-  bool try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate);
+  void change_num_circulating_tcells(int num);
+
+  bool try_add_new_tissue_tcell(GridCoords coords);
+
+  bool try_add_tissue_tcell(GridCoords coords, TCell &tcell);
 
   EpiCellStatus try_bind_tcell(GridCoords coords);
 
