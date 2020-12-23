@@ -144,7 +144,7 @@ class Options {
   int apoptosis_period = 30;
   int expressing_period = 100;
 
-  double tcell_generation_rate = 5;
+  int tcell_generation_rate = 100;
   int tcell_initial_delay = 1000;
   int tcell_vascular_period = 600;
   int tcell_tissue_period = 60;
@@ -258,7 +258,7 @@ class Options {
                    "Number of time steps before antibodies start to be produced")
         ->capture_default_str();
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
-                   "Number of tcells generated at each timestep")
+                   "Number of tcells generated at each timestep for the whole lung")
         ->capture_default_str();
     app.add_option("--tcell-initial-delay", tcell_initial_delay,
                    "Number of time steps before T cells start to be produced")

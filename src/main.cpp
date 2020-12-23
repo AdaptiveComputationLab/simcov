@@ -146,11 +146,16 @@ void seed_infection(Tissue &tissue, int time_step) {
 
 void generate_tcells(Tissue &tissue, int time_step) {
   generate_tcell_timer.start();
-  double local_portion = _options->tcell_generation_rate / rank_n();
-  int local_num = floor(local_portion);
-  if (_rnd_gen->trial_success(local_portion - local_num)) local_num++;
+  int local_num = _options->tcell_generation_rate / rank_n();
+  int rem = _options->tcell_generation_rate - local_num * rank_n();
+  if (rank_me() < rem) local_num++;
+  if (time_step == 1) WARN("rem ", rem, " local num ", local_num, "\n");
   tissue.change_num_circulating_tcells(local_num);
-  _sim_stats.tcells_vasculature += local_num;
+#ifdef DEBUG
+  auto all_num = reduce_one(local_num, op_fast_add, 0).wait();
+  if (!rank_me() && all_num != _options->tcell_generation_rate)
+    DIE("num tcells generated ", all_num, " != generation rate ", _options->tcell_generation_rate);
+#endif
   generate_tcell_timer.stop();
 }
 
