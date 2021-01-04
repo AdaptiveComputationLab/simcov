@@ -128,15 +128,11 @@ class EpiCell {
   bool was_expressing();
 };
 
-// size 8+8*3+8*3*8+8+8+4+4+8+8=264
-// FIXME: need to cut this down to no more than 10
+// 3D size 4*3+26*8+16+8+16=372
 struct GridPoint {
-  // FIXME: don't store coords, instead calculate from id
   GridCoords coords;
-  // vector for connectivity
-  // FIXME: don't store at all and just calculate each time or store 1d value, not 3d point that has
-  // to be converted
-  vector<GridCoords> neighbors;
+  // vector for connectivity - stores 1d index of neighboring cells
+  vector<int64_t> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
@@ -175,11 +171,11 @@ class Tissue {
   upcxx::dist_object<int64_t> tcells_generated;
 
   // this is static for ease of use in rpcs
-  static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
+  static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
-  SampleData get_grid_point_sample_data(const GridCoords &coords);
+  SampleData get_grid_point_sample_data(int64_t grid_i);
 
-  vector<GridCoords> get_neighbors(GridCoords c);
+  vector<int64_t> get_neighbors(GridCoords c);
 
  public:
   Tissue();
@@ -188,16 +184,16 @@ class Tissue {
 
   int64_t get_num_local_grid_points();
 
-  intrank_t get_rank_for_grid_point(const GridCoords &coords);
+  intrank_t get_rank_for_grid_point(int64_t grid_i);
 
-  bool set_initial_infection(GridCoords coords);
+  bool set_initial_infection(int64_t grid_i);
 
   void accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_update,
                              IntermittentTimer &timer);
 
   void accumulate_virions(HASH_TABLE<int64_t, int> &virions_to_update, IntermittentTimer &timer);
 
-  double get_chemokine(GridCoords coords);
+  double get_chemokine(int64_t grid_i);
 
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
@@ -205,11 +201,11 @@ class Tissue {
 
   void change_num_circulating_tcells(int num);
 
-  bool try_add_new_tissue_tcell(GridCoords coords);
+  bool try_add_new_tissue_tcell(int64_t grid_i);
 
-  bool try_add_tissue_tcell(GridCoords coords, TCell &tcell);
+  bool try_add_tissue_tcell(int64_t grid_i, TCell &tcell);
 
-  EpiCellStatus try_bind_tcell(GridCoords coords);
+  EpiCellStatus try_bind_tcell(int64_t grid_i);
 
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();

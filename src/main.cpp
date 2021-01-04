@@ -127,7 +127,7 @@ void seed_infection(Tissue &tissue, int time_step) {
       WARN("Time step ", time_step, ":initial infection at ", coords.str());
 
       DBG("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
-      tissue.set_initial_infection(coords);
+      tissue.set_initial_infection(coords.to_1d());
       _options->infection_coords.erase(it--);
     }
   }
@@ -174,7 +174,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
   for (int i = 0; i < num_xtravasing; i++) {
     progress();
     GridCoords coords(_rnd_gen);
-    if (tissue.try_add_new_tissue_tcell(coords)) {
+    if (tissue.try_add_new_tissue_tcell(coords.to_1d())) {
       _sim_stats.tcells_tissue++;
       DBG(time_step, " tcell extravasates at ", coords.str(), "\n");
     }
@@ -213,7 +213,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     // not bound to an epicell - try to bind first with this cell then any one of the neighbors
     auto nbs = grid_point->neighbors;
     // include the current location
-    nbs.push_back(grid_point->coords);
+    nbs.push_back(grid_point->coords.to_1d());
     random_shuffle(nbs.begin(), nbs.end());
     for (auto &nb_coords : nbs) {
       DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
@@ -235,7 +235,8 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
   if (tcell->binding_period == -1) {
     DBG(time_step, " tcell ", tcell->id, " trying to move at ", grid_point->coords.str(), "\n");
     // didn't bind - move on chemokine gradient or at random
-    GridCoords selected_coords;
+    int64_t selected_grid_i =
+        grid_point->neighbors[_rnd_gen->get(0, (int64_t)grid_point->neighbors.size())];
     // not bound - follow chemokine gradient
     double highest_chemokine = 0;
     if (_options->tcells_follow_gradient) {
@@ -243,19 +244,18 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
       // same direction when there is a chemokine gradient
       auto nbs = grid_point->neighbors;
       random_shuffle(nbs.begin(), nbs.end());
-      for (auto &nb_coords : nbs) {
+      for (auto nb_grid_i : nbs) {
         double chemokine = 0;
-        int64_t nb_idx = nb_coords.to_1d();
-        auto it = chemokines_cache.find(nb_idx);
+        auto it = chemokines_cache.find(nb_grid_i);
         if (it == chemokines_cache.end()) {
-          chemokine = tissue.get_chemokine(nb_coords);
-          chemokines_cache.insert({nb_idx, chemokine});
+          chemokine = tissue.get_chemokine(nb_grid_i);
+          chemokines_cache.insert({nb_grid_i, chemokine});
         } else {
           chemokine = it->second;
         }
         if (chemokine > highest_chemokine) {
           highest_chemokine = chemokine;
-          selected_coords = nb_coords;
+          selected_grid_i = nb_grid_i;
         }
         DBG(time_step, " tcell ", tcell->id, " found nb chemokine ", chemokine, " at ",
             nb_coords.str(), "\n");
@@ -264,14 +264,14 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     if (highest_chemokine == 0) {
       // no chemokines found - move randomly
       auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-      selected_coords = grid_point->neighbors[rnd_nb_i];
+      selected_grid_i = grid_point->neighbors[rnd_nb_i];
       DBG(time_step, " tcell ", tcell->id, " try random move to ", selected_coords.str(), "\n");
     } else {
       DBG(time_step, " tcell ", tcell->id, " - highest chemokine at ", selected_coords.str(), "\n");
     }
     // try a few times to find an open spot
     for (int i = 0; i < 5; i++) {
-      if (tissue.try_add_tissue_tcell(selected_coords, *tcell)) {
+      if (tissue.try_add_tissue_tcell(selected_grid_i, *tcell)) {
         DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
             selected_coords.str(), "\n");
         delete grid_point->tcell;
@@ -280,7 +280,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
       }
       // choose another location at random
       auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-      selected_coords = grid_point->neighbors[rnd_nb_i];
+      selected_grid_i = grid_point->neighbors[rnd_nb_i];
       DBG(time_step, " tcell ", tcell->id, " try random move to ", selected_coords.str(), "\n");
     }
   }
@@ -348,9 +348,8 @@ void update_chemokines(GridPoint *grid_point, HASH_TABLE<int64_t, double> &chemo
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
   }
   if (grid_point->chemokine > 0) {
-    for (auto &nb_coords : grid_point->neighbors) {
-      assert(nb_coords != grid_point->coords);
-      chemokines_to_update[nb_coords.to_1d()] += grid_point->chemokine;
+    for (auto &nb_grid_i : grid_point->neighbors) {
+      chemokines_to_update[nb_grid_i] += grid_point->chemokine;
     }
   }
   update_concentration_timer.stop();
@@ -361,9 +360,8 @@ void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int> &virions_to_
   grid_point->virions = grid_point->virions * (1.0 - _options->virion_decay_rate);
   assert(grid_point->virions >= 0);
   if (grid_point->virions) {
-    for (auto &nb_coords : grid_point->neighbors) {
-      assert(nb_coords != grid_point->coords);
-      virions_to_update[nb_coords.to_1d()] += grid_point->virions;
+    for (auto &nb_grid_i : grid_point->neighbors) {
+      virions_to_update[nb_grid_i] += grid_point->virions;
     }
   }
   update_concentration_timer.stop();
