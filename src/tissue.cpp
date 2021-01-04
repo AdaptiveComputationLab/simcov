@@ -149,8 +149,8 @@ double EpiCell::get_binding_prob() {
 
 string GridPoint::str() const {
   ostringstream oss;
-  oss << "id " << id << ", xyz " << coords.str() << ", epi " << (epicell ? epicell->str() : "none")
-      << ", v " << virions << ", c " << chemokine;
+  oss << "xyz " << coords.str() << ", epi " << (epicell ? epicell->str() : "none") << ", v "
+      << virions << ", c " << chemokine;
   return oss.str();
 }
 
@@ -276,7 +276,7 @@ Tissue::Tissue()
       EpiCell *epicell = new EpiCell(id);
       if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
         epicell->infectable = false;
-      grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+      grid_points->emplace_back(GridPoint({coords, neighbors, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
       auto id_1d = coords.to_1d();
@@ -304,7 +304,6 @@ GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, const GridCo
   int64_t i = id % _grid_blocks.block_size + block_i * _grid_blocks.block_size;
   assert(i < grid_points->size());
   GridPoint *grid_point = &(*grid_points)[i];
-  assert(grid_point->id == id);
   assert(grid_point->coords.x == coords.x);
   assert(grid_point->coords.y == coords.y);
   assert(grid_point->coords.z == coords.z);
@@ -316,7 +315,6 @@ SampleData Tissue::get_grid_point_sample_data(const GridCoords &coords) {
              [](grid_points_t &grid_points, GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
                SampleData sample;
-               sample.id = grid_point->id;
                if (grid_point->tcell) sample.has_tcell = true;
                if (grid_point->epicell) {
                  sample.has_epicell = true;

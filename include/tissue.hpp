@@ -54,7 +54,7 @@ struct GridCoords;
 inline shared_ptr<GridCoords> _grid_size = nullptr;
 
 struct GridCoords {
-  int64_t x, y, z;
+  int x, y, z;
 
   GridCoords() {}
 
@@ -128,10 +128,14 @@ class EpiCell {
   bool was_expressing();
 };
 
+// size 8+8*3+8*3*8+8+8+4+4+8+8=264
+// FIXME: need to cut this down to no more than 10
 struct GridPoint {
-  int64_t id;
+  // FIXME: don't store coords, instead calculate from id
   GridCoords coords;
   // vector for connectivity
+  // FIXME: don't store at all and just calculate each time or store 1d value, not 3d point that has
+  // to be converted
   vector<GridCoords> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
@@ -145,7 +149,6 @@ struct GridPoint {
 };
 
 struct SampleData {
-  int64_t id = -1;
   bool has_tcell = false;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
