@@ -262,7 +262,8 @@ Tissue::Tissue()
   size_t sz_grid_point = sizeof(GridPoint) + sizeof(int64_t) * (threeD ? 26 : 8);
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
-  SLOG("Size of a grid point is ", sz_grid_point, " bytes\n");
+  size_t old_sz = sizeof(GridPoint) + 8 + sizeof(int64_t) * 3 * (threeD ? 26 : 8);
+  SLOG("Size of a grid point is ", sz_grid_point, " bytes, old ", old_sz, "\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   // FIXME: it may be more efficient (less communication) to have contiguous blocks
   // this is the quick & dirty approach
@@ -284,8 +285,8 @@ Tissue::Tissue()
       auto id_1d = coords.to_1d();
       if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
       ostringstream oss;
-      for (auto nb_coords : neighbors) {
-        oss << nb_coords.str() << " ";
+      for (auto nb_grid_i : neighbors) {
+        oss << GridCoords(nb_grid_i).str() << " ";
       }
       DBG("nbs: ", oss.str(), "\n");
 #endif
@@ -304,9 +305,6 @@ GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, int64_t grid
   int64_t i = grid_i % _grid_blocks.block_size + block_i * _grid_blocks.block_size;
   assert(i < grid_points->size());
   GridPoint *grid_point = &(*grid_points)[i];
-  assert(grid_point->coords.x == coords.x);
-  assert(grid_point->coords.y == coords.y);
-  assert(grid_point->coords.z == coords.z);
   return grid_point;
 }
 

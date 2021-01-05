@@ -258,22 +258,24 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
           selected_grid_i = nb_grid_i;
         }
         DBG(time_step, " tcell ", tcell->id, " found nb chemokine ", chemokine, " at ",
-            nb_coords.str(), "\n");
+            GridCoords(selected_grid_i).str(), "\n");
       }
     }
     if (highest_chemokine == 0) {
       // no chemokines found - move randomly
       auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
       selected_grid_i = grid_point->neighbors[rnd_nb_i];
-      DBG(time_step, " tcell ", tcell->id, " try random move to ", selected_coords.str(), "\n");
+      DBG(time_step, " tcell ", tcell->id, " try random move to ",
+          GridCoords(selected_grid_i).str(), "\n");
     } else {
-      DBG(time_step, " tcell ", tcell->id, " - highest chemokine at ", selected_coords.str(), "\n");
+      DBG(time_step, " tcell ", tcell->id, " - highest chemokine at ",
+          GridCoords(selected_grid_i).str(), "\n");
     }
     // try a few times to find an open spot
     for (int i = 0; i < 5; i++) {
       if (tissue.try_add_tissue_tcell(selected_grid_i, *tcell)) {
         DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
-            selected_coords.str(), "\n");
+            GridCoords(selected_grid_i).str(), "\n");
         delete grid_point->tcell;
         grid_point->tcell = nullptr;
         break;
@@ -281,7 +283,8 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
       // choose another location at random
       auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
       selected_grid_i = grid_point->neighbors[rnd_nb_i];
-      DBG(time_step, " tcell ", tcell->id, " try random move to ", selected_coords.str(), "\n");
+      DBG(time_step, " tcell ", tcell->id, " try random move to ",
+          GridCoords(selected_grid_i).str(), "\n");
     }
   }
   update_tcell_timer.stop();
