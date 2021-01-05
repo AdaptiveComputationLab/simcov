@@ -416,9 +416,9 @@ void set_active_grid_points(Tissue &tissue) {
 
 void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
   size_t tot_sz = get_num_grid_points();
-  string fname_snapshot = "sample_snapshot.csv";
-  string fname =
-      "samples/sample_" + view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
+  char cwd_buf[MAX_FILE_PATH];
+  string fname = string(getcwd(cwd_buf, MAX_FILE_PATH - 1)) + "/samples/sample_" +
+                 view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
   int x_dim = _options->dimensions[0];
   int y_dim = _options->dimensions[1];
   int z_dim = _options->dimensions[2];
