@@ -69,8 +69,6 @@ struct GridCoords {
   // create a random grid point
   GridCoords(shared_ptr<Random> rnd_gen);
 
-  void from_1d_linear(int64_t i);
-
   void set_rnd(shared_ptr<Random> rnd_gen);
 
   bool operator==(const GridCoords &coords) {
@@ -82,7 +80,8 @@ struct GridCoords {
   }
 
   int64_t to_1d() const;
-  int64_t to_1d_linear() const;
+
+  static int64_t to_1d(int x, int y, int z);
 
   string str() const {
     return "(" + to_string(x) + ", " + to_string(y) + ", " + to_string(z) + ")";
@@ -131,8 +130,6 @@ class EpiCell {
 // 3D size 4*3+26*8+16+8+16=372
 struct GridPoint {
   GridCoords coords;
-  // vector for connectivity - stores 1d index of neighboring cells
-  vector<int64_t> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
@@ -177,8 +174,6 @@ class Tissue {
 
   SampleData get_grid_point_sample_data(int64_t grid_i);
 
-  vector<int64_t> get_neighbors(GridCoords c);
-
  public:
   Tissue();
 
@@ -187,6 +182,8 @@ class Tissue {
   int64_t get_num_local_grid_points();
 
   intrank_t get_rank_for_grid_point(int64_t grid_i);
+
+  vector<int64_t> get_neighbors(GridCoords c);
 
   bool set_initial_infection(int64_t grid_i);
 
