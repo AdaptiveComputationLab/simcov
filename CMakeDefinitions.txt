@@ -8,4 +8,7 @@ add_definitions(-DUSE_BYTELL)
 add_definitions(-DMAX_VIRIONS=125000)
 
 # if defined, partition into blocks. This should increase locality, but at the cost of load balance
-# add_definitions(-DBLOCK_PARTITION)
+add_definitions(-DBLOCK_PARTITION)
+
+# the minimum number of blocks per process - too few and the load balance will be really poor
+add_definitions(-DMIN_BLOCKS_PER_PROC=100)
