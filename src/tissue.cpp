@@ -251,9 +251,11 @@ Tissue::Tissue()
   SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
        (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim,
        "^", (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
-  size_t sz_grid_point = sizeof(GridPoint);
+  // average size for epicells distributed according to the infectable spacing interval
+  double sz_grid_point = sizeof(GridPoint) + (double)sizeof(EpiCell) / _options->infectable_spacing;
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
-  SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd), "\n");
+  SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
+       " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   // FIXME: it may be more efficient (less communication) to have contiguous blocks
   // this is the quick & dirty approach

@@ -133,8 +133,8 @@ struct GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
-  int virions = 0, nb_virions = 0;
   double chemokine = 0, nb_chemokine = 0;
+  int virions = 0, nb_virions = 0;
 
   string str() const;
 
