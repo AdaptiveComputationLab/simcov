@@ -152,7 +152,9 @@ struct SampleData {
   double chemokine = 0;
 };
 
-inline int64_t get_num_grid_points() { return _grid_size->x * _grid_size->y * _grid_size->z; }
+inline int64_t get_num_grid_points() {
+  return (int64_t)_grid_size->x * (int64_t)_grid_size->y * (int64_t)_grid_size->z;
+}
 
 class Tissue {
  private:

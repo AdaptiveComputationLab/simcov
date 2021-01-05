@@ -236,8 +236,8 @@ Tissue::Tissue()
   // ranks get the same number of cubes. Also, having bigger cubes could lead
   // to load imbalance if all of the computation is
   // happening within a cube.
-  int block_dim = (_grid_size->z > 1 ? get_cube_block_dim(num_grid_points) :
-                                       get_square_block_dim(num_grid_points));
+  int64_t block_dim = (_grid_size->z > 1 ? get_cube_block_dim(num_grid_points) :
+                                           get_square_block_dim(num_grid_points));
   if (block_dim == 1)
     SWARN("Using a block size of 1: this will result in a lot of "
           "communication. You should change the dimensions.");
@@ -262,8 +262,6 @@ Tissue::Tissue()
   size_t sz_grid_point = sizeof(GridPoint) + sizeof(int64_t) * (threeD ? 26 : 8);
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
-  size_t old_sz = sizeof(GridPoint) + 8 + sizeof(int64_t) * 3 * (threeD ? 26 : 8);
-  SLOG("Size of a grid point is ", sz_grid_point, " bytes, old ", old_sz, "\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   // FIXME: it may be more efficient (less communication) to have contiguous blocks
   // this is the quick & dirty approach
