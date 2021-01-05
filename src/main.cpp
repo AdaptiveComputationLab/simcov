@@ -25,6 +25,7 @@ using namespace upcxx;
 using namespace upcxx_utils;
 
 #define NOW chrono::high_resolution_clock::now
+#define STATS_COL_WIDTH 11
 
 class SimStats {
  private:
@@ -73,7 +74,8 @@ class SimStats {
     vector<double> totals_d;
     totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
     totals_d.push_back((double)reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back(reduce_one(num_chemo_pts, op_fast_add, 0).wait());
+    auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
+    totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
 
     ostringstream oss;
     oss << left;
@@ -403,7 +405,12 @@ void set_active_grid_points(Tissue &tissue) {
     spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
                    nbs.size());
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
-    if (grid_point->chemokine > 0) _sim_stats.num_chemo_pts++;
+    // only count up chemokine in healthy epicells or empty spaces
+    // this will be added to the total number of infected and dead epicells to get cumulative
+    // chemokine spread
+    if (grid_point->chemokine > 0 &&
+        (!grid_point->epicell || grid_point->epicell->status == EpiCellStatus::HEALTHY))
+      _sim_stats.num_chemo_pts++;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->tcell) grid_point->tcell->moved = false;
     _sim_stats.chemokines += grid_point->chemokine;
@@ -515,7 +522,8 @@ void run_sim(Tissue &tissue) {
   auto sim_volume = _grid_size->x * _grid_size->y * _grid_size->z;
   double extravasate_fraction = (double)sim_volume / whole_lung_volume;
   SLOG("Fraction of circulating T cells extravasating is ", extravasate_fraction, "\n");
-  SLOG("# datetime                    step    ", _sim_stats.header(10), "<%active  lbln>\n");
+  SLOG("# datetime                    step    ", _sim_stats.header(STATS_COL_WIDTH),
+       "<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, virions
   HASH_TABLE<int64_t, double> chemokines_to_update;
@@ -580,8 +588,8 @@ void run_sim(Tissue &tissue) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG("[", get_current_time(), " ", setprecision(2), fixed, setw(7), right, t_elapsed.count(),
-           "s]: ", setw(8), left, time_step, _sim_stats.to_str(10), setprecision(3), fixed, "< ",
-           perc_actives, " ", load_balance, " >\n");
+           "s]: ", setw(8), left, time_step, _sim_stats.to_str(STATS_COL_WIDTH), setprecision(3),
+           fixed, "< ", perc_actives, " ", load_balance, " >\n");
     }
     barrier();
     tissue.add_new_actives(add_new_actives_timer);
