@@ -131,8 +131,6 @@ class EpiCell {
 // 3D size 4*3+26*8+16+8+16=372
 struct GridPoint {
   GridCoords coords;
-  // vector for connectivity - stores 1d index of neighboring cells
-  vector<int64_t> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
@@ -175,8 +173,6 @@ class Tissue {
 
   SampleData get_grid_point_sample_data(int64_t grid_i);
 
-  vector<int64_t> get_neighbors(GridCoords c);
-
  public:
   Tissue();
 
@@ -185,6 +181,8 @@ class Tissue {
   int64_t get_num_local_grid_points();
 
   intrank_t get_rank_for_grid_point(int64_t grid_i);
+
+  vector<int64_t> get_neighbors(GridCoords c);
 
   bool set_initial_infection(int64_t grid_i);
 

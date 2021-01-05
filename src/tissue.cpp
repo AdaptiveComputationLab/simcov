@@ -259,7 +259,7 @@ Tissue::Tissue()
   SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
        (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim,
        "^", (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
-  size_t sz_grid_point = sizeof(GridPoint) + sizeof(int64_t) * (threeD ? 26 : 8);
+  size_t sz_grid_point = sizeof(GridPoint);  // + sizeof(int64_t) * (threeD ? 26 : 8);
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
   size_t old_sz = sizeof(GridPoint) + 8 + sizeof(int64_t) * 3 * (threeD ? 26 : 8);
@@ -279,13 +279,14 @@ Tissue::Tissue()
       EpiCell *epicell = new EpiCell(id);
       if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
         epicell->infectable = false;
-      grid_points->emplace_back(GridPoint({coords, neighbors, epicell}));
+      grid_points->emplace_back(GridPoint({coords, epicell}));
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
       auto id_1d = coords.to_1d();
       if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
+      auto nbs = get_neighbors(coords);
       ostringstream oss;
-      for (auto nb_grid_i : neighbors) {
+      for (auto nb_grid_i : nbs) {
         oss << GridCoords(nb_grid_i).str() << " ";
       }
       DBG("nbs: ", oss.str(), "\n");

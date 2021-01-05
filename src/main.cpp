@@ -183,7 +183,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
   update_circulating_tcells_timer.stop();
 }
 
-void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
+void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, vector<int64_t> &nbs,
                          HASH_TABLE<int64_t, double> &chemokines_cache) {
   update_tcell_timer.start();
   TCell *tcell = grid_point->tcell;
@@ -211,13 +211,13 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     if (tcell->binding_period == 0) tcell->binding_period = -1;
   } else {
     // not bound to an epicell - try to bind first with this cell then any one of the neighbors
-    auto nbs = grid_point->neighbors;
+    auto rnd_nbs = nbs;
     // include the current location
-    nbs.push_back(grid_point->coords.to_1d());
-    random_shuffle(nbs.begin(), nbs.end());
-    for (auto &nb_coords : nbs) {
+    rnd_nbs.push_back(grid_point->coords.to_1d());
+    random_shuffle(rnd_nbs.begin(), rnd_nbs.end());
+    for (auto &nb_grid_i : rnd_nbs) {
       DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
-      auto nb_epicell_status = tissue.try_bind_tcell(nb_coords);
+      auto nb_epicell_status = tissue.try_bind_tcell(nb_grid_i);
       bool bound = true;
       switch (nb_epicell_status) {
         case EpiCellStatus::EXPRESSING: _sim_stats.expressing--; break;
@@ -235,16 +235,15 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
   if (tcell->binding_period == -1) {
     DBG(time_step, " tcell ", tcell->id, " trying to move at ", grid_point->coords.str(), "\n");
     // didn't bind - move on chemokine gradient or at random
-    int64_t selected_grid_i =
-        grid_point->neighbors[_rnd_gen->get(0, (int64_t)grid_point->neighbors.size())];
+    int64_t selected_grid_i = nbs[_rnd_gen->get(0, (int64_t)nbs.size())];
     // not bound - follow chemokine gradient
     double highest_chemokine = 0;
     if (_options->tcells_follow_gradient) {
       // get a randomly shuffled list of neighbors so the tcell doesn't always tend to move in the
       // same direction when there is a chemokine gradient
-      auto nbs = grid_point->neighbors;
-      random_shuffle(nbs.begin(), nbs.end());
-      for (auto nb_grid_i : nbs) {
+      auto rnd_nbs = nbs;
+      random_shuffle(rnd_nbs.begin(), rnd_nbs.end());
+      for (auto nb_grid_i : rnd_nbs) {
         double chemokine = 0;
         auto it = chemokines_cache.find(nb_grid_i);
         if (it == chemokines_cache.end()) {
@@ -263,8 +262,8 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
     }
     if (highest_chemokine == 0) {
       // no chemokines found - move randomly
-      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-      selected_grid_i = grid_point->neighbors[rnd_nb_i];
+      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)nbs.size());
+      selected_grid_i = nbs[rnd_nb_i];
       DBG(time_step, " tcell ", tcell->id, " try random move to ",
           GridCoords(selected_grid_i).str(), "\n");
     } else {
@@ -281,8 +280,8 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point,
         break;
       }
       // choose another location at random
-      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)grid_point->neighbors.size());
-      selected_grid_i = grid_point->neighbors[rnd_nb_i];
+      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)nbs.size());
+      selected_grid_i = nbs[rnd_nb_i];
       DBG(time_step, " tcell ", tcell->id, " try random move to ",
           GridCoords(selected_grid_i).str(), "\n");
     }
@@ -339,7 +338,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   update_epicell_timer.stop();
 }
 
-void update_chemokines(GridPoint *grid_point, HASH_TABLE<int64_t, double> &chemokines_to_update) {
+void update_chemokines(GridPoint *grid_point, vector<int64_t> &nbs,
+                       HASH_TABLE<int64_t, double> &chemokines_to_update) {
   update_concentration_timer.start();
   // Concentrations diffuse, i.e. the concentration at any single grid point tends to the average
   // of all the neighbors. So here we tell each neighbor what the current concentration is and
@@ -351,19 +351,20 @@ void update_chemokines(GridPoint *grid_point, HASH_TABLE<int64_t, double> &chemo
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
   }
   if (grid_point->chemokine > 0) {
-    for (auto &nb_grid_i : grid_point->neighbors) {
+    for (auto &nb_grid_i : nbs) {
       chemokines_to_update[nb_grid_i] += grid_point->chemokine;
     }
   }
   update_concentration_timer.stop();
 }
 
-void update_virions(GridPoint *grid_point, HASH_TABLE<int64_t, int> &virions_to_update) {
+void update_virions(GridPoint *grid_point, vector<int64_t> &nbs,
+                    HASH_TABLE<int64_t, int> &virions_to_update) {
   update_concentration_timer.start();
   grid_point->virions = grid_point->virions * (1.0 - _options->virion_decay_rate);
   assert(grid_point->virions >= 0);
   if (grid_point->virions) {
-    for (auto &nb_grid_i : grid_point->neighbors) {
+    for (auto &nb_grid_i : nbs) {
       virions_to_update[nb_grid_i] += grid_point->virions;
     }
   }
@@ -396,10 +397,11 @@ void set_active_grid_points(Tissue &tissue) {
   // iterate through all active local grid points and set changes
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
+    auto nbs = tissue.get_neighbors(grid_point->coords);
     diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
-            grid_point->neighbors.size());
+            nbs.size());
     spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
-                   grid_point->neighbors.size());
+                   nbs.size());
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
     if (grid_point->chemokine > 0) _sim_stats.num_chemo_pts++;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
@@ -555,12 +557,14 @@ void run_sim(Tissue &tissue) {
       }
       // DBG("updating grid point ", grid_point->str(), "\n");
       upcxx::progress();
+      auto nbs = tissue.get_neighbors(grid_point->coords);
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
-      if (grid_point->tcell) update_tissue_tcell(time_step, tissue, grid_point, chemokines_cache);
+      if (grid_point->tcell)
+        update_tissue_tcell(time_step, tissue, grid_point, nbs, chemokines_cache);
       update_epicell(time_step, tissue, grid_point);
-      update_chemokines(grid_point, chemokines_to_update);
-      update_virions(grid_point, virions_to_update);
+      update_chemokines(grid_point, nbs, chemokines_to_update);
+      update_virions(grid_point, nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
