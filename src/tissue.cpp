@@ -25,7 +25,10 @@ GridCoords::GridCoords(int64_t i) {
   y = block_y + dy;
   z = block_z + dz;
 #else
-  from_1d_linear(i);
+  z = i / (_grid_size->x * _grid_size->y);
+  i = i % (_grid_size->x * _grid_size->y);
+  y = i / _grid_size->x;
+  x = i % _grid_size->x;
 #endif
 }
 
@@ -35,16 +38,9 @@ GridCoords::GridCoords(shared_ptr<Random> rnd_gen) {
   z = rnd_gen->get(0, _grid_size->z);
 }
 
-void GridCoords::from_1d_linear(int64_t i) {
-  z = i / (_grid_size->x * _grid_size->y);
-  i = i % (_grid_size->x * _grid_size->y);
-  y = i / _grid_size->x;
-  x = i % _grid_size->x;
-}
-
-int64_t GridCoords::to_1d() const {
+int64_t GridCoords::to_1d(int x, int y, int z) {
   if (x >= _grid_size->x || y >= _grid_size->y || z >= _grid_size->z)
-    DIE("Grid point is out of range: ", str(), " max size ", _grid_size->str());
+    DIE("Grid point is out of range: ", x, " ", y, " ", z, " max size ", _grid_size->str());
 #ifdef BLOCK_PARTITION
   int64_t block_x = x / _grid_blocks.size_x;
   int64_t block_y = y / _grid_blocks.size_y;
@@ -58,15 +54,11 @@ int64_t GridCoords::to_1d() const {
                         in_block_z * _grid_blocks.size_x * _grid_blocks.size_y;
   return in_block_id + block_id * _grid_blocks.block_size;
 #else
-  return to_1d_linear();
+  return (int64_t)x + (int64_t)y * _grid_size->x + (int64_t)z * _grid_size->x * _grid_size->y;
 #endif
 }
 
-int64_t GridCoords::to_1d_linear() const {
-  if (x >= _grid_size->x || y >= _grid_size->y || z >= _grid_size->z)
-    DIE("Grid point is out of range: ", str(), " max size ", _grid_size->str());
-  return x + y * _grid_size->x + z * _grid_size->x * _grid_size->y;
-}
+int64_t GridCoords::to_1d() const { return GridCoords::to_1d(x, y, z); }
 
 void GridCoords::set_rnd(shared_ptr<Random> rnd_gen) {
   x = rnd_gen->get(0, _grid_size->x);
@@ -259,11 +251,9 @@ Tissue::Tissue()
   SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
        (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim,
        "^", (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
-  size_t sz_grid_point = sizeof(GridPoint);  // + sizeof(int64_t) * (threeD ? 26 : 8);
+  size_t sz_grid_point = sizeof(GridPoint);
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
-  SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
-  size_t old_sz = sizeof(GridPoint) + 8 + sizeof(int64_t) * 3 * (threeD ? 26 : 8);
-  SLOG("Size of a grid point is ", sz_grid_point, " bytes, old ", old_sz, "\n");
+  SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd), "\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   // FIXME: it may be more efficient (less communication) to have contiguous blocks
   // this is the quick & dirty approach
@@ -329,18 +319,17 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
 
 vector<int64_t> Tissue::get_neighbors(GridCoords c) {
   vector<int64_t> n = {};
-  int64_t newx, newy, newz;
-  for (int64_t i = -1; i <= 1; i++) {
-    for (int64_t j = -1; j <= 1; j++) {
-      for (int64_t k = -1; k <= 1; k++) {
+  int newx, newy, newz;
+  for (int i = -1; i <= 1; i++) {
+    for (int j = -1; j <= 1; j++) {
+      for (int k = -1; k <= 1; k++) {
         newx = c.x + i;
         newy = c.y + j;
         newz = c.z + k;
         if ((newx >= 0 && newx < _grid_size->x) && (newy >= 0 && newy < _grid_size->y) &&
             (newz >= 0 && newz < _grid_size->z)) {
           if (newx != c.x || newy != c.y || newz != c.z) {
-            GridCoords coords(newx, newy, newz);
-            n.push_back(coords.to_1d());
+            n.push_back(GridCoords::to_1d(newx, newy, newz));
           }
         }
       }

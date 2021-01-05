@@ -69,8 +69,6 @@ struct GridCoords {
   // create a random grid point
   GridCoords(shared_ptr<Random> rnd_gen);
 
-  void from_1d_linear(int64_t i);
-
   void set_rnd(shared_ptr<Random> rnd_gen);
 
   bool operator==(const GridCoords &coords) {
@@ -82,7 +80,8 @@ struct GridCoords {
   }
 
   int64_t to_1d() const;
-  int64_t to_1d_linear() const;
+
+  static int64_t to_1d(int x, int y, int z);
 
   string str() const {
     return "(" + to_string(x) + ", " + to_string(y) + ", " + to_string(z) + ")";
