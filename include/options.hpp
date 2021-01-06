@@ -214,7 +214,7 @@ class Options {
                       get_current_time(true);
   int sample_period = 1;
   double sample_resolution = 1.0;
-  int max_block_dim = 0;
+  int max_block_dim = 10;
 
   bool tcells_follow_gradient = false;
 
