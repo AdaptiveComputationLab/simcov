@@ -373,6 +373,11 @@ class Options {
       if (dimensions[2] > 1) max_block_dim = min(dimensions[2], max_block_dim);
     }
 
+#ifdef BLOCK_PARTITION
+    if (sample_period)
+      SDIE("Cannot sample with block partitioning - currently not implemented. Aborting...");
+#endif
+
     setup_output_dir();
     setup_log_file();
 
