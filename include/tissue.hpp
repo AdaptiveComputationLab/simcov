@@ -172,8 +172,6 @@ class Tissue {
   // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
-  SampleData get_grid_point_sample_data(int64_t grid_i);
-
  public:
   Tissue();
 
@@ -219,7 +217,7 @@ class Tissue {
 
   size_t get_num_actives();
 
-  void get_samples(vector<SampleData> &samples, int64_t &start_id);
+  SampleData get_grid_point_sample_data(int64_t grid_i);
 
 #ifdef DEBUG
   void check_actives(int time_step);

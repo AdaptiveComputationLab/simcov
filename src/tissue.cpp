@@ -504,20 +504,6 @@ EpiCellStatus Tissue::try_bind_tcell(int64_t grid_i) {
       .wait();
 }
 
-void Tissue::get_samples(vector<SampleData> &samples, int64_t &start_id) {
-  int64_t num_points = get_num_grid_points();
-  int64_t num_points_per_rank = ceil((double)num_points / rank_n());
-  start_id = rank_me() * num_points_per_rank;
-  int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
-  size_t buf_size = end_id - start_id;
-  samples.clear();
-  samples.reserve(buf_size);
-  // FIXME: this should be aggregated fetches per target rank
-  for (int64_t id = start_id; id < end_id; id++) {
-    samples.emplace_back(get_grid_point_sample_data(id));
-  }
-}
-
 GridPoint *Tissue::get_first_local_grid_point() {
   grid_point_iter = grid_points->begin();
   if (grid_point_iter == grid_points->end()) return nullptr;

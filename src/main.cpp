@@ -509,6 +509,21 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   upcxx::barrier();
 }
 
+int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
+  int64_t num_points = get_num_grid_points();
+  int64_t num_points_per_rank = ceil((double)num_points / rank_n());
+  int64_t start_id = rank_me() * num_points_per_rank;
+  int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
+  size_t buf_size = end_id - start_id;
+  samples.clear();
+  samples.reserve(buf_size);
+  // FIXME: this should be aggregated fetches per target rank
+  for (int64_t id = start_id; id < end_id; id++) {
+    samples.emplace_back(tissue.get_grid_point_sample_data(id));
+  }
+  return start_id;
+}
+
 void run_sim(Tissue &tissue) {
   BarrierTimer timer(__FILEFUNC__);
 
@@ -605,8 +620,7 @@ void run_sim(Tissue &tissue) {
         (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)) {
       sample_timer.start();
       samples.clear();
-      int64_t start_id;
-      tissue.get_samples(samples, start_id);
+      int64_t start_id = get_samples(tissue, samples);
       sample(time_step, samples, start_id, ViewObject::EPICELL);
       sample(time_step, samples, start_id, ViewObject::TCELL_TISSUE);
       sample(time_step, samples, start_id, ViewObject::VIRUS);
