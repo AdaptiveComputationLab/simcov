@@ -214,7 +214,7 @@ class Options {
                       get_current_time(true);
   int sample_period = 1;
   double sample_resolution = 1.0;
-  int min_blocks_per_proc = 16;
+  int max_block_dim = 10;
 
   bool tcells_follow_gradient = false;
 
@@ -329,9 +329,9 @@ class Options {
     app.add_option("--sample-resolution", sample_resolution, "Resolution for sampling")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option(
-           "--min-blocks-per-proc", min_blocks_per_proc,
-           "Minimum number of blocks per process - impacts performance (locality v load balance)")
+    app.add_option("--max-block-dim", max_block_dim,
+                   "Max. block dimension - larger means more locality but worse load balance. Set "
+                   "to 0 for largest possible")
         ->capture_default_str();
 
     auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory");
@@ -367,6 +367,12 @@ class Options {
 
     if (!infection_coords_strs.empty() && !parse_infection_coords(infection_coords_strs))
       return false;
+
+    if (!max_block_dim) {
+      max_block_dim = min(dimensions[0], dimensions[1]);
+      if (dimensions[2] > 1) max_block_dim = min(dimensions[2], max_block_dim);
+    }
+
     setup_output_dir();
     setup_log_file();
 

@@ -153,57 +153,62 @@ bool GridPoint::is_active() {
 
 static int get_cube_block_dim(int64_t num_grid_points) {
   int block_dim = 1;
-  int min_dim = min(min(_grid_size->x, _grid_size->y), _grid_size->z);
-  for (int i = 1; i < min_dim; i++) {
+  for (int d = 1; d < _options->max_block_dim; d++) {
     // only allow dims that divide each main dimension perfectly
-    if (remainder(_grid_size->x, i) || remainder(_grid_size->y, i) || remainder(_grid_size->z, i)) {
-      DBG("dim ", i, " does not divide all main dimensions cleanly\n");
+    if (remainder(_grid_size->x, d) || remainder(_grid_size->y, d) || remainder(_grid_size->z, d)) {
+      DBG("dim ", d, " does not divide all main dimensions cleanly\n");
       continue;
     }
-    size_t cube = (size_t)pow((double)i, 3.0);
+    size_t cube = (size_t)pow((double)d, 3.0);
     size_t num_cubes = num_grid_points / cube;
     DBG("cube size ", cube, " num cubes ", num_cubes, "\n");
-    if (num_cubes < rank_n() * _options->min_blocks_per_proc) {
-      DBG("not enough cubes ", num_cubes, " < ", rank_n() * _options->min_blocks_per_proc, "\n");
+    if (num_cubes < rank_n() * MIN_BLOCKS_PER_PROC) {
+      DBG("not enough cubes ", num_cubes, " < ", rank_n() * MIN_BLOCKS_PER_PROC, "\n");
       break;
     }
     // there is a remainder - this is not a perfect division
     if (remainder(num_grid_points, cube)) {
       DBG("there is a remainder - don't use\n");
       continue;
-    } else {
-      DBG("selected dim ", i, "\n");
-      block_dim = i;
     }
+    // skip sizes that distribute the blocks in columns
+    if (d > 1 && (_grid_size->x % (d * rank_n()) == 0 || _grid_size->y % (d * rank_n()) == 0)) {
+      DBG("dim ", d, " gives perfect division of all blocks into x axis - skip\n");
+      continue;
+    }
+    DBG("selected dim ", d, "\n");
+    block_dim = d;
   }
   return block_dim;
 }
 
 static int get_square_block_dim(int64_t num_grid_points) {
   int block_dim = 1;
-  int min_dim = min(_grid_size->x, _grid_size->y);
-  for (int i = 1; i < min_dim; i++) {
+  for (int d = 1; d < _options->max_block_dim; d++) {
     // only allow dims that divide each main dimension perfectly
-    if (remainder(_grid_size->x, i) || remainder(_grid_size->y, i)) {
-      DBG("dim ", i, " does not divide all main dimensions cleanly\n");
+    if (remainder(_grid_size->x, d) || remainder(_grid_size->y, d)) {
+      DBG("dim ", d, " does not divide all main dimensions cleanly\n");
       continue;
     }
-    size_t square = (size_t)pow((double)i, 2.0);
+    size_t square = (size_t)pow((double)d, 2.0);
     size_t num_squares = num_grid_points / square;
     DBG("square size ", square, " num squares ", num_squares, "\n");
-    if (num_squares < rank_n() * _options->min_blocks_per_proc) {
-      DBG("not enough squares ", num_squares, " < ", rank_n() * _options->min_blocks_per_proc,
-          "\n");
+    if (num_squares < rank_n() * MIN_BLOCKS_PER_PROC) {
+      DBG("not enough squares ", num_squares, " < ", rank_n() * MIN_BLOCKS_PER_PROC, "\n");
       break;
     }
     // there is a remainder - this is not a perfect division
     if (remainder(num_grid_points, square)) {
       DBG("there is a remainder - don't use\n");
       continue;
-    } else {
-      DBG("selected dim ", i, "\n");
-      block_dim = i;
     }
+    // skip sizes that distribute the blocks in columns
+    if (d > 1 && _grid_size->x % (d * rank_n()) == 0) {
+      DBG("dim ", d, " gives perfect division of all blocks into x axis - skip\n");
+      continue;
+    }
+    DBG("selected dim ", d, "\n");
+    block_dim = d;
   }
   return block_dim;
 }
@@ -257,16 +262,13 @@ Tissue::Tissue()
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
-  // FIXME: it may be more efficient (less communication) to have contiguous blocks
-  // this is the quick & dirty approach
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id);
-      auto neighbors = get_neighbors(coords);
-      // infectable epicells should be placed according to the underlying lung structure
+      // FIXME: infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
       EpiCell *epicell = new EpiCell(id);
       if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
