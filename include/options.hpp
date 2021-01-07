@@ -213,7 +213,7 @@ class Options {
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
                       get_current_time(true);
   int sample_period = 1;
-  double sample_resolution = 1.0;
+  int sample_resolution = 1;
   int max_block_dim = 10;
 
   bool tcells_follow_gradient = false;
@@ -327,7 +327,7 @@ class Options {
                    "Number of timesteps between samples (set to 0 to disable sampling)")
         ->capture_default_str();
     app.add_option("--sample-resolution", sample_resolution, "Resolution for sampling")
-        ->check(CLI::Range(0.0, 1.0))
+        ->check(CLI::Range(1, 10000))
         ->capture_default_str();
     app.add_option("--max-block-dim", max_block_dim,
                    "Max. block dimension - larger means more locality but worse load balance. Set "
@@ -374,9 +374,20 @@ class Options {
     }
 
 #ifdef BLOCK_PARTITION
-    if (sample_period)
-      SDIE("Cannot sample with block partitioning - currently not implemented. Aborting...");
+    if (sample_period) {
+      if (!rank_me())
+        cerr << "Cannot sample with block partitioning - currently not implemented. Aborting...");
+      return false;
+    }
 #endif
+
+    if (dimensions[0] % sample_resolution || dimensions[1] % sample_resolution ||
+        (dimensions[2] > 1 && dimensions[2] % sample_resolution)) {
+      if (!rank_me())
+        cerr << "Error: sample period " << sample_resolution
+             << " must be a factor of all the dimensions\n";
+      return false;
+    }
 
     setup_output_dir();
     setup_log_file();

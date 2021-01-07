@@ -426,9 +426,11 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   char cwd_buf[MAX_FILE_PATH];
   string fname = string(getcwd(cwd_buf, MAX_FILE_PATH - 1)) + "/samples/sample_" +
                  view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
-  int x_dim = _options->dimensions[0];
-  int y_dim = _options->dimensions[1];
-  int z_dim = _options->dimensions[2];
+  int x_dim = _options->dimensions[0] / _options->sample_resolution;
+  int y_dim = _options->dimensions[1] / _options->sample_resolution;
+  int z_dim = _options->dimensions[2] / _options->sample_resolution;
+  if (z_dim == 0) z_dim = 1;
+  int spacing = 5 * _options->sample_resolution;
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
              << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step
@@ -441,7 +443,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
              << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
              << "\n"
              // each cell is 5 microns
-             << "SPACING 5 5 5\n"
+             << "SPACING " << spacing << " " << spacing << " " << spacing << "\n"
              << "ORIGIN 0 0 0\n"
              << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
              << "SCALARS ";
@@ -510,17 +512,37 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
 }
 
 int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
-  int64_t num_points = get_num_grid_points();
+  int64_t num_points =
+      get_num_grid_points() / (_options->sample_resolution * _options->sample_resolution);
+  if (_grid_size->z > 1) num_points /= _options->sample_resolution;
   int64_t num_points_per_rank = ceil((double)num_points / rank_n());
   int64_t start_id = rank_me() * num_points_per_rank;
   int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
-  size_t buf_size = end_id - start_id;
   samples.clear();
-  samples.reserve(buf_size);
-  // FIXME: this should be aggregated fetches per target rank
-  for (int64_t id = start_id; id < end_id; id++) {
-    samples.emplace_back(tissue.get_grid_point_sample_data(id));
+  samples.reserve(end_id - start_id);
+  int64_t i = 0;
+  bool done = false;
+  for (int x = 0; x < _grid_size->x; x += _options->sample_resolution) {
+    for (int y = 0; y < _grid_size->y; y += _options->sample_resolution) {
+      for (int z = 0; z < _grid_size->z; z += _options->sample_resolution) {
+        if (i >= end_id) {
+          done = true;
+          break;
+        }
+        if (i >= start_id) {
+          auto id = GridCoords::to_1d(x, y, z);
+          samples.emplace_back(tissue.get_grid_point_sample_data(id));
+        }
+        i++;
+      }
+      if (done) break;
+    }
+    if (done) break;
   }
+  barrier();
+  auto samples_written = reduce_one(samples.size(), op_fast_add, 0).wait();
+  SLOG_VERBOSE("Wrote ", samples_written, " samples\n");
+  assert(num_points == samples_written);
   return start_id;
 }
 
