@@ -146,7 +146,7 @@ def main():
     tcells_color_func.NanOpacity = 0.0
     tcells_color_func.Annotations = ['255', '']
     tcells_color_func.IndexedColors = [0.0, 1.0, 0.0]
-    display_data('sample_tcelltissue_', options.data, tcells_view, 't-cell-tissue', tcells_color_func, representation='Points')
+    display_data('sample_tcelltissue_', options.data, tcells_view, 't-cell-tissue', tcells_color_func)#, representation='Points')
     display_chart(options.stats, tcells_chart_view, ['ttis', 'tvas'], ['ttis', 'tissue', 'tvas', 'vasculature'], 'tcells',
                   ['ttis', '0', '1', '0', 'tvas', '0', '0', '1'])
 
