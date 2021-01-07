@@ -59,10 +59,10 @@ def get_sample_fnames(prefix, data_dir):
     return sorted(glob.glob(data_dir + '/' + prefix + '*'), key=lambda s: int(s.split('_')[2].split('.')[0]))
 
 
-def display_data(prefix, data_dir, render_view, label, color_func):
+def display_data(prefix, data_dir, render_view, label, color_func, representation='Surface'):
     reader = pvs.LegacyVTKReader(FileNames=get_sample_fnames(prefix, data_dir), registrationName=label)
     display = pvs.Show(reader, render_view)
-    display.Representation = 'Surface'
+    display.Representation = representation
     display.ColorArrayName = ['CELLS', label]
     display.LookupTable = color_func
     display.ScaleFactor = 50.0
@@ -146,7 +146,7 @@ def main():
     tcells_color_func.NanOpacity = 0.0
     tcells_color_func.Annotations = ['255', '']
     tcells_color_func.IndexedColors = [0.0, 1.0, 0.0]
-    display_data('sample_tcelltissue_', options.data, tcells_view, 't-cell-tissue', tcells_color_func)
+    display_data('sample_tcelltissue_', options.data, tcells_view, 't-cell-tissue', tcells_color_func, representation='Points')
     display_chart(options.stats, tcells_chart_view, ['ttis', 'tvas'], ['ttis', 'tissue', 'tvas', 'vasculature'], 'tcells',
                   ['ttis', '0', '1', '0', 'tvas', '0', '0', '1'])
 
