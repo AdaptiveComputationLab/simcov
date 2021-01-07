@@ -110,7 +110,7 @@ void seed_infection(Tissue &tissue, int time_step) {
     // if initial infections are at random locations, they all happen at the start
     if (time_step == 0 && _options->num_infections && _options->infection_coords.empty()) {
       for (int i = 0; i < _options->num_infections; i++) {
-        GridCoords coords(_rnd_gen);
+        GridCoords coords(tissue.get_random_airway_epicell_location());//GridCoords coords(_rnd_gen);
         SLOG_VERBOSE("Time step ", time_step, ": initial infection at ", coords.str() + "\n");
         tissue.set_initial_infection(coords);
       }
@@ -435,9 +435,8 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
              << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
              << "\n"
              // each cell is 5 microns
-             //<< "SPACING 5 5 5\n"
-             //TODO For now only two types of epitheleal cells, alveoli and other
-             << "SPACING 1 1 1\n"
+             << "SPACING 5 5 5\n"
+             //TODO << "SPACING 1 1 1\n"
              << "ORIGIN 0 0 0\n"
              << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
              << "SCALARS ";
@@ -480,9 +479,9 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         if (sample.has_tcell) val = 255;
         break;
       case ViewObject::EPICELL:
-      //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
-      if (sample.has_epicell) val = 1;
-      if (sample.epicell_status == EpiCellStatus::ALVEOLI) val += 1;
+        //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
+        if (sample.has_epicell) val = 1;
+        if (sample.epicell_type == EpiCellType::ALVEOLI) val += 1;
         // if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
         // if (val > 1)
         //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");

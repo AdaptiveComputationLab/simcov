@@ -100,7 +100,8 @@ struct TCell {
   TCell();
 };
 //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
-enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD, ALVEOLI };
+enum class EpiCellType { AIRWAY, ALVEOLI };
+enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD};
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
 
 class EpiCell {
@@ -111,6 +112,7 @@ class EpiCell {
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
+  EpiCellType type = EpiCellType::AIRWAY;
   bool infectable = true;
 
   EpiCell(int id);
@@ -147,6 +149,7 @@ struct SampleData {
   bool has_tcell = false;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
+  EpiCellType epicell_type = EpiCellType::AIRWAY;
   int virions = 0;
   double chemokine = 0;
 };
@@ -175,6 +178,9 @@ class Tissue {
   SampleData get_grid_point_sample_data(const GridCoords &coords);
 
   vector<GridCoords> get_neighbors(GridCoords c);
+
+  std::set<int> alveoli;
+  std::set<int> airway;
 
  public:
   int64_t tcells_generated = 0;
@@ -220,6 +226,8 @@ class Tissue {
   size_t get_num_actives();
 
   void get_samples(vector<SampleData> &samples, int64_t &start_id);
+
+  int64_t get_random_airway_epicell_location();
 
 #ifdef DEBUG
   void check_actives(int time_step);

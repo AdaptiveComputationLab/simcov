@@ -90,9 +90,9 @@ class Lung {
     this->isFullModel = isFullModel;
     this->rnd_gen = std::make_shared<Random>(753695190);
     if (isFullModel) {
-      scale = 10; // 1cm = 10 units, 1  unit = 10^4um
-      gridSize.x = gridSize.y = gridSize.z = 300;
+      scale = 10; // 1 unit = 1mm, 1cm = 10^-2m = 10^4 um, 10^4/10^3 = 10 units
       loadEstimatedParameters();
+      gridSize.x = gridSize.y = gridSize.z = 300;
       // Draw upper right lobe 24 gen
       constructLobe(0, 24);
       // Draw middle right lobe 24 gen
@@ -104,19 +104,19 @@ class Lung {
       // Draw lower left lobe 25 gen
       constructLobe(98, 25);
     } else {
-      scale = 200; // 1  unit = 50um, 1cm = 10^-2m = 10^4 um = 200 units
+      //scale = 200; // 1 unit = 50um, 1cm = 10^-2m = 10^4 umm 10^4/50 = 200 units
+      scale = 2000; // 1 unit = 5um, 1cm = 10^-2m = 10^4 um, 10^4/5 = 2000 units
       loadEstimatedParameters();
-      // Draw last 5 generations upper right lobe
-      gridSize.x = gridSize.y = gridSize.z = 100;
-      constructLobe(19, (24 - 19)); // Construct at alveolar ducts
-      // // Draw last 12 generations upper right lobe
-      // gridSize.x = gridSize.y = gridSize.z = 300;
-      // constructLobe(12, (24 - 12)); // Construct at alveolar ducts
-      // // Draw last 5 generations upper right lobe
-      // gridSize.x = gridSize.y = gridSize.z = 100;
-      // constructLobe(10, (15 - 10)); // Construct at terminal bronchiole
+      // Draw last 3 generations upper right lobe
+      gridSize.x = gridSize.y = gridSize.z = 300;
+      constructLobe(21, (24 - 21)); // Construct at alveolar ducts
     }
-    std::printf("Number of alveoli %d\n", numAlveoli);
+    std::printf("Number of alveoli %d epithileal cells %d\n",
+      numAlveoli,
+      numAlveoliCells);
+    std::printf("Number of airways %d epithileal cells %d\n",
+      numAirways,
+      numAirwayCells);
   }
 
   ~Lung() {}
@@ -125,13 +125,13 @@ class Lung {
 
   const std::set<int> &getAlveoliEpiCellIds() { return alveoliEpiCellPositions1D; }
 
-  const std::vector<Int3D> &getEpiLocations() { return positions; }
+  const std::vector<Int3D> &getAllEpiLocations() { return positions; }
 
  private:
 
    bool isFullModel = false;
    double scale = 1.0;
-   int numAlveoli = 0;
+   int numAlveoli = 0, numAlveoliCells = 0, numAirways = 0, numAirwayCells = 0;
    std::vector<Level> levels;
    std::set<int> alveoliEpiCellPositions1D;
    std::set<int> airwayEpiCellPositions1D;
@@ -173,7 +173,7 @@ class Lung {
          false);
        construct(child, 1, startIndex + 1, generations - 1, lvl.bAngle, 0.0);
      } else {
-       Int3D child = constructSegment({gridSize.x/4, gridSize.y/2, gridSize.z/4},
+       Int3D child = constructSegment({0, gridSize.y/2, 0},
         lvl,
         0.0,
         false);
@@ -268,9 +268,10 @@ class Lung {
             airwayEpiCellPositions1D.insert(newPosition1.x
               + newPosition1.y * gridSize.x
               + newPosition1.z * gridSize.x * gridSize.y);
+            numAirwayCells++;
          }
        }
-       // Return root for next generation
+       // Create root for next generation
        Int3D base0 = rotate({.x = 0, .y = 0, .z = level.L},
          {.x = 0.0, .y = 1.0, .z = 0.0},
          level.bAngle);
@@ -280,19 +281,19 @@ class Lung {
        Int3D rval(base1.x + root.x,
          base1.y + root.y,
          base1.z + root.z);
+       numAirways++;
        // Draw alveolus
-       if (isTerminal && scale == 200) {
+       if (isTerminal && !isFullModel) {
          constructAlveoli(rval, level.bAngle, rotateZ);
-         numAlveoli++;
        }
        return rval;
    }
 
    void constructAlveoli(const Int3D & pos, double bAngle, double rotateZ) {
-     // Single alveolus, 6 x 6 x 6 epicells, 1  unit = 50um = 1 epicell dimension
-     // volume 300um x 300um x 300um = 27e6um^3
-     // [-3, 3]
-     int idim = 3;
+     // 1 unit = 5um, 1cm = 10^-2m = 10^4 um = 2000 units
+     // Single alveolar volume 200um x 200um x 200um, ? et al ?
+     // 40 x 40 x 40 units, [-20, 20]
+     int idim = 20;
      for (int x = -idim; x <= idim; x++) {
        for (int y = -idim; y <= idim; y++) {
          for (int z = 0; z < (2 * idim); z++) {
@@ -311,6 +312,7 @@ class Lung {
          }
        }
      }
+     numAlveoli++;
    }
 
    void addPosition(int x,
@@ -340,6 +342,7 @@ class Lung {
            alveoliEpiCellPositions1D.insert(newPosition1.x
              + newPosition1.y * gridSize.x
              + newPosition1.z * gridSize.x * gridSize.y);
+           numAlveoliCells++;
         }
    }
 

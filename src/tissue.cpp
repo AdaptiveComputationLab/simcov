@@ -279,13 +279,11 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
     std::printf("Cannot read file %s\n", fname.c_str());
   }
   int id = 0;
-  std::set<int> alveoli;
   while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
       alveoli.insert(id);
   }
   close(fileno);
   // Read bronchiole epithileal cells
-  std::set<int> airway;
   fname = bname + "/bronchiole.dat";
   fileno = open(fname.c_str(),
     O_RDONLY,
@@ -317,16 +315,13 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
       if (airway.size() > 0 || alveoli.size() > 0) {
         if (alveoli.count(id) != 0) { // Add alveoli epi cells
           EpiCell *epicell = new EpiCell(id);
-          if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0) {
-            epicell->infectable = false;
-          }
-          epicell->status = EpiCellStatus::ALVEOLI;
+          epicell->type = EpiCellType::ALVEOLI;
+          epicell->infectable = true;
           grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
         } else if (airway.count(id) != 0) { // Add bronchial epi cells
             EpiCell *epicell = new EpiCell(id);
-            if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0) {
-              epicell->infectable = false;
-            }
+            epicell->type = EpiCellType::AIRWAY;
+            epicell->infectable = true;
             grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
         } else { // Add empty space == air
           grid_points->emplace_back(GridPoint({id, coords, neighbors, nullptr}));
@@ -383,6 +378,7 @@ SampleData Tissue::get_grid_point_sample_data(const GridCoords &coords) {
                  if (grid_point->epicell) {
                    sample.has_epicell = true;
                    sample.epicell_status = grid_point->epicell->status;
+                   sample.epicell_type = grid_point->epicell->type;
                  }
                sample.virions = grid_point->virions;
                sample.chemokine = grid_point->chemokine;
@@ -413,6 +409,12 @@ vector<GridCoords> Tissue::get_neighbors(GridCoords c) {
 
 int64_t Tissue::get_num_local_grid_points() {
   return grid_points->size();
+}
+
+int64_t Tissue::get_random_airway_epicell_location() {
+  std::set<int>::iterator it = airway.begin();
+  std::advance(it, airway.size() / 2);
+  return *it;
 }
 
 bool Tissue::set_initial_infection(GridCoords coords) {
