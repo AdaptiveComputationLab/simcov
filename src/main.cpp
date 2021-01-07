@@ -522,16 +522,70 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
   samples.reserve(end_id - start_id);
   int64_t i = 0;
   bool done = false;
-  for (int x = 0; x < _grid_size->x; x += _options->sample_resolution) {
-    for (int y = 0; y < _grid_size->y; y += _options->sample_resolution) {
+  int block_size = _options->sample_resolution * _options->sample_resolution;
+  if (_grid_size->z > 1) block_size *= _options->sample_resolution;
+  vector<SampleData> block_samples;
+  for (int x = 0; x < _grid_size->x && !done; x += _options->sample_resolution) {
+    for (int y = 0; y < _grid_size->y && !done; y += _options->sample_resolution) {
       for (int z = 0; z < _grid_size->z; z += _options->sample_resolution) {
         if (i >= end_id) {
           done = true;
           break;
         }
         if (i >= start_id) {
-          auto id = GridCoords::to_1d(x, y, z);
-          samples.emplace_back(tissue.get_grid_point_sample_data(id));
+          int virions = 0;
+          double chemokine = 0;
+          int num_tcells = 0;
+          bool epicell_found = false;
+          array<int, 5> epicell_counts{0};
+          block_samples.clear();
+          bool done_sub = false;
+          for (int subx = x; subx < x + _options->sample_resolution; subx++) {
+            if (subx >= _grid_size->x) break;
+            for (int suby = y; suby < y + _options->sample_resolution; suby++) {
+              if (suby >= _grid_size->y) break;
+              for (int subz = z; subz < z + _options->sample_resolution; subz++) {
+                if (subz >= _grid_size->z) break;
+                auto sub_sd =
+                    tissue.get_grid_point_sample_data(GridCoords::to_1d(subx, suby, subz));
+                if (sub_sd.has_tcell) num_tcells++;
+                if (sub_sd.has_epicell) {
+                  epicell_found = true;
+                  switch (sub_sd.epicell_status) {
+                    case EpiCellStatus::HEALTHY: epicell_counts[0]++; break;
+                    case EpiCellStatus::INCUBATING: epicell_counts[1]++; break;
+                    case EpiCellStatus::EXPRESSING: epicell_counts[2]++; break;
+                    case EpiCellStatus::APOPTOTIC: epicell_counts[3]++; break;
+                    case EpiCellStatus::DEAD: epicell_counts[4]++; break;
+                  }
+                }
+                chemokine += sub_sd.chemokine;
+                virions += sub_sd.virions;
+              }
+            }
+          }
+          // chose the epicell status supported by the majority of grid points
+          int max_epicell_i = 0, max_count = 0;
+          for (int j = 0; j < 5; j++) {
+            if (max_count < epicell_counts[j]) {
+              max_count = epicell_counts[j];
+              max_epicell_i = j;
+            }
+          }
+          EpiCellStatus epi_status;
+          switch (max_epicell_i) {
+            case 0: epi_status = EpiCellStatus::HEALTHY; break;
+            case 1: epi_status = EpiCellStatus::INCUBATING; break;
+            case 2: epi_status = EpiCellStatus::EXPRESSING; break;
+            case 3: epi_status = EpiCellStatus::APOPTOTIC; break;
+            case 4: epi_status = EpiCellStatus::DEAD; break;
+          }
+          SampleData sd = {.has_tcell = (num_tcells > 0),
+                           .has_epicell = epicell_found,
+                           .epicell_status = epi_status,
+                           .virions = virions / block_size,
+                           .chemokine = chemokine / block_size};
+          samples.push_back(sd);
         }
         i++;
       }
