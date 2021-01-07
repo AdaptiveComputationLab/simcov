@@ -422,7 +422,6 @@ void set_active_grid_points(Tissue &tissue) {
 }
 
 void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
-  size_t tot_sz = get_num_grid_points();
   char cwd_buf[MAX_FILE_PATH];
   string fname = string(getcwd(cwd_buf, MAX_FILE_PATH - 1)) + "/samples/sample_" +
                  view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
@@ -430,6 +429,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   int y_dim = _options->dimensions[1] / _options->sample_resolution;
   int z_dim = _options->dimensions[2] / _options->sample_resolution;
   if (z_dim == 0) z_dim = 1;
+  size_t tot_sz = x_dim * y_dim * z_dim;
   int spacing = 5 * _options->sample_resolution;
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
