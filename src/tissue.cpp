@@ -308,7 +308,7 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
              [](grid_points_t &grid_points, int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                SampleData sample;
-               if (grid_point->tcell) sample.has_tcell = true;
+               if (grid_point->tcell) sample.tcells = 1;
                if (grid_point->epicell) {
                  sample.has_epicell = true;
                  sample.epicell_status = grid_point->epicell->status;
@@ -502,20 +502,6 @@ EpiCellStatus Tissue::try_bind_tcell(int64_t grid_i) {
              },
              grid_points, new_active_grid_points, grid_i)
       .wait();
-}
-
-void Tissue::get_samples(vector<SampleData> &samples, int64_t &start_id) {
-  int64_t num_points = get_num_grid_points();
-  int64_t num_points_per_rank = ceil((double)num_points / rank_n());
-  start_id = rank_me() * num_points_per_rank;
-  int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
-  size_t buf_size = end_id - start_id;
-  samples.clear();
-  samples.reserve(buf_size);
-  // FIXME: this should be aggregated fetches per target rank
-  for (int64_t id = start_id; id < end_id; id++) {
-    samples.emplace_back(get_grid_point_sample_data(id));
-  }
 }
 
 GridPoint *Tissue::get_first_local_grid_point() {
