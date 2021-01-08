@@ -3,9 +3,9 @@
 import glob
 import os
 import sys
+import math
 import argparse
 import paraview.simple as pvs
-
 
 def get_dims(data_dir):
     xdim = 0
@@ -31,12 +31,13 @@ def create_render_view(label, xdim, ydim):
     render_view = pvs.CreateView('RenderView')
     pvs.RenameView(label, render_view)
     render_view.OrientationAxesVisibility = 0
-    render_view.CameraPosition = [xdim / 2, ydim / 2, 1480]
+    render_view.CameraPosition = [xdim / 2, ydim / 2, 10000]
     render_view.CameraFocalPoint = [xdim / 2, ydim / 2, 2.5]
+    render_view.AxesGrid.Visibility = 1
     return render_view
 
 
-def create_chart_view(ylabel, log_scale=False):
+def create_chart_view(ylabel, log_scale=False, left_max_range=1000):
     chart_view = pvs.CreateView('XYChartView')
     pvs.RenameView(ylabel, chart_view)
     chart_view.LeftAxisTitle = ylabel
@@ -45,13 +46,14 @@ def create_chart_view(ylabel, log_scale=False):
     chart_view.BottomAxisTitle = 'Time step'
     chart_view.BottomAxisTitleFontSize = 12
     chart_view.BottomAxisGridColor = [0.7, 0.7, 0.7]
+    chart_view.BottomAxisUseCustomRange = 0
     #print(dir(chart_view))
     chart_view.LegendLocation = 'TopLeft'
     if log_scale:
         chart_view.LeftAxisLogScale = 1
         chart_view.LeftAxisUseCustomRange = 1
         chart_view.LeftAxisRangeMinimum = 1.0
-        chart_view.LeftAxisRangeMaximum = 2000.0
+        chart_view.LeftAxisRangeMaximum = left_max_range
     return chart_view
 
     
@@ -105,10 +107,9 @@ def main():
     virions_view = create_render_view('virions', xdim, ydim)
     virions_chart_view = create_chart_view('Average virions')
     epicells_view = create_render_view('epicells', xdim, ydim)
-    epicells_chart_view = create_chart_view('epicells', log_scale=True)
+    epicells_chart_view = create_chart_view('epicells', log_scale=True, left_max_range=xdim * ydim)
     tcells_view = create_render_view('chemokines and tcells', xdim, ydim)
-    tcells_chart_view = create_chart_view('tcells', log_scale=True)
-    #print(dir(tcells_chart_view))
+    tcells_chart_view = create_chart_view('tcells', log_scale=True, left_max_range=xdim * ydim)
     
     pvs.AddCameraLink(virions_view, epicells_view, 'link1')
     pvs.AddCameraLink(epicells_view, tcells_view, 'link2')
@@ -144,8 +145,8 @@ def main():
     tcells_color_func = pvs.GetColorTransferFunction('t-cell-tissue')
     tcells_color_func.InterpretValuesAsCategories = 1
     tcells_color_func.NanOpacity = 0.0
-    tcells_color_func.Annotations = ['255', '']
-    tcells_color_func.IndexedColors = [0.0, 1.0, 0.0]
+    tcells_color_func.Annotations = ['1', '>0', '2', '>0.12', '3', '>0.25', '4', '>0.5']
+    tcells_color_func.IndexedColors = [0.0, 0.3, 0.0, 0.0, 0.5, 0.0, 0.0, 0.7, 0.0, 0.0, 1.0, 0.0]
     display_data('sample_tcelltissue_', options.data, tcells_view, 't-cell-tissue', tcells_color_func)#, representation='Points')
     display_chart(options.stats, tcells_chart_view, ['ttis', 'tvas'], ['ttis', 'tissue', 'tvas', 'vasculature'], 'tcells',
                   ['ttis', '0', '1', '0', 'tvas', '0', '0', '1'])
@@ -163,6 +164,18 @@ def main():
     layout.AssignView(13, tcells_view)
     layout.AssignView(14, tcells_chart_view)
 
+    # for view in [virions_view, epicells_view, tcells_view]:
+    #      print(view.GetActiveCamera().GetViewUp())
+    #      print(view.GetActiveCamera().GetPosition())
+    #      print(view.GetActiveCamera().GetFocalPoint())
+    # for view in [virions_view, epicells_view, tcells_view]:
+    #     camera = view.GetActiveCamera()
+    #     focal_point = camera.GetFocalPoint()
+    #     pos = camera.GetPosition()
+    #     dist = math.sqrt((pos[0] - focal_point[0]) ** 2 + (pos[1] - focal_point[1]) ** 2 + (pos[2] - focal_point[2]) ** 2)
+    #     camera.SetPosition(focal_point[0], focal_point[1], focal_point[2] + dist)
+    #     camera.SetViewUp(0.0, 1.0, 0.0)
+    
     if not options.output:
         state_fname = options.data + '-state.pvsm'
     else:
