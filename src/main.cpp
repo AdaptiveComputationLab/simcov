@@ -504,6 +504,10 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         assert(sample.chemokine >= 0);
         val = 255 * sample.chemokine;
         if (sample.chemokine > 0 && val == 0) val = 1;
+        // set chemokine to 0 to ensure we can see the tcells
+        // use an inverse color map for chemokines so we want tcells to always be visible so set
+        // this to the max
+        if (sample.tcells > 0) val = 0;
         break;
     }
     buf[i] = val;
@@ -603,7 +607,6 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
   }
   barrier();
   auto samples_written = reduce_one(samples.size(), op_fast_add, 0).wait();
-  SLOG_VERBOSE("Wrote ", samples_written, " samples\n");
   assert(num_points == samples_written);
   return start_id;
 }
