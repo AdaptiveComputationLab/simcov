@@ -142,7 +142,7 @@ struct GridPoint {
 };
 
 struct SampleData {
-  bool has_tcell = false;
+  double tcells = 0;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
   int virions = 0;

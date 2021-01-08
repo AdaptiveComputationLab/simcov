@@ -483,19 +483,25 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
     unsigned char val = 0;
     switch (view_object) {
       case ViewObject::TCELL_TISSUE:
-        if (sample.has_tcell) val = 255;
+        assert(sample.tcells >= 0);
+        if (sample.tcells > 0.5)
+          val = 4;
+        else if (sample.tcells > 0.25)
+          val = 3;
+        else if (sample.tcells > 0.125)
+          val = 2;
+        else if (sample.tcells > 0)
+          val = 1;
         break;
       case ViewObject::EPICELL:
         if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
-        // if (val > 1)
-        //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");
         break;
       case ViewObject::VIRUS:
-        if (sample.virions < 0) DIE("virions are negative ", sample.virions);
+        assert(sample.virions >= 0);
         val = min(sample.virions, 255);
         break;
       case ViewObject::CHEMOKINE:
-        if (sample.chemokine < 0) DIE("chemokine is negative ", sample.chemokine);
+        assert(sample.chemokine >= 0);
         val = 255 * sample.chemokine;
         if (sample.chemokine > 0 && val == 0) val = 1;
         break;
@@ -548,7 +554,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
                 if (subz >= _grid_size->z) break;
                 auto sub_sd =
                     tissue.get_grid_point_sample_data(GridCoords::to_1d(subx, suby, subz));
-                if (sub_sd.has_tcell) num_tcells++;
+                num_tcells += sub_sd.tcells;
                 if (sub_sd.has_epicell) {
                   epicell_found = true;
                   switch (sub_sd.epicell_status) {
@@ -564,23 +570,25 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
               }
             }
           }
-          // chose the epicell status supported by the majority of grid points
-          int max_epicell_i = 0, max_count = 0;
-          for (int j = 0; j < 5; j++) {
-            if (max_count < epicell_counts[j]) {
-              max_count = epicell_counts[j];
-              max_epicell_i = j;
+          EpiCellStatus epi_status = EpiCellStatus::HEALTHY;
+          if (epicell_found) {
+            // chose the epicell status supported by the majority of grid points
+            int max_epicell_i = 0, max_count = 0;
+            for (int j = 0; j < 5; j++) {
+              if (max_count < epicell_counts[j]) {
+                max_count = epicell_counts[j];
+                max_epicell_i = j;
+              }
+            }
+            switch (max_epicell_i) {
+              case 0: epi_status = EpiCellStatus::HEALTHY; break;
+              case 1: epi_status = EpiCellStatus::INCUBATING; break;
+              case 2: epi_status = EpiCellStatus::EXPRESSING; break;
+              case 3: epi_status = EpiCellStatus::APOPTOTIC; break;
+              case 4: epi_status = EpiCellStatus::DEAD; break;
             }
           }
-          EpiCellStatus epi_status;
-          switch (max_epicell_i) {
-            case 0: epi_status = EpiCellStatus::HEALTHY; break;
-            case 1: epi_status = EpiCellStatus::INCUBATING; break;
-            case 2: epi_status = EpiCellStatus::EXPRESSING; break;
-            case 3: epi_status = EpiCellStatus::APOPTOTIC; break;
-            case 4: epi_status = EpiCellStatus::DEAD; break;
-          }
-          SampleData sd = {.has_tcell = (num_tcells > 0),
+          SampleData sd = {.tcells = (double)num_tcells / block_size,
                            .has_epicell = epicell_found,
                            .epicell_status = epi_status,
                            .virions = virions / block_size,

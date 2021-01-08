@@ -308,7 +308,7 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
              [](grid_points_t &grid_points, int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                SampleData sample;
-               if (grid_point->tcell) sample.has_tcell = true;
+               if (grid_point->tcell) sample.tcells = 1;
                if (grid_point->epicell) {
                  sample.has_epicell = true;
                  sample.epicell_status = grid_point->epicell->status;
