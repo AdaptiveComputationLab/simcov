@@ -34,6 +34,7 @@ def create_render_view(label, xdim, ydim):
     render_view.CameraPosition = [xdim / 2, ydim / 2, 10000]
     render_view.CameraFocalPoint = [xdim / 2, ydim / 2, 2.5]
     render_view.AxesGrid.Visibility = 1
+    #print(dir(render_view))
     return render_view
 
 
@@ -71,6 +72,7 @@ def display_data(prefix, data_dir, render_view, label, color_func, representatio
     display.SelectScaleArray = label
     display.GlyphTableIndexArray = label
     display.UseSeparateColorMap = True
+    #print(dir(display))
     color_bar = pvs.GetScalarBar(color_func, render_view)
     color_bar.Title = label
     color_bar.ComponentTitle = ''
@@ -137,7 +139,7 @@ def main():
                   ['incb', 'incubating', 'expr', 'expressing', 'apop', 'apoptotic', 'dead', 'dead'], 'epicells', epicell_cols)
     
     chemokine_color_func = pvs.GetColorTransferFunction('chemokine')
-    chemokine_color_func.RGBPoints = [0.0249, 1.0, 1.0, 1.0, 249.0, 0.0, 0.0, 0.0]
+    chemokine_color_func.RGBPoints = [0.0249, 0.0, 0.0, 0.0, 249.0, 1.0, 1.0, 1.0]
     chemokine_color_func.UseLogScale = 1
     chemokine_color_func.NanOpacity = 0.0
     display_data('sample_chemokine_', options.data, tcells_view, 'chemokine', chemokine_color_func)
