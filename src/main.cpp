@@ -751,13 +751,16 @@ int main(int argc, char **argv) {
   _options = make_shared<Options>();
   if (!_options->load(argc, argv)) return 0;
   ProgressBar::SHOW_PROGRESS = _options->show_progress;
-
   if (pin_thread(getpid(), local_team().rank_me()) == -1)
     WARN("Could not pin process ", getpid(), " to core ", rank_me());
   else
     SLOG_VERBOSE("Pinned processes, with process 0 (pid ", getpid(), ") pinned to core ",
                  local_team().rank_me(), "\n");
-
+#ifdef BLOCK_PARTITION
+  SLOG_VERBOSE("Using block partitioning\n");
+#else
+  SLOG_VERBOSE("Using linear partitioning\n");
+#endif
   MemoryTrackerThread memory_tracker;
   memory_tracker.start();
   auto start_free_mem = get_free_mem();
@@ -765,9 +768,7 @@ int main(int argc, char **argv) {
   Tissue tissue;
   SLOG(KBLUE, "Memory used on node 0 after initialization is  ",
        get_size_str(start_free_mem - get_free_mem()), KNORM, "\n");
-
   run_sim(tissue);
-
   memory_tracker.stop();
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(),
