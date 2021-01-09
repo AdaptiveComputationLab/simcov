@@ -50,8 +50,8 @@ class SimStats {
   }
 
   string header(int width) {
-    vector<string> columns = {"incb", "expr", "apop", "dead",   "tvas",
-                              "ttis", "chem", "virs", "chempts"};
+    vector<string> columns = {"incb", "expr", "apop", "dead",    "tvas",
+                              "ttis", "chem", "virs", "chempts", "%infct"};
     ostringstream oss;
     oss << left;
     for (auto column : columns) {
@@ -76,6 +76,8 @@ class SimStats {
     totals_d.push_back((double)reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
     auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
+    auto perc_infected =
+        100.0 * (double)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
 
     ostringstream oss;
     oss << left;
@@ -92,6 +94,11 @@ class SimStats {
       else
         oss << '\t' << tot;
     }
+    oss << fixed << setprecision(2) << showpoint;
+    if (width)
+      oss << setw(width) << perc_infected;
+    else
+      oss << '\t' << perc_infected;
     return oss.str();
   }
 
