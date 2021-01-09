@@ -373,14 +373,6 @@ class Options {
       if (dimensions[2] > 1) max_block_dim = min(dimensions[2], max_block_dim);
     }
 
-#ifdef BLOCK_PARTITION
-    if (sample_period) {
-      if (!rank_me())
-        cerr << "Cannot sample with block partitioning - currently not implemented. Aborting...");
-      return false;
-    }
-#endif
-
     if (dimensions[0] % sample_resolution || dimensions[1] % sample_resolution ||
         (dimensions[2] > 1 && dimensions[2] % sample_resolution)) {
       if (!rank_me())
