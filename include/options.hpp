@@ -204,7 +204,7 @@ class Options {
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
-                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-";
+                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
   int sample_period = 1;
   int sample_resolution = 1;
   int max_block_dim = 10;
