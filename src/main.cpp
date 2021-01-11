@@ -44,7 +44,7 @@ class SimStats {
 
   void init() {
     if (!rank_me()) {
-      log_file.open("simcov.stats");
+      log_file.open(_options->output_dir + "/simcov.stats");
       log_file << "# time" << header(0) << endl;
     }
   }
@@ -430,8 +430,8 @@ void set_active_grid_points(Tissue &tissue) {
 
 void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
   char cwd_buf[MAX_FILE_PATH];
-  string fname = string(getcwd(cwd_buf, MAX_FILE_PATH - 1)) + "/samples/sample_" +
-                 view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
+  string fname = _options->output_dir + "/samples/sample_" + view_object_str(view_object) + "_" +
+                 to_string(time_step) + ".vtk";
   int x_dim = _options->dimensions[0] / _options->sample_resolution;
   int y_dim = _options->dimensions[1] / _options->sample_resolution;
   int z_dim = _options->dimensions[2] / _options->sample_resolution;
