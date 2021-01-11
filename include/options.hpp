@@ -203,9 +203,8 @@ class Options {
   int antibody_period = 900;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
-                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
-                      get_current_time(true);
+  string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
+                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-";
   int sample_period = 1;
   int sample_resolution = 1;
   int max_block_dim = 10;
@@ -327,8 +326,7 @@ class Options {
                    "Max. block dimension - larger means more locality but worse load balance. Set "
                    "to 0 for largest possible")
         ->capture_default_str();
-
-    auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory");
+    app.add_option("-o,--output", output_dir, "Output directory")->capture_default_str();
     app.add_flag("--progress", show_progress, "Show progress");
     app.add_flag("-v, --verbose", verbose, "Verbose output");
 
@@ -344,13 +342,6 @@ class Options {
     upcxx::barrier();
 
     _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
-
-    if (!*output_dir_opt) {
-      output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
-                   to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
-                   get_current_time(true);
-      output_dir_opt->default_val(output_dir);
-    }
 
     if (virion_decay_rate * antibody_factor > 1.0) {
       if (!rank_me())
