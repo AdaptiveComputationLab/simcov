@@ -6,6 +6,7 @@ using std::min;
 using std::string;
 using std::string_view;
 using std::to_string;
+using std::array;
 
 int pin_thread(pid_t pid, int cid) {
   cpu_set_t cpu_set;
@@ -52,5 +53,22 @@ void dump_single_file(const string &fname, const string &out_str) {
   auto tot_bytes_written = upcxx::reduce_one(bytes_written, upcxx::op_fast_add, 0).wait();
   SLOG_VERBOSE("Successfully wrote ", get_size_str(tot_bytes_written), " to ", fname, "\n");
 }
+
+array<int,3> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z) {
+  int points_set_counter = 0;
+  int loop_counter = 0;
+
+  int max_attempts = 1000 * num;
+  double max_dist = sqrt( dim_x + dim_y + dim_z );
+
+  int min_closest_dist = (int)((1.0 / num) * max_dist);
+
+  array<int,3> infections;
+
+  do {
+    int x_coord = _rnd_gen->get(0, dim_x);
+    int y_coord = _rnd_gen->get(0, dim_y);
+    int z_coord = _rnd_gen->get(0, dim_z);
+    
 
 std::shared_ptr<Random> _rnd_gen;
