@@ -54,21 +54,42 @@ void dump_single_file(const string &fname, const string &out_str) {
   SLOG_VERBOSE("Successfully wrote ", get_size_str(tot_bytes_written), " to ", fname, "\n");
 }
 
-array<int,3> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z) {
-  int points_set_counter = 0;
-  int loop_counter = 0;
+vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z) {
+  // this works best when the rank partitions look like squares
+  vector<array<int,3>> infections;
 
-  int max_attempts = 1000 * num;
-  double max_dist = sqrt( dim_x + dim_y + dim_z );
+  int x_spacing, y_spacing, x_points, y_points;
 
-  int min_closest_dist = (int)((1.0 / num) * max_dist);
+  if ( dim_z == 0 ) {
+    x_spacing = dim_x / ( sqrt ( num ) + 1 );
+    y_spacing = dim_y / ( sqrt ( num ) + 1 );
 
-  array<int,3> infections;
-
-  do {
-    int x_coord = _rnd_gen->get(0, dim_x);
-    int y_coord = _rnd_gen->get(0, dim_y);
-    int z_coord = _rnd_gen->get(0, dim_z);
+    x_points = ( dim_x / x_spacing ) - 1;
+    y_points = ( dim_y / y_spacing ) - 1;
+  
+    for (int i = 0; i < num; i++) {
+      for (int j = 1; j <= x_points; j++) {
+	for (int k = 1; k <= y_points; k++) {
+	  array<int,3> infection_pt = { x_spacing * j, y_spacing * k, 0 };
+	  infections.push_back(infection_pt);
+	} } }
     
+  } else {     
+    int z_spacing, z_points;
+    
+    z_spacing = dim_z / ( sqrt ( num ) + 1 );
+    z_points = dim_z / ( sqrt ( num ) + 1 );
+    
+    for (int i = 0; i < num; i++) {
+      for (int j = 1; j <= x_points; j++) {
+	for (int k = 1; k <= y_points; k++) {
+	  for (int l = 1; l <= z_points; l++) {
+	    array<int,3> infection_pt = { x_spacing * j, y_spacing * k, z_spacing * l };
+	    infections.push_back(infection_pt);
+	  } } } } 
+  }
+
+  return infections;
+}
 
 std::shared_ptr<Random> _rnd_gen;
