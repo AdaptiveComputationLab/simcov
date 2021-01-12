@@ -70,16 +70,17 @@ vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_
     }
   }
 
-  int x_spacing = dim_x / ( x_splits + 1 );
-  int y_spacing = dim_y / ( y_splits + 1 );
+  int x_spacing = ( dim_x / ( x_splits + 1 ) ) + 1;
+  int y_spacing = ( dim_y / ( y_splits + 1 ) ) + 1;
 
-  for (int i = 0; i <= num; i++) {
-    for (int j = x_spacing; j < dim_x; j += x_spacing) {
-      for (int k = y_spacing; k < dim_y; k += y_spacing) {
-	infections.push_back({j, k, 0});
-  } } }
+  for (int j = x_spacing; j < dim_x; j += x_spacing) {
+    for (int k = y_spacing; k < dim_y; k += y_spacing) {
+      infections.push_back({j, k, 0});
+  } }
 
-  return infections;
+  vector<array<int,3>> cropped_infections = {infections.begin(), infections.end() - (infections.size() - num)}; 
+
+  return cropped_infections;
 }
 
 std::shared_ptr<Random> _rnd_gen;
