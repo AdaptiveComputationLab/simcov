@@ -26,7 +26,7 @@ int pin_thread(pid_t pid, int cid);
 
 void dump_single_file(const string &fname, const string &out_str);
 
-array<int,3> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z);
+vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z);
 
 class Random {
  private:
