@@ -122,14 +122,17 @@ class Options {
   void set_uniform_infections(int num) {
     int base_num_per_rank = num / rank_n();
     int num_ranks_with_extra = num % rank_n() - 1;
-    array<int,3> infections;
+    vector<array<int,3>> infections;
 
     if (rank_me() <= num_ranks_with_extra) {
       infections = get_uniform_infections(base_num_per_rank + 1, dimensions[0], dimensions[1], dimensions[2]);
     } else {
       infections = get_uniform_infections(base_num_per_rank, dimensions[0], dimensions[1], dimensions[2]);
     }
-    infection_coords.push_back({infections[0], infections[1], infections[2], 0});
+
+    for (int i = 0; i < infections.size(); i++) {
+      infection_coords.push_back({infections[i][0], infections[i][1], infections[i][2], 0});
+    }
   }
 
   bool parse_infection_coords(vector<string> &coords_strs) {
