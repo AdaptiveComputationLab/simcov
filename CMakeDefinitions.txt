@@ -12,3 +12,6 @@ add_definitions(-DBLOCK_PARTITION)
 
 # the minimum number of blocks per process - too few and the load balance will be really poor
 add_definitions(-DMIN_BLOCKS_PER_PROC=100)
+
+# compute average across subsambple block/square instead of just taking the first point
+add_definitions(-DAVERAGE_SUBSAMPLE) 

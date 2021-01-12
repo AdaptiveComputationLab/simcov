@@ -27,6 +27,7 @@ using namespace upcxx_utils;
 #define NOW chrono::high_resolution_clock::now
 #define STATS_COL_WIDTH 11
 
+
 class SimStats {
  private:
   ofstream log_file;
@@ -44,14 +45,14 @@ class SimStats {
 
   void init() {
     if (!rank_me()) {
-      log_file.open("simcov.stats");
+      log_file.open(_options->output_dir + "/simcov.stats");
       log_file << "# time" << header(0) << endl;
     }
   }
 
   string header(int width) {
-    vector<string> columns = {"incb", "expr", "apop", "dead",   "tvas",
-                              "ttis", "chem", "virs", "chempts"};
+    vector<string> columns = {"incb", "expr", "apop", "dead",    "tvas",
+                              "ttis", "chem", "virs", "chempts", "%infct"};
     ostringstream oss;
     oss << left;
     for (auto column : columns) {
@@ -76,6 +77,8 @@ class SimStats {
     totals_d.push_back((double)reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
     auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
+    auto perc_infected =
+        100.0 * (double)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
 
     ostringstream oss;
     oss << left;
@@ -92,6 +95,11 @@ class SimStats {
       else
         oss << '\t' << tot;
     }
+    oss << fixed << setprecision(2) << showpoint;
+    if (width)
+      oss << setw(width) << perc_infected;
+    else
+      oss << '\t' << perc_infected;
     return oss.str();
   }
 
@@ -117,6 +125,7 @@ IntermittentTimer accumulate_concentrations_timer(__FILENAME__ + string(":") + "
 IntermittentTimer add_new_actives_timer(__FILENAME__ + string(":") + "add new actives");
 IntermittentTimer set_active_points_timer(__FILENAME__ + string(":") + "erase inactive");
 IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
+IntermittentTimer sample_write_timer(__FILENAME__ + string(":") + "sample write");
 IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 
 void seed_infection(Tissue &tissue, int time_step) {
@@ -423,8 +432,8 @@ void set_active_grid_points(Tissue &tissue) {
 
 void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewObject view_object) {
   char cwd_buf[MAX_FILE_PATH];
-  string fname = string(getcwd(cwd_buf, MAX_FILE_PATH - 1)) + "/samples/sample_" +
-                 view_object_str(view_object) + "_" + to_string(time_step) + ".vtk";
+  string fname = _options->output_dir + "/samples/sample_" + view_object_str(view_object) + "_" +
+                 to_string(time_step) + ".vtk";
   int x_dim = _options->dimensions[0] / _options->sample_resolution;
   int y_dim = _options->dimensions[1] / _options->sample_resolution;
   int z_dim = _options->dimensions[2] / _options->sample_resolution;
@@ -513,11 +522,13 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
     buf[i] = val;
   }
   size_t fpos = header_str.length() + start_id;
+  sample_write_timer.start();
   auto bytes_written = pwrite(fileno, buf, samples.size(), fpos);
   if (bytes_written != samples.size())
     DIE("Could not write all ", samples.size(), " bytes; only wrote ", bytes_written, "\n");
   delete[] buf;
   close(fileno);
+  sample_write_timer.stop();
   upcxx::barrier();
 }
 
@@ -529,85 +540,93 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
   int64_t start_id = rank_me() * num_points_per_rank;
   int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
   samples.clear();
-  samples.reserve(end_id - start_id);
-  int64_t i = 0;
-  bool done = false;
-  int block_size = _options->sample_resolution * _options->sample_resolution;
-  if (_grid_size->z > 1) block_size *= _options->sample_resolution;
-  vector<SampleData> block_samples;
-  for (int x = 0; x < _grid_size->x && !done; x += _options->sample_resolution) {
-    for (int y = 0; y < _grid_size->y && !done; y += _options->sample_resolution) {
-      for (int z = 0; z < _grid_size->z; z += _options->sample_resolution) {
-        if (i >= end_id) {
-          done = true;
-          break;
-        }
-        if (i >= start_id) {
-          int virions = 0;
-          double chemokine = 0;
-          int num_tcells = 0;
-          bool epicell_found = false;
-          array<int, 5> epicell_counts{0};
-          block_samples.clear();
-          bool done_sub = false;
-          for (int subx = x; subx < x + _options->sample_resolution; subx++) {
-            if (subx >= _grid_size->x) break;
-            for (int suby = y; suby < y + _options->sample_resolution; suby++) {
-              if (suby >= _grid_size->y) break;
-              for (int subz = z; subz < z + _options->sample_resolution; subz++) {
-                if (subz >= _grid_size->z) break;
-                auto sub_sd =
+  if (end_id > start_id) {
+    samples.reserve(end_id - start_id);
+    int64_t i = 0;
+    bool done = false;
+    int block_size = _options->sample_resolution * _options->sample_resolution;
+    if (_grid_size->z > 1) block_size *= _options->sample_resolution;
+    vector<SampleData> block_samples;
+    for (int x = 0; x < _grid_size->x && !done; x += _options->sample_resolution) {
+      for (int y = 0; y < _grid_size->y && !done; y += _options->sample_resolution) {
+        for (int z = 0; z < _grid_size->z; z += _options->sample_resolution) {
+          if (i >= end_id) {
+            done = true;
+            break;
+          }
+          if (i >= start_id) {
+            progress();
+#ifdef AVERAGE_SUBSAMPLE
+            int virions = 0;
+            double chemokine = 0;
+            int num_tcells = 0;
+            bool epicell_found = false;
+            array<int, 5> epicell_counts{0};
+            block_samples.clear();
+            bool done_sub = false;
+            for (int subx = x; subx < x + _options->sample_resolution; subx++) {
+              if (subx >= _grid_size->x) break;
+              for (int suby = y; suby < y + _options->sample_resolution; suby++) {
+                if (suby >= _grid_size->y) break;
+                for (int subz = z; subz < z + _options->sample_resolution; subz++) {
+                  if (subz >= _grid_size->z) break;
+                  auto sub_sd =
                     tissue.get_grid_point_sample_data(GridCoords::to_1d(subx, suby, subz));
-                num_tcells += sub_sd.tcells;
-                if (sub_sd.has_epicell) {
-                  epicell_found = true;
-                  switch (sub_sd.epicell_status) {
-                    case EpiCellStatus::HEALTHY: epicell_counts[0]++; break;
-                    case EpiCellStatus::INCUBATING: epicell_counts[1]++; break;
-                    case EpiCellStatus::EXPRESSING: epicell_counts[2]++; break;
-                    case EpiCellStatus::APOPTOTIC: epicell_counts[3]++; break;
-                    case EpiCellStatus::DEAD: epicell_counts[4]++; break;
+                  num_tcells += sub_sd.tcells;
+                  if (sub_sd.has_epicell) {
+                    epicell_found = true;
+                    switch (sub_sd.epicell_status) {
+                      case EpiCellStatus::HEALTHY: epicell_counts[0]++; break;
+                      case EpiCellStatus::INCUBATING: epicell_counts[1]++; break;
+                      case EpiCellStatus::EXPRESSING: epicell_counts[2]++; break;
+                      case EpiCellStatus::APOPTOTIC: epicell_counts[3]++; break;
+                      case EpiCellStatus::DEAD: epicell_counts[4]++; break;
+                    }
                   }
+                  chemokine += sub_sd.chemokine;
+                  virions += sub_sd.virions;
                 }
-                chemokine += sub_sd.chemokine;
-                virions += sub_sd.virions;
               }
             }
-          }
-          EpiCellStatus epi_status = EpiCellStatus::HEALTHY;
-          if (epicell_found) {
-            // chose the epicell status supported by the majority of grid points
-            int max_epicell_i = 0, max_count = 0;
-            for (int j = 0; j < 5; j++) {
-              if (max_count < epicell_counts[j]) {
-                max_count = epicell_counts[j];
-                max_epicell_i = j;
+            EpiCellStatus epi_status = EpiCellStatus::HEALTHY;
+            if (epicell_found) {
+              // chose the epicell status supported by the majority of grid points
+              int max_epicell_i = 0, max_count = 0;
+              for (int j = 0; j < 5; j++) {
+                if (max_count < epicell_counts[j]) {
+                  max_count = epicell_counts[j];
+                  max_epicell_i = j;
+                }
+              }
+              switch (max_epicell_i) {
+                case 0: epi_status = EpiCellStatus::HEALTHY; break;
+                case 1: epi_status = EpiCellStatus::INCUBATING; break;
+                case 2: epi_status = EpiCellStatus::EXPRESSING; break;
+                case 3: epi_status = EpiCellStatus::APOPTOTIC; break;
+                case 4: epi_status = EpiCellStatus::DEAD; break;
               }
             }
-            switch (max_epicell_i) {
-              case 0: epi_status = EpiCellStatus::HEALTHY; break;
-              case 1: epi_status = EpiCellStatus::INCUBATING; break;
-              case 2: epi_status = EpiCellStatus::EXPRESSING; break;
-              case 3: epi_status = EpiCellStatus::APOPTOTIC; break;
-              case 4: epi_status = EpiCellStatus::DEAD; break;
-            }
+            SampleData sd = {.tcells = (double)num_tcells / block_size,
+                             .has_epicell = epicell_found,
+                             .epicell_status = epi_status,
+                             .virions = virions / block_size,
+                             .chemokine = chemokine / block_size};
+#else
+            auto sd = tissue.get_grid_point_sample_data(GridCoords::to_1d(x, y, z));
+#endif
+            samples.push_back(sd);
           }
-          SampleData sd = {.tcells = (double)num_tcells / block_size,
-                           .has_epicell = epicell_found,
-                           .epicell_status = epi_status,
-                           .virions = virions / block_size,
-                           .chemokine = chemokine / block_size};
-          samples.push_back(sd);
+          i++;
         }
-        i++;
+        if (done) break;
       }
       if (done) break;
     }
-    if (done) break;
   }
   barrier();
   auto samples_written = reduce_one(samples.size(), op_fast_add, 0).wait();
-  assert(num_points == samples_written);
+  if (num_points != samples_written) SWARN("Number of point ", num_points, " != ", samples_written, " samples written");
+  SLOG_VERBOSE("Number of samples written ", samples_written, "\n");
   return start_id;
 }
 
@@ -737,6 +756,7 @@ void run_sim(Tissue &tissue) {
   add_new_actives_timer.done_all();
   set_active_points_timer.done_all();
   sample_timer.done_all();
+  sample_write_timer.done_all();
   log_timer.done_all();
 
   chrono::duration<double> t_elapsed = NOW() - start_t;
@@ -760,6 +780,9 @@ int main(int argc, char **argv) {
   SLOG_VERBOSE("Using block partitioning\n");
 #else
   SLOG_VERBOSE("Using linear partitioning\n");
+#endif
+#ifndef AVERAGE_SUBSAMPLE
+  SLOG_VERBOSE("Not computing averages of subsamples\n");
 #endif
   MemoryTrackerThread memory_tracker;
   memory_tracker.start();

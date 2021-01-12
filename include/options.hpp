@@ -59,7 +59,7 @@ class Options {
         // created the directory - now stripe it if possible
         auto status = std::system("which lfs 2>&1 > /dev/null");
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-          string cmd = "lfs setstripe -c -1 " + output_dir;
+          string cmd = "lfs setstripe -c 24 " + output_dir;
           auto status = std::system(cmd.c_str());
           if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
             cout << "Set Lustre striping on the output directory\n";
@@ -70,18 +70,11 @@ class Options {
       }
     }
     upcxx::barrier();
-    // all change to the output directory
-    if (chdir(output_dir.c_str()) == -1 && !upcxx::rank_me()) {
-      ostringstream oss;
-      oss << KLRED << "Cannot change to output directory " << output_dir << ": " << strerror(errno)
-          << KNORM << endl;
-      throw std::runtime_error(oss.str());
-    }
-    upcxx::barrier();
     // now setup a samples subdirectory
     if (!upcxx::rank_me()) {
       // create the output directory and stripe it
-      if (mkdir("samples", S_IRWXU) == -1) {
+      string samples_dir = output_dir + "/samples";
+      if (mkdir(samples_dir.c_str(), S_IRWXU) == -1) {
         // could not create the directory
         if (errno == EEXIST) {
           cerr << KLRED << "WARNING: " << KNORM
@@ -99,13 +92,14 @@ class Options {
 
   void setup_log_file() {
     if (!upcxx::rank_me()) {
-      // check to see if mhmxx.log exists. If so, rename it
-      if (file_exists("mhmxx.log")) {
-        string new_log_fname = "simcov-" + get_current_time(true) + ".log";
-        cerr << KLRED << "WARNING: " << KNORM << output_dir << "/simcov.log exists. Renaming to "
-             << output_dir << "/" << new_log_fname << endl;
-        if (rename("simcov.log", new_log_fname.c_str()) == -1)
-          DIE("Could not rename simcov.log: ", strerror(errno));
+      string log_fname = output_dir + "/simcov.log";
+      // check to see if simcov.log exists. If so, rename it
+      if (file_exists(log_fname)) {
+        string new_log_fname = output_dir + "/simcov-" + get_current_time(true) + ".log";
+        cerr << KLRED << "WARNING: " << KNORM << log_fname << " exists. Renaming to "
+             << new_log_fname << endl;
+        if (rename(log_fname.c_str(), new_log_fname.c_str()) == -1)
+          DIE("Could not rename ", log_fname, ": ", strerror(errno));
       }
     }
     upcxx::barrier();
@@ -223,9 +217,8 @@ class Options {
   int antibody_period = 900;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
-                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
-                      get_current_time(true);
+  string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
+                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
   int sample_period = 1;
   int sample_resolution = 1;
   int max_block_dim = 10;
@@ -347,8 +340,7 @@ class Options {
                    "Max. block dimension - larger means more locality but worse load balance. Set "
                    "to 0 for largest possible")
         ->capture_default_str();
-
-    auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory");
+    app.add_option("-o,--output", output_dir, "Output directory")->capture_default_str();
     app.add_flag("--progress", show_progress, "Show progress");
     app.add_flag("-v, --verbose", verbose, "Verbose output");
 
@@ -364,13 +356,6 @@ class Options {
     upcxx::barrier();
 
     _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
-
-    if (!*output_dir_opt) {
-      output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
-                   to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
-                   get_current_time(true);
-      output_dir_opt->default_val(output_dir);
-    }
 
     if (virion_decay_rate * antibody_factor > 1.0) {
       if (!rank_me())
@@ -398,7 +383,7 @@ class Options {
     setup_output_dir();
     setup_log_file();
 
-    init_logger("simcov.log", verbose);
+    init_logger(output_dir + "/simcov.log", verbose);
 
 #ifdef DEBUG
     open_dbg("debug");
@@ -428,7 +413,7 @@ class Options {
 #endif
     if (!upcxx::rank_me()) {
       // write out configuration file for restarts
-      ofstream ofs("simcov.config");
+      ofstream ofs(output_dir + "/simcov.config");
       ofs << app.config_to_str(true, true);
     }
     upcxx::barrier();
