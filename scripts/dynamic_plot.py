@@ -8,7 +8,7 @@ import signal
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib import style
-
+import numpy
 
 style.use('fivethirtyeight')
 #style.use('qpaper')
@@ -88,6 +88,8 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
     if xticks[1] - xticks[0] > 1 and len(xs) > 0:
         ax.set_xticks(range(0, int(max(xs)) + 1, 1))
     if log_scale:
+        if numpy.min(ys) < 0.0001:
+            ax.set_ylim(0.0001, 10 * numpy.max(ys))
         ax.set_yscale('log')
     plt.tight_layout()
 
