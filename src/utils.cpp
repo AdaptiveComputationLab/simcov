@@ -55,39 +55,29 @@ void dump_single_file(const string &fname, const string &out_str) {
 }
 
 vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z) {
-  // this works best when the rank partitions look like squares
+  // only implemented for 2D right now
   vector<array<int,3>> infections;
 
-  int x_spacing, y_spacing, x_points, y_points;
+  int x_splits = 1, y_splits = 1;
 
-  if ( dim_z == 0 ) {
-    x_spacing = dim_x / ( sqrt ( num ) + 1 );
-    y_spacing = dim_y / ( sqrt ( num ) + 1 );
-
-    x_points = ( dim_x / x_spacing ) - 1;
-    y_points = ( dim_y / y_spacing ) - 1;
-  
-    for (int i = 0; i < num; i++) {
-      for (int j = 1; j <= x_points; j++) {
-	for (int k = 1; k <= y_points; k++) {
-	  array<int,3> infection_pt = { x_spacing * j, y_spacing * k, 0 };
-	  infections.push_back(infection_pt);
-	} } }
-    
-  } else {     
-    int z_spacing, z_points;
-    
-    z_spacing = dim_z / ( sqrt ( num ) + 1 );
-    z_points = dim_z / ( sqrt ( num ) + 1 );
-    
-    for (int i = 0; i < num; i++) {
-      for (int j = 1; j <= x_points; j++) {
-	for (int k = 1; k <= y_points; k++) {
-	  for (int l = 1; l <= z_points; l++) {
-	    array<int,3> infection_pt = { x_spacing * j, y_spacing * k, z_spacing * l };
-	    infections.push_back(infection_pt);
-	  } } } } 
+  while (x_splits * y_splits < num) {
+    double x_ratio = x_splits / (double)dim_x;
+    double y_ratio = y_splits / (double)dim_y;
+    if ((x_ratio < y_ratio) || (x_ratio == y_ratio)) {
+      x_splits++;
+    } else {
+      y_splits++;
+    }
   }
+
+  int x_spacing = dim_x / ( x_splits + 1 );
+  int y_spacing = dim_y / ( y_splits + 1 );
+
+  for (int i = 0; i <= num; i++) {
+    for (int j = x_spacing; j < dim_x; j += x_spacing) {
+      for (int k = y_spacing; k < dim_y; k += y_spacing) {
+	infections.push_back({j, k, 0});
+  } } }
 
   return infections;
 }
