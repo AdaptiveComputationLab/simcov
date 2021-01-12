@@ -61,9 +61,9 @@ vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_
   int x_splits = 1, y_splits = 1;
 
   while (x_splits * y_splits < num) {
-    double x_ratio = x_splits / (double)dim_x;
-    double y_ratio = y_splits / (double)dim_y;
-    if ((x_ratio < y_ratio) || (x_ratio == y_ratio)) {
+    double x_ratio = (double)dim_x / x_splits;
+    double y_ratio = (double)dim_y / y_splits;
+    if ((x_ratio > y_ratio) || (x_ratio == y_ratio)) {
       x_splits++;
     } else {
       y_splits++;
