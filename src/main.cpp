@@ -39,9 +39,9 @@ class SimStats {
   int64_t dead = 0;
   int64_t tcells_vasculature = 0;
   int64_t tcells_tissue = 0;
-  double chemokines = 0;
+  float chemokines = 0;
   int64_t num_chemo_pts = 0;
-  int64_t virions = 0;
+  float virions = 0;
 
   void init() {
     if (!rank_me()) {
@@ -72,13 +72,13 @@ class SimStats {
     totals.push_back(reduce_one(dead, op_fast_add, 0).wait());
     totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
-    vector<double> totals_d;
+    vector<float> totals_d;
     totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back((double)reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
+    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
     auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
     auto perc_infected =
-        100.0 * (double)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
+        100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
 
     ostringstream oss;
     oss << left;
@@ -195,7 +195,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
 }
 
 void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, vector<int64_t> &nbs,
-                         HASH_TABLE<int64_t, double> &chemokines_cache) {
+                         HASH_TABLE<int64_t, float> &chemokines_cache) {
   update_tcell_timer.start();
   TCell *tcell = grid_point->tcell;
   if (tcell->moved) {
@@ -248,14 +248,14 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
     // didn't bind - move on chemokine gradient or at random
     int64_t selected_grid_i = nbs[_rnd_gen->get(0, (int64_t)nbs.size())];
     // not bound - follow chemokine gradient
-    double highest_chemokine = 0;
+    float highest_chemokine = 0;
     if (_options->tcells_follow_gradient) {
       // get a randomly shuffled list of neighbors so the tcell doesn't always tend to move in the
       // same direction when there is a chemokine gradient
       auto rnd_nbs = nbs;
       random_shuffle(rnd_nbs.begin(), rnd_nbs.end());
       for (auto nb_grid_i : rnd_nbs) {
-        double chemokine = 0;
+        float chemokine = 0;
         auto it = chemokines_cache.find(nb_grid_i);
         if (it == chemokines_cache.end()) {
           chemokine = tissue.get_chemokine(nb_grid_i);
@@ -311,7 +311,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   bool produce_virions = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
-      if (grid_point->virions) {
+      if (grid_point->virions > 0) {
         if (_rnd_gen->trial_success(_options->infectivity * grid_point->virions)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
@@ -350,7 +350,7 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
 }
 
 void update_chemokines(GridPoint *grid_point, vector<int64_t> &nbs,
-                       HASH_TABLE<int64_t, double> &chemokines_to_update) {
+                       HASH_TABLE<int64_t, float> &chemokines_to_update) {
   update_concentration_timer.start();
   // Concentrations diffuse, i.e. the concentration at any single grid point tends to the average
   // of all the neighbors. So here we tell each neighbor what the current concentration is and
@@ -370,11 +370,11 @@ void update_chemokines(GridPoint *grid_point, vector<int64_t> &nbs,
 }
 
 void update_virions(GridPoint *grid_point, vector<int64_t> &nbs,
-                    HASH_TABLE<int64_t, int> &virions_to_update) {
+                    HASH_TABLE<int64_t, float> &virions_to_update) {
   update_concentration_timer.start();
   grid_point->virions = grid_point->virions * (1.0 - _options->virion_decay_rate);
   assert(grid_point->virions >= 0);
-  if (grid_point->virions) {
+  if (grid_point->virions > 0) {
     for (auto &nb_grid_i : nbs) {
       virions_to_update[nb_grid_i] += grid_point->virions;
     }
@@ -382,22 +382,22 @@ void update_virions(GridPoint *grid_point, vector<int64_t> &nbs,
   update_concentration_timer.stop();
 }
 
-void diffuse(double &conc, double &nb_conc, double diffusion, int num_nbs) {
+void diffuse(float &conc, float &nb_conc, double diffusion, int num_nbs) {
   // set to be average of neighbors plus self
   // amount that diffuses
-  double conc_diffused = diffusion * conc;
+  float conc_diffused = diffusion * conc;
   // average out diffused amount across all neighbors
-  double conc_per_point = (conc_diffused + diffusion * nb_conc) / (num_nbs + 1);
+  float conc_per_point = (conc_diffused + diffusion * nb_conc) / (num_nbs + 1);
   conc = conc - conc_diffused + conc_per_point;
   if (conc > 1.0) conc = 1.0;
   if (conc < 0) DIE("conc < 0: ", conc, " diffused ", conc_diffused, " pp ", conc_per_point);
   nb_conc = 0;
 }
 
-void spread_virions(int &virions, int &nb_virions, double diffusion, int num_nbs) {
-  int virions_diffused = virions * diffusion;
-  int virions_left = virions - virions_diffused;
-  int avg_nb_virions = (virions_diffused + nb_virions * diffusion) / (num_nbs + 1);
+void spread_virions(float &virions, float &nb_virions, double diffusion, int num_nbs) {
+  float virions_diffused = virions * diffusion;
+  float virions_left = virions - virions_diffused;
+  float avg_nb_virions = (virions_diffused + nb_virions * diffusion) / (num_nbs + 1);
   virions = virions_left + avg_nb_virions;
   nb_virions = 0;
 }
@@ -507,7 +507,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         break;
       case ViewObject::VIRUS:
         assert(sample.virions >= 0);
-        val = min(sample.virions, 255);
+        val = min((int)sample.virions, 255);
         break;
       case ViewObject::CHEMOKINE:
         assert(sample.chemokine >= 0);
@@ -557,8 +557,8 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
           if (i >= start_id) {
             progress();
 #ifdef AVERAGE_SUBSAMPLE
-            int virions = 0;
-            double chemokine = 0;
+            float virions = 0;
+            float chemokine = 0;
             int num_tcells = 0;
             bool epicell_found = false;
             array<int, 5> epicell_counts{0};
@@ -647,9 +647,9 @@ void run_sim(Tissue &tissue) {
        "<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, virions
-  HASH_TABLE<int64_t, double> chemokines_to_update;
-  HASH_TABLE<int64_t, double> chemokines_cache;
-  HASH_TABLE<int64_t, int> virions_to_update;
+  HASH_TABLE<int64_t, float> chemokines_to_update;
+  HASH_TABLE<int64_t, float> chemokines_cache;
+  HASH_TABLE<int64_t, float> virions_to_update;
   bool warned_boundary = false;
   vector<SampleData> samples;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {

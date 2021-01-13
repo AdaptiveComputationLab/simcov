@@ -133,8 +133,8 @@ struct GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
-  double chemokine = 0, nb_chemokine = 0;
-  int virions = 0, nb_virions = 0;
+  float chemokine = 0, nb_chemokine = 0;
+  float virions = 0, nb_virions = 0;
 
   string str() const;
 
@@ -145,8 +145,8 @@ struct SampleData {
   double tcells = 0;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
-  int virions = 0;
-  double chemokine = 0;
+  float virions = 0;
+  float chemokine = 0;
 };
 
 inline int64_t get_num_grid_points() {
@@ -185,12 +185,12 @@ class Tissue {
 
   bool set_initial_infection(int64_t grid_i);
 
-  void accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_update,
+  void accumulate_chemokines(HASH_TABLE<int64_t, float> &chemokines_to_update,
                              IntermittentTimer &timer);
 
-  void accumulate_virions(HASH_TABLE<int64_t, int> &virions_to_update, IntermittentTimer &timer);
+  void accumulate_virions(HASH_TABLE<int64_t, float> &virions_to_update, IntermittentTimer &timer);
 
-  double get_chemokine(int64_t grid_i);
+  float get_chemokine(int64_t grid_i);
 
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
