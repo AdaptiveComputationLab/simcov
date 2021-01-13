@@ -421,6 +421,7 @@ void set_active_grid_points(Tissue &tissue) {
         (!grid_point->epicell || grid_point->epicell->status == EpiCellStatus::HEALTHY))
       _sim_stats.num_chemo_pts++;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
+    if (grid_point->virions < MIN_VIRIONS) grid_point->virions = 0;
     if (grid_point->tcell) grid_point->tcell->moved = false;
     _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.virions += grid_point->virions;

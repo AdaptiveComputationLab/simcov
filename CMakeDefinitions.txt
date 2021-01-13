@@ -6,6 +6,7 @@ add_definitions(-DUSE_BYTELL)
 
 # determined by space a virion occupies - diameter 0.1 microns, a cube is 5 microns across
 add_definitions(-DMAX_VIRIONS=125000)
+add_definitions(-DMIN_VIRIONS=1e-10)
 
 # if defined, partition into blocks. This should increase locality, but at the cost of load balance
 add_definitions(-DBLOCK_PARTITION)
