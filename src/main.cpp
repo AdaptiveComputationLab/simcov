@@ -479,9 +479,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         if (sample.has_tcell) val = 255;
         break;
       case ViewObject::EPICELL:
-        //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
-        if (sample.has_epicell) val = 1;
-        if (sample.epicell_type == EpiCellType::ALVEOLI) val += 1;
+        if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
         // if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
         // if (val > 1)
         //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");

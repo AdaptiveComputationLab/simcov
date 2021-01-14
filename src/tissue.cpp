@@ -275,14 +275,15 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
   auto fileno = open(fname.c_str(),
     O_RDONLY,
     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  int id = 0;
   if (fileno == -1) {
     std::printf("Cannot read file %s\n", fname.c_str());
+  } else {
+    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+        alveoli.insert(id);
+    }
+    close(fileno);
   }
-  int id = 0;
-  while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
-      alveoli.insert(id);
-  }
-  close(fileno);
   // Read bronchiole epithileal cells
   fname = bname + "/bronchiole.dat";
   fileno = open(fname.c_str(),
@@ -290,12 +291,14 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
     S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fileno == -1) {
     std::printf("Cannot read file %s\n", fname.c_str());
+  } else {
+    id = 0;
+    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+        airway.insert(id);
+    }
+    close(fileno);
   }
-  id = 0;
-  while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
-      airway.insert(id);
-  }
-  close(fileno);
+
   SLOG("Lung model loaded ",
     airway.size() + alveoli.size(),
     " epithileal cells\n");
