@@ -12,7 +12,6 @@ using std::min;
 using std::string;
 using std::string_view;
 using std::to_string;
-using std::array;
 
 #ifdef USE_BYTELL
 #include "bytell_hash_map.hpp"
@@ -25,8 +24,6 @@ using std::array;
 int pin_thread(pid_t pid, int cid);
 
 void dump_single_file(const string &fname, const string &out_str);
-
-vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z);
 
 class Random {
  private:
