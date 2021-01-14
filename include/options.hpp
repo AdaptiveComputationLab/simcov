@@ -122,6 +122,33 @@ class Options {
     }
   }
 
+  vector<array<int,3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y, int64_t dim_z) {
+    vector<array<int,3>> infections;
+
+    int x_splits = 1, y_splits = 1;
+
+    while (x_splits * y_splits < num) {
+      double x_ratio = (double)dim_x / x_splits;
+      double y_ratio = (double)dim_y / y_splits;
+      if ((x_ratio > y_ratio) || (x_ratio == y_ratio)) {
+	x_splits++;
+      } else {
+	y_splits++;
+      }
+    }
+
+    int x_spacing = ceil( dim_x / (x_splits + 1) );
+    int y_spacing = ceil( dim_y / (y_splits + 1) );
+
+    for (int i = x_spacing; i < dim_x; i += x_spacing) {
+      for (int j = y_spacing; j < dim_y; j += y_spacing) {
+	if (infections.size() == num) return infections;
+	infections.push_back({j, k, 0});
+      } }
+    
+    return infections;
+  }
+
   bool parse_infection_coords(vector<string> &coords_strs) {
     auto get_locations_count = [](const string &s, const string &name) -> int {
       int num = 0;
