@@ -27,7 +27,6 @@ using namespace upcxx_utils;
 #define NOW chrono::high_resolution_clock::now
 #define STATS_COL_WIDTH 11
 
-
 class SimStats {
  private:
   ofstream log_file;
@@ -486,6 +485,8 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   }
   // each rank writes one portion of the dataset to the file
   unsigned char *buf = new unsigned char[samples.size()];
+  double chemo_scale = 255.0 / log(1.0 / _options->min_chemokine);
+  double virion_scale = 255.0 / log(MAX_VIRIONS);
   // DBG(time_step, " writing data from ", start_id, " to ", start_id + samples.size(), "\n");
   for (int64_t i = 0; i < samples.size(); i++) {
     auto &sample = samples[i];
@@ -507,11 +508,12 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         break;
       case ViewObject::VIRUS:
         assert(sample.virions >= 0);
-        val = min(sample.virions, 255);
+        val = virion_scale * log(sample.virions);
         break;
       case ViewObject::CHEMOKINE:
-        assert(sample.chemokine >= 0);
-        val = 255 * sample.chemokine;
+        assert(sample.chemokine >= 0 && sample.chemokine <= 1);
+        val = chemo_scale * log(sample.chemokine / _options->min_chemokine);
+        if (val < 0) val == 0;
         if (sample.chemokine > 0 && val == 0) val = 1;
         // set chemokine to 0 to ensure we can see the tcells
         // use an inverse color map for chemokines so we want tcells to always be visible so set
@@ -571,7 +573,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
                 for (int subz = z; subz < z + _options->sample_resolution; subz++) {
                   if (subz >= _grid_size->z) break;
                   auto sub_sd =
-                    tissue.get_grid_point_sample_data(GridCoords::to_1d(subx, suby, subz));
+                      tissue.get_grid_point_sample_data(GridCoords::to_1d(subx, suby, subz));
                   num_tcells += sub_sd.tcells;
                   if (sub_sd.has_epicell) {
                     epicell_found = true;
@@ -625,7 +627,8 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
   }
   barrier();
   auto samples_written = reduce_one(samples.size(), op_fast_add, 0).wait();
-  if (num_points != samples_written) SWARN("Number of point ", num_points, " != ", samples_written, " samples written");
+  if (num_points != samples_written)
+    SWARN("Number of point ", num_points, " != ", samples_written, " samples written");
   SLOG_VERBOSE("Number of samples written ", samples_written, "\n");
   return start_id;
 }
