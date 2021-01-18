@@ -491,6 +491,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   for (int64_t i = 0; i < samples.size(); i++) {
     auto &sample = samples[i];
     unsigned char val = 0;
+    double scaled_chemo = 0;
     switch (view_object) {
       case ViewObject::TCELL_TISSUE:
         assert(sample.tcells >= 0);
@@ -508,12 +509,13 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         break;
       case ViewObject::VIRUS:
         assert(sample.virions >= 0);
-        val = virion_scale * log(sample.virions);
+        if (sample.virions > 1) val = virion_scale * log(sample.virions);
+        if (sample.virions > 0 && val == 0) val = 1;
         break;
       case ViewObject::CHEMOKINE:
         assert(sample.chemokine >= 0 && sample.chemokine <= 1);
-        val = chemo_scale * log(sample.chemokine / _options->min_chemokine);
-        if (val < 0) val == 0;
+        scaled_chemo = sample.chemokine / _options->min_chemokine;
+        if (scaled_chemo > 1) val = chemo_scale * log(scaled_chemo);
         if (sample.chemokine > 0 && val == 0) val = 1;
         // set chemokine to 0 to ensure we can see the tcells
         // use an inverse color map for chemokines so we want tcells to always be visible so set
