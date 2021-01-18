@@ -144,15 +144,15 @@ class Options {
     int y_spacing = (double)dim_y / (y_splits + 1);
     int z_spacing = (double)dim_z / (z_splits + 1);
     if (dim_z == 1) {
-      for (int i = x_spacing; i < dim_x; i += x_spacing) {
-	for (int j = y_spacing; j < dim_y; j += y_spacing) {
+      for (int i = x_spacing; i < dim_x - 1; i += x_spacing) {
+	for (int j = y_spacing; j < dim_y - 1; j += y_spacing) {
 	  if (infections.size() == num) return infections;
 	  infections.push_back({i, j, 0});
 	} }
     } else {
-      for (int i = x_spacing; i < dim_x; i += x_spacing) {
-	for (int j = y_spacing; j < dim_y; j += y_spacing) {
-	  for (int k = z_spacing; k < dim_z; k += z_spacing) {
+      for (int i = x_spacing; i < dim_x - 1; i += x_spacing) {
+	for (int j = y_spacing; j < dim_y - 1; j += y_spacing) {
+	  for (int k = z_spacing; k < dim_z - 1; k += z_spacing) {
 	    if (infections.size() == num) return infections;
 	    infections.push_back({i, j, k});
 	  } } }
