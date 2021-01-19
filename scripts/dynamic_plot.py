@@ -57,6 +57,7 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
     ys = []
     labels = []
     fields = lines[0][2:].split('\t')
+    zero_max = True
     for j in range(len(columns)):
         ys.append([])
         labels.append(fields[columns[j]])
@@ -69,8 +70,12 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
         xs.append((float(fields[xcol]) * xscale) / options.resolution)
         for j in range(len(columns)):
             ys[j].append(scale * float(fields[columns[j]]))
+            if ys[j][-1] > 0:
+                zero_max = False
     if clear:
         ax.clear()
+    if zero_max:
+        return
     colors = ['blue', 'red', 'orange', 'black']
     for j in range(len(columns)):
         #print(title, labels[j], 'max ys', max(ys[j]))
@@ -137,8 +142,9 @@ def animate(i):
                 plt.savefig(options.output + '.pdf')
                 plt.savefig(options.output + '.png')
     except (ValueError, IndexError) as e:
+        print(e)
         return
 
     
-ani = animation.FuncAnimation(fig, animate, interval=10000)
+ani = animation.FuncAnimation(fig, animate, interval=1000)
 plt.show()
