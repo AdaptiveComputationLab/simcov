@@ -102,43 +102,43 @@ def animate(i):
     except FileNotFoundError:
         return
     
-    if new_moddate != moddate or first:
-        moddate = new_moddate
-        first = False
-        
-        plot_subplot(options.stats_file, ax_epicells, [1, 2, 3, 4], 'epicells', log_scale=options.log_scale)
-        if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_epicells, [1, 2, 3, 4], 'epicells', lw=4, alpha=0.3, clear=False,
-                         log_scale=options.log_scale)
-            
-        plot_subplot(options.stats_file, ax_tcells, [6, 5], 'tcells', log_scale=options.log_scale)
-        if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_tcells, [6, 5], 'tcells', lw=4, alpha=0.3, clear=False,
-                         log_scale=options.log_scale)
-            
-        plot_subplot(options.stats_file, ax_virus, [8], 'avg virions per cell', log_scale=options.log_scale)
-        if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_virus, [8], 'avg virions per cell', lw=4, alpha=0.3, clear=False,
-                         log_scale=options.log_scale, scale=options.virus_scale)
-        if options.empirical_data != '':
-            plot_subplot(options.empirical_data, ax_virus, [3], 'avg virions per cell', lw=0, alpha=0.3, clear=False,
-                         log_scale=options.log_scale, scale=options.virus_scale, xcol=1, xscale=24*60)
-            
-        plot_subplot(options.stats_file, ax_chemo, [7], 'avg chemokines per cell')
-        if options.compare_file != '':
-            plot_subplot(options.compare_file, ax_chemo, [7], 'avg chemokines per cell', lw=4, alpha=0.3, clear=False,
-                         log_scale=False, scale=options.chemo_scale)
-            
-    else:
-        unchanged += 1
-        if unchanged > 4:
+    try:    
+        if new_moddate != moddate or first:
             moddate = new_moddate
-            unchanged = 0
-            plt.savefig(options.output + '.pdf')
-            plt.savefig(options.output + '.png')
+            first = False
 
+            plot_subplot(options.stats_file, ax_epicells, [1, 2, 3, 4], 'epicells', log_scale=options.log_scale)
+            if options.compare_file != '':
+                plot_subplot(options.compare_file, ax_epicells, [1, 2, 3, 4], 'epicells', lw=4, alpha=0.3, clear=False,
+                             log_scale=options.log_scale)
+
+            plot_subplot(options.stats_file, ax_tcells, [6, 5], 'tcells', log_scale=options.log_scale)
+            if options.compare_file != '':
+                plot_subplot(options.compare_file, ax_tcells, [6, 5], 'tcells', lw=4, alpha=0.3, clear=False,
+                             log_scale=options.log_scale)
+
+            plot_subplot(options.stats_file, ax_virus, [8], 'avg virions per cell', log_scale=options.log_scale)
+            if options.compare_file != '':
+                plot_subplot(options.compare_file, ax_virus, [8], 'avg virions per cell', lw=4, alpha=0.3, clear=False,
+                             log_scale=options.log_scale, scale=options.virus_scale)
+            if options.empirical_data != '':
+                plot_subplot(options.empirical_data, ax_virus, [3], 'avg virions per cell', lw=0, alpha=0.3, clear=False,
+                             log_scale=options.log_scale, scale=options.virus_scale, xcol=1, xscale=24*60)
+
+            plot_subplot(options.stats_file, ax_chemo, [7], 'avg chemokines per cell')
+            if options.compare_file != '':
+                plot_subplot(options.compare_file, ax_chemo, [7], 'avg chemokines per cell', lw=4, alpha=0.3, clear=False,
+                             log_scale=False, scale=options.chemo_scale)
+        else:
+            unchanged += 1
+            if unchanged > 4:
+                moddate = new_moddate
+                unchanged = 0
+                plt.savefig(options.output + '.pdf')
+                plt.savefig(options.output + '.png')
+    except (ValueError, IndexError) as e:
+        return
 
     
-ani = animation.FuncAnimation(fig, animate, interval=1000)
+ani = animation.FuncAnimation(fig, animate, interval=10000)
 plt.show()
-

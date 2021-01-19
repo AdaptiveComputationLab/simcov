@@ -108,8 +108,10 @@ class Options {
   void set_random_infections(int num) {
     for (int i = 0; i < num; i++) {
       if (i % rank_n() != rank_me()) continue;
-      infection_coords.push_back({_rnd_gen->get(0, dimensions[0]), _rnd_gen->get(0, dimensions[1]),
-                                  _rnd_gen->get(0, dimensions[2]), 0});
+      infection_coords.push_back({_rnd_gen->get(dimensions[0] * 0.1, dimensions[0] * 0.9),
+            _rnd_gen->get(dimensions[1] * 0.1, dimensions[1] * 0.9), 
+            _rnd_gen->get(dimensions[2] > 1 ? dimensions[2] * 0.1 : 0,
+                          dimensions[2] > 1 ? dimensions[2] * 0.9 : dimensions[2]), 0});
     }
   }
 
