@@ -118,7 +118,7 @@ def main():
 
     virions_color_func = pvs.GetColorTransferFunction('virus')
     virions_color_func.RGBPoints = [0.0255, 0.231, 0.298, 0.753, 2.55, 0.865, 0.865, 0.865, 255.0, 0.706, 0.0157, 0.149]
-    virions_color_func.UseLogScale = 1
+    virions_color_func.UseLogScale = 0
     display_data('sample_virus_', options.data, virions_view, 'virus', virions_color_func)
     display_chart(options.stats, virions_chart_view, ['virs'], ['virs', 'virions'], 'virions', ['virs', '1', '0', '0'])
 
@@ -140,7 +140,7 @@ def main():
     
     chemokine_color_func = pvs.GetColorTransferFunction('chemokine')
     chemokine_color_func.RGBPoints = [0.0249, 0.0, 0.0, 0.0, 249.0, 1.0, 1.0, 1.0]
-    chemokine_color_func.UseLogScale = 1
+    chemokine_color_func.UseLogScale = 0
     chemokine_color_func.NanOpacity = 0.0
     display_data('sample_chemokine_', options.data, tcells_view, 'chemokine', chemokine_color_func)
 
