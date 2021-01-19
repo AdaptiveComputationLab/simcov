@@ -217,10 +217,10 @@ class Options {
   }
 
  public:
-  vector<int> dimensions{100, 100, 1};
-  vector<int> whole_lung_dims{240, 120, 60};
+  vector<int> dimensions{300, 300, 1};
+  vector<int> whole_lung_dims{48000, 40000, 20000};
   // each time step should be about 1 minute, so one day = 1440 time steps
-  int num_timesteps = 2000;
+  int num_timesteps = 20160;
 
   // x,y,z location and timestep
   vector<array<int, 4>> infection_coords;
@@ -228,34 +228,34 @@ class Options {
   int infectable_spacing = 1;
 
   // these periods are normally distributed with mean and stddev
-  int incubation_period = 100;
-  int apoptosis_period = 30;
-  int expressing_period = 100;
+  int incubation_period = 480;
+  int apoptosis_period = 180;
+  int expressing_period = 2286;
 
-  int tcell_generation_rate = 100;
-  int tcell_initial_delay = 1000;
-  int tcell_vascular_period = 600;
-  int tcell_tissue_period = 60;
-  int tcell_binding_period = 5;
-  double max_binding_prob = 0.1;
+  int tcell_generation_rate = 100000;
+  int tcell_initial_delay = 10080;
+  int tcell_vascular_period = 5760;
+  int tcell_tissue_period = 1440;
+  int tcell_binding_period = 10;
+  double max_binding_prob = 1.0;
 
-  double infectivity = 0.0001;
-  int virion_production = 100;
-  double virion_decay_rate = 0.1;
-  double virion_diffusion_coef = 0.5;
+  double infectivity = 0.02;
+  int virion_production = 35;
+  double virion_decay_rate = 0.002;
+  double virion_diffusion_coef = 1.0;
 
-  double chemokine_production = 0.5;
+  double chemokine_production = 1.0;
   double chemokine_decay_rate = 0.01;
-  double chemokine_diffusion_coef = 0.2;
-  double min_chemokine = 0.001;
+  double chemokine_diffusion_coef = 1.0;
+  double min_chemokine = 1e-6;
 
   double antibody_factor = 1;
-  int antibody_period = 900;
+  int antibody_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
-  int sample_period = 1;
+  int sample_period = 0;
   int sample_resolution = 1;
   int max_block_dim = 10;
 
@@ -416,6 +416,12 @@ class Options {
       return false;
     }
 
+    for (int i = 0; i < 3; i++) {
+      if (dimensions[i] > whole_lung_dims[i]) {
+        if (!rank_me()) cerr << "Dimensions must be <= whole lung dimensions\n";
+        return false;
+      }
+    }
     setup_output_dir();
     setup_log_file();
 
