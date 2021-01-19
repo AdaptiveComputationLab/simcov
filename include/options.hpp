@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <regex>
+#include <algorithm>
 #include <upcxx/upcxx.hpp>
 
 #include "CLI11.hpp"
@@ -13,6 +14,7 @@
 using std::array;
 using std::cout;
 using std::endl;
+using std::sort;
 using std::vector;
 
 #include "upcxx_utils/log.hpp"
@@ -113,7 +115,55 @@ class Options {
     }
   }
 
-  void set_uniform_infections(int num) { SDIE("Not yet implemented"); }
+  void set_uniform_infections(int num) {
+    vector<array<int, 3>> infections =
+        get_uniform_infections(num, dimensions[0], dimensions[1], dimensions[2]);
+    for (int i = 0; i < infections.size(); i++) {
+      if (i % rank_n() != rank_me()) continue;
+      infection_coords.push_back({infections[i][0], infections[i][1], infections[i][2], 0});
+    }
+  }
+
+  vector<array<int, 3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y,
+                                               int64_t dim_z) {
+    vector<array<int, 3>> infections;
+    int x_splits = 1, y_splits = 1, z_splits = 1;
+    while (x_splits * y_splits * z_splits < num) {
+      double x_ratio = (double)dim_x / x_splits;
+      double y_ratio = (double)dim_y / y_splits;
+      double z_ratio = (double)dim_z / z_splits;
+      double ratios[] = {x_ratio, y_ratio, z_ratio};
+      sort(ratios, ratios + 3);
+      if (ratios[2] == x_ratio) {
+        x_splits++;
+      } else if (ratios[2] == y_ratio) {
+        y_splits++;
+      } else {
+        z_splits++;
+      }
+    }
+    int x_spacing = (double)dim_x / (x_splits + 1);
+    int y_spacing = (double)dim_y / (y_splits + 1);
+    int z_spacing = (double)dim_z / (z_splits + 1);
+    if (dim_z == 1) {
+      for (int i = x_spacing; i < dim_x - 1; i += x_spacing) {
+        for (int j = y_spacing; j < dim_y - 1; j += y_spacing) {
+          if (infections.size() == num) return infections;
+          infections.push_back({i, j, 0});
+        }
+      }
+    } else {
+      for (int i = x_spacing; i < dim_x - 1; i += x_spacing) {
+        for (int j = y_spacing; j < dim_y - 1; j += y_spacing) {
+          for (int k = z_spacing; k < dim_z - 1; k += z_spacing) {
+            if (infections.size() == num) return infections;
+            infections.push_back({i, j, k});
+          }
+        }
+      }
+    }
+    return infections;
+  }
 
   bool parse_infection_coords(vector<string> &coords_strs) {
     auto get_locations_count = [](const string &s, const string &name) -> int {
