@@ -133,6 +133,8 @@ struct GridPoint {
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
+  // starts off empty and if calculated because this grid point becomes active, it is saved
+  vector<int64_t> *neighbors = nullptr;
   float chemokine = 0, nb_chemokine = 0;
   float virions = 0, nb_virions = 0;
 
@@ -181,7 +183,7 @@ class Tissue {
 
   intrank_t get_rank_for_grid_point(int64_t grid_i);
 
-  vector<int64_t> get_neighbors(GridCoords c);
+  vector<int64_t> *get_neighbors(GridCoords c);
 
   bool set_initial_infection(int64_t grid_i);
 

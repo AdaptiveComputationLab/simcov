@@ -321,25 +321,28 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
       .wait();
 }
 
-vector<int64_t> Tissue::get_neighbors(GridCoords c) {
-  vector<int64_t> n = {};
-  int newx, newy, newz;
-  for (int i = -1; i <= 1; i++) {
-    for (int j = -1; j <= 1; j++) {
-      for (int k = -1; k <= 1; k++) {
-        newx = c.x + i;
-        newy = c.y + j;
-        newz = c.z + k;
-        if ((newx >= 0 && newx < _grid_size->x) && (newy >= 0 && newy < _grid_size->y) &&
-            (newz >= 0 && newz < _grid_size->z)) {
-          if (newx != c.x || newy != c.y || newz != c.z) {
-            n.push_back(GridCoords::to_1d(newx, newy, newz));
+vector<int64_t> *Tissue::get_neighbors(GridCoords c) {
+  GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, c.to_1d());
+  if (!grid_point->neighbors) {
+    grid_point->neighbors = new vector<int64_t>;
+    int newx, newy, newz;
+    for (int i = -1; i <= 1; i++) {
+      for (int j = -1; j <= 1; j++) {
+        for (int k = -1; k <= 1; k++) {
+          newx = c.x + i;
+          newy = c.y + j;
+          newz = c.z + k;
+          if ((newx >= 0 && newx < _grid_size->x) && (newy >= 0 && newy < _grid_size->y) &&
+              (newz >= 0 && newz < _grid_size->z)) {
+            if (newx != c.x || newy != c.y || newz != c.z) {
+              grid_point->neighbors->push_back(GridCoords::to_1d(newx, newy, newz));
+            }
           }
         }
       }
     }
   }
-  return n;
+  return grid_point->neighbors;
 }
 
 int64_t Tissue::get_num_local_grid_points() { return grid_points->size(); }

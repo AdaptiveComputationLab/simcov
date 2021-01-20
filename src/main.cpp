@@ -409,9 +409,9 @@ void set_active_grid_points(Tissue &tissue) {
        grid_point = tissue.get_next_active_grid_point()) {
     auto nbs = tissue.get_neighbors(grid_point->coords);
     diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
-            nbs.size());
+            nbs->size());
     spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
-                   nbs.size());
+                   nbs->size());
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
     // only count up chemokine in healthy epicells or empty spaces
     // this will be added to the total number of infected and dead epicells to get cumulative
@@ -694,10 +694,10 @@ void run_sim(Tissue &tissue) {
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
       if (grid_point->tcell)
-        update_tissue_tcell(time_step, tissue, grid_point, nbs, chemokines_cache);
+        update_tissue_tcell(time_step, tissue, grid_point, *nbs, chemokines_cache);
       update_epicell(time_step, tissue, grid_point);
-      update_chemokines(grid_point, nbs, chemokines_to_update);
-      update_virions(grid_point, nbs, virions_to_update);
+      update_chemokines(grid_point, *nbs, chemokines_to_update);
+      update_virions(grid_point, *nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
