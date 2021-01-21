@@ -73,7 +73,7 @@ class SimStats {
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
     vector<float> totals_d;
     totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait() / get_num_grid_points());
+    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());// / get_num_grid_points());
     auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
     auto perc_infected =
