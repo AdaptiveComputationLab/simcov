@@ -640,7 +640,8 @@ void run_sim(Tissue &tissue) {
 
   auto start_t = NOW();
   auto curr_t = start_t;
-  auto five_perc = _options->num_timesteps / 50;
+  //TODO Allow for 1 timestep
+  auto five_perc = (_options->num_timesteps >= 50) ?  _options->num_timesteps/50 : 1;
   _sim_stats.init();
   int64_t whole_lung_volume = (int64_t)_options->whole_lung_dims[0] *
                               (int64_t)_options->whole_lung_dims[1] *
@@ -681,10 +682,10 @@ void run_sim(Tissue &tissue) {
       if (grid_point->virions > 0)
         DBG("virions\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
             grid_point->coords.z, "\t", grid_point->virions, "\n");
-      if (!warned_boundary &&
+      if (grid_point->epicell && !warned_boundary &&
           (!grid_point->coords.x || !grid_point->coords.y ||
            (_grid_size->z > 1 && !grid_point->coords.z)) &&
-          grid_point->epicell->status != EpiCellStatus::HEALTHY) {
+           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
         WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
              " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
         warned_boundary = true;
@@ -696,7 +697,9 @@ void run_sim(Tissue &tissue) {
       // updates)
       if (grid_point->tcell)
         update_tissue_tcell(time_step, tissue, grid_point, nbs, chemokines_cache);
-      update_epicell(time_step, tissue, grid_point);
+      if (grid_point->epicell) {
+        update_epicell(time_step, tissue, grid_point);
+      }
       update_chemokines(grid_point, nbs, chemokines_to_update);
       update_virions(grid_point, nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
