@@ -105,25 +105,17 @@ IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
 IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 
 void seed_infection(Tissue &tissue, int time_step) {
-  // only rank 0 sets the initial infections because we'll never have very many
-  if (!rank_me()) {
-    // if initial infections are at random locations, they all happen at the start
-    if (time_step == 0 && _options->num_infections && _options->infection_coords.empty()) {
-      for (int i = 0; i < _options->num_infections; i++) {
-        GridCoords coords(tissue.get_random_airway_epicell_location());//GridCoords coords(_rnd_gen);
-        SLOG_VERBOSE("Time step ", time_step, ": initial infection at ", coords.str() + "\n");
-        tissue.set_initial_infection(coords);
-      }
-    } else {
-      for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end();
-           it++) {
-        if ((*it)[3] == time_step) {
-          GridCoords coords({(*it)[0], (*it)[1], (*it)[2]});
-          SLOG_VERBOSE("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
-          tissue.set_initial_infection(coords);
-          _options->infection_coords.erase(it--);
-        }
-      }
+  // _options->infection_coords contains the coords assigned just to rank_me()
+  for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
+    auto infection_coords = *it;
+    if (infection_coords[3] == time_step) {
+      GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
+
+      WARN("Time step ", time_step, ":initial infection at ", coords.str());
+
+      DBG("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
+      tissue.set_initial_infection(coords.to_1d());
+      _options->infection_coords.erase(it--);
     }
   }
   barrier();
@@ -435,8 +427,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
              << "DIMENSIONS " << (x_dim + 1) << " " << (y_dim + 1) << " " << (z_dim + 1)
              << "\n"
              // each cell is 5 microns
-             << "SPACING 5 5 5\n"
-             //TODO << "SPACING 1 1 1\n"
+             << "SPACING " << spacing << " " << spacing << " " << spacing << "\n"
              << "ORIGIN 0 0 0\n"
              << "CELL_DATA " << (x_dim * y_dim * z_dim) << "\n"
              << "SCALARS ";
@@ -480,9 +471,6 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         break;
       case ViewObject::EPICELL:
         if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
-        // if (sample.has_epicell) val = static_cast<unsigned char>(sample.epicell_status) + 1;
-        // if (val > 1)
-        //  DBG(time_step, " writing epicell ", (int)val, " at index ", (i + start_id), "\n");
         break;
       case ViewObject::VIRUS:
         if (sample.virions < 0) DIE("virions are negative ", sample.virions);
@@ -557,10 +545,12 @@ void run_sim(Tissue &tissue) {
       upcxx::progress();
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
-      if (grid_point->tcell) update_tissue_tcell(time_step, tissue, grid_point, chemokines_cache);
-      if (grid_point->epicell) update_epicell(time_step, tissue, grid_point);
-      update_chemokines(grid_point, chemokines_to_update);
-      update_virions(grid_point, virions_to_update);
+      if (grid_point->tcell)
+        update_tissue_tcell(time_step, tissue, grid_point, nbs, chemokines_cache);
+      if (grid_point->epicell)
+        update_epicell(time_step, tissue, grid_point);
+      update_chemokines(grid_point, nbs, chemokines_to_update);
+      update_virions(grid_point, nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();

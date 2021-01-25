@@ -99,10 +99,10 @@ struct TCell {
 
   TCell();
 };
-//TODO For now only two types of epitheleal cells, alveoli(1), other (2)
-enum class EpiCellType { AIRWAY, ALVEOLI };
+
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD};
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
+enum class EpiCellType { AIRWAY, ALVEOLI };
 
 class EpiCell {
   int id;

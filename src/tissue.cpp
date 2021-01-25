@@ -265,46 +265,43 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
   auto mem_reqd = sizeof(GridPoint) * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is a max of ", get_size_str(mem_reqd), "\n");
 
-  //TODO For now only two types of epitheleal cells, alveoli and other
-  // Read alveolus epithileal cells
-  char buf0[256];
-  std::string bname = getcwd(buf0, 256);
-  int loc_last = bname.rfind("/");
-  bname = bname.substr(0, loc_last);
-  std::string fname = bname + "/alveolus.dat";
-  auto fileno = open(fname.c_str(),
-    O_RDONLY,
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  int id = 0;
-  if (fileno == -1) {
-    std::printf("Cannot read file %s\n", fname.c_str());
-  } else {
-    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
-        alveoli.insert(id);
+  { // Read alveolus epithileal cells
+    char buf0[256];
+    std::string bname = getcwd(buf0, 256);
+    int loc_last = bname.rfind("/");
+    bname = bname.substr(0, loc_last);
+    std::string fname = bname + "/alveolus.dat";
+    auto fileno = open(fname.c_str(),
+      O_RDONLY,
+      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    int id = 0;
+    if (fileno == -1) {
+      std::printf("Cannot read file %s\n", fname.c_str());
+    } else {
+      while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+          alveoli.insert(id);
+      }
+      close(fileno);
     }
-    close(fileno);
-  }
-  // Read bronchiole epithileal cells
-  fname = bname + "/bronchiole.dat";
-  fileno = open(fname.c_str(),
-    O_RDONLY,
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (fileno == -1) {
-    std::printf("Cannot read file %s\n", fname.c_str());
-  } else {
-    id = 0;
-    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
-        airway.insert(id);
+    // Read bronchiole epithileal cells
+    fname = bname + "/bronchiole.dat";
+    fileno = open(fname.c_str(),
+      O_RDONLY,
+      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fileno == -1) {
+      std::printf("Cannot read file %s\n", fname.c_str());
+    } else {
+      id = 0;
+      while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+          airway.insert(id);
+      }
+      close(fileno);
     }
-    close(fileno);
+    SLOG("Lung model loaded ",
+      airway.size() + alveoli.size(),
+      " epithileal cells\n");
   }
 
-  SLOG("Lung model loaded ",
-    airway.size() + alveoli.size(),
-    " epithileal cells\n");
-
-  // FIXME: it may be more efficient (less communication) to have contiguous blocks
-  // this is the quick & dirty approach
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
@@ -314,27 +311,25 @@ Tissue::Tissue() : grid_points({}), new_active_grid_points({}), circulating_tcel
       auto neighbors = get_neighbors(coords);
       // infectable epicells should be placed according to the underlying lung structure
       // (gaps, etc)
-      //TODO For now only two types of epitheleal cells, alveoli(1), other (2)
       if (airway.size() > 0 || alveoli.size() > 0) {
         if (alveoli.count(id) != 0) { // Add alveoli epi cells
           EpiCell *epicell = new EpiCell(id);
           epicell->type = EpiCellType::ALVEOLI;
           epicell->infectable = true;
-          grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+          grid_points->emplace_back(GridPoint({coords, epicell}));
         } else if (airway.count(id) != 0) { // Add bronchial epi cells
             EpiCell *epicell = new EpiCell(id);
             epicell->type = EpiCellType::AIRWAY;
             epicell->infectable = true;
-            grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+            grid_points->emplace_back(GridPoint({coords, epicell}));
         } else { // Add empty space == air
-          grid_points->emplace_back(GridPoint({id, coords, neighbors, nullptr}));
+          grid_points->emplace_back(GridPoint({coords, nullptr}));
         }
       } else {
         EpiCell *epicell = new EpiCell(id);
-        if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0) {
+        if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
           epicell->infectable = false;
-        }
-        grid_points->emplace_back(GridPoint({id, coords, neighbors, epicell}));
+        grid_points->emplace_back(GridPoint({coords, epicell}));
       }
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");
@@ -370,24 +365,22 @@ GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, const GridCo
   return grid_point;
 }
 
-SampleData Tissue::get_grid_point_sample_data(const GridCoords &coords) {
-  return upcxx::rpc(
-             get_rank_for_grid_point(coords),
-             [](grid_points_t &grid_points, GridCoords coords) {
-               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
+SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
+  return rpc(get_rank_for_grid_point(grid_i),
+             [](grid_points_t &grid_points, int64_t grid_i) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                SampleData sample;
-               sample.id = grid_point->id;
-               if (grid_point->tcell) sample.has_tcell = true;
-                 if (grid_point->epicell) {
-                   sample.has_epicell = true;
-                   sample.epicell_status = grid_point->epicell->status;
-                   sample.epicell_type = grid_point->epicell->type;
-                 }
+               if (grid_point->tcell) sample.tcells = 1;
+               if (grid_point->epicell) {
+                 sample.has_epicell = true;
+                 sample.epicell_status = grid_point->epicell->status;
+                 sample.epicell_type = grid_point->epicell->type;
+               }
                sample.virions = grid_point->virions;
                sample.chemokine = grid_point->chemokine;
                return sample;
              },
-             grid_points, coords)
+             grid_points, grid_i)
       .wait();
 }
 
@@ -410,19 +403,10 @@ vector<GridCoords> Tissue::get_neighbors(GridCoords c) {
   return n;
 }
 
-int64_t Tissue::get_num_local_grid_points() {
-  return grid_points->size();
-}
+int64_t Tissue::get_num_local_grid_points() { return grid_points->size(); }
 
-int64_t Tissue::get_random_airway_epicell_location() {
-  std::set<int>::iterator it = airway.begin();
-  std::advance(it, airway.size() / 2);
-  return *it;
-}
-
-bool Tissue::set_initial_infection(GridCoords coords) {
-  return upcxx::rpc(
-             get_rank_for_grid_point(coords),
+bool Tissue::set_initial_infection(int64_t grid_i) {
+  return rpc(get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
                 GridCoords coords) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, coords);
