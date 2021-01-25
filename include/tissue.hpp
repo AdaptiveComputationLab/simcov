@@ -103,7 +103,7 @@ struct TCell {
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD"};
-enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD};
+enum class EpiCellType { AIRWAY, ALVEOLI, SAMPLE };
 
 class EpiCell {
   int id;

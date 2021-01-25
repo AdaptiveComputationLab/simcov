@@ -132,7 +132,7 @@ void seed_infection(Tissue &tissue, int time_step) {
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
     if (infection_coords[3] == time_step) {
-      GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
+      GridCoords coords(tissue.get_random_airway_epicell_location());//GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
 
       WARN("Time step ", time_step, ":initial infection at ", coords.str());
 
@@ -613,6 +613,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             SampleData sd = {.tcells = (double)num_tcells / block_size,
                              .has_epicell = epicell_found,
                              .epicell_status = epi_status,
+                             .epicell_type = EpiCellType::SAMPLE,
                              .virions = virions / block_size,
                              .chemokine = chemokine / block_size};
 #else

@@ -262,42 +262,41 @@ Tissue::Tissue()
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
-  { // Read alveolus epithileal cells
-    char buf0[256];
-    std::string bname = getcwd(buf0, 256);
-    int loc_last = bname.rfind("/");
-    bname = bname.substr(0, loc_last);
-    std::string fname = bname + "/alveolus.dat";
-    auto fileno = open(fname.c_str(),
-      O_RDONLY,
-      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    int id = 0;
-    if (fileno == -1) {
-      std::printf("Cannot read file %s\n", fname.c_str());
-    } else {
-      while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
-          alveoli.insert(id);
-      }
-      close(fileno);
+  // Read alveolus epithileal cells
+  char buf0[256];
+  std::string bname = getcwd(buf0, 256);
+  // int loc_last = bname.rfind("/");
+  // bname = bname.substr(0, loc_last);
+  std::string fname = bname + "/alveolus.dat";
+  auto fileno = open(fname.c_str(),
+    O_RDONLY,
+    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  int id = 0;
+  if (fileno == -1) {
+    std::printf("Cannot read file %s\n", fname.c_str());
+  } else {
+    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+        alveoli.insert(id);
     }
-    // Read bronchiole epithileal cells
-    fname = bname + "/bronchiole.dat";
-    fileno = open(fname.c_str(),
-      O_RDONLY,
-      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (fileno == -1) {
-      std::printf("Cannot read file %s\n", fname.c_str());
-    } else {
-      id = 0;
-      while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
-          airway.insert(id);
-      }
-      close(fileno);
-    }
-    SLOG("Lung model loaded ",
-      airway.size() + alveoli.size(),
-      " epithileal cells\n");
+    close(fileno);
   }
+  // Read bronchiole epithileal cells
+  fname = bname + "/bronchiole.dat";
+  fileno = open(fname.c_str(),
+    O_RDONLY,
+    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fileno == -1) {
+    std::printf("Cannot read file %s\n", fname.c_str());
+  } else {
+    id = 0;
+    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+        airway.insert(id);
+    }
+    close(fileno);
+  }
+  SLOG("Lung model loaded ",
+    airway.size() + alveoli.size(),
+    " epithileal cells\n");
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
@@ -396,6 +395,12 @@ vector<int64_t> Tissue::get_neighbors(GridCoords c) {
 }
 
 int64_t Tissue::get_num_local_grid_points() { return grid_points->size(); }
+
+int64_t Tissue::get_random_airway_epicell_location() {
+  std::set<int>::iterator it = airway.begin();
+  std::advance(it, airway.size() / 2);
+  return *it;
+}
 
 bool Tissue::set_initial_infection(int64_t grid_i) {
   return rpc(get_rank_for_grid_point(grid_i),
