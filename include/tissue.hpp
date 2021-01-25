@@ -24,12 +24,12 @@ extern shared_ptr<Options> _options;
 using upcxx::rank_me;
 using upcxx::rank_n;
 
-using std::vector;
 using std::array;
 using std::list;
 using std::pair;
 using std::shared_ptr;
 using std::to_string;
+using std::vector;
 
 enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE };
 
@@ -54,19 +54,20 @@ struct GridCoords;
 inline shared_ptr<GridCoords> _grid_size = nullptr;
 
 struct GridCoords {
-  int64_t x, y, z;
+  int x, y, z;
 
   GridCoords() {}
 
-  GridCoords(int64_t x, int64_t y, int64_t z) : x(x), y(y), z(z) {}
+  GridCoords(int64_t x, int64_t y, int64_t z)
+      : x(x)
+      , y(y)
+      , z(z) {}
 
   // create a grid point from 1d
   GridCoords(int64_t i);
 
   // create a random grid point
   GridCoords(shared_ptr<Random> rnd_gen);
-
-  void from_1d_linear(int64_t i);
 
   void set_rnd(shared_ptr<Random> rnd_gen);
 
@@ -79,7 +80,8 @@ struct GridCoords {
   }
 
   int64_t to_1d() const;
-  int64_t to_1d_linear() const;
+
+  static int64_t to_1d(int x, int y, int z);
 
   string str() const {
     return "(" + to_string(x) + ", " + to_string(y) + ", " + to_string(z) + ")";
@@ -89,20 +91,19 @@ struct GridCoords {
 struct TCell {
   string id;
   int binding_period = -1;
-  int vascular_time_steps = -1;
   int tissue_time_steps = -1;
   bool moved = true;
 
-  UPCXX_SERIALIZED_FIELDS(id, binding_period, vascular_time_steps, tissue_time_steps, moved);
+  UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved);
 
   TCell(const string &id);
 
   TCell();
 };
 
+enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
+const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD"};
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD};
-const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
-enum class EpiCellType { AIRWAY, ALVEOLI };
 
 class EpiCell {
   int id;
@@ -128,16 +129,14 @@ class EpiCell {
   bool was_expressing();
 };
 
+// 3D size 4*3+26*8+16+8+16=372
 struct GridPoint {
-  int64_t id;
   GridCoords coords;
-  // vector for connectivity
-  vector<GridCoords> neighbors;
   // empty space is nullptr
   EpiCell *epicell = nullptr;
   TCell *tcell = nullptr;
-  int virions = 0, nb_virions = 0;
   double chemokine = 0, nb_chemokine = 0;
+  int virions = 0, nb_virions = 0;
 
   string str() const;
 
@@ -145,8 +144,7 @@ struct GridPoint {
 };
 
 struct SampleData {
-  int64_t id = -1;
-  bool has_tcell = false;
+  double tcells = 0;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
   EpiCellType epicell_type = EpiCellType::AIRWAY;
@@ -154,63 +152,63 @@ struct SampleData {
   double chemokine = 0;
 };
 
-inline int64_t get_num_grid_points() { return _grid_size->x * _grid_size->y * _grid_size->z; }
+inline int64_t get_num_grid_points() {
+  return (int64_t)_grid_size->x * (int64_t)_grid_size->y * (int64_t)_grid_size->z;
+}
 
 class Tissue {
  private:
-
   using grid_points_t = upcxx::dist_object<vector<GridPoint>>;
   grid_points_t grid_points;
   vector<GridPoint>::iterator grid_point_iter;
 
   // keeps track of all grid points that need to be updated
-  using new_active_grid_points_t = upcxx::dist_object<HASH_TABLE<GridPoint*, bool>>;
+  using new_active_grid_points_t = upcxx::dist_object<HASH_TABLE<GridPoint *, bool>>;
   new_active_grid_points_t new_active_grid_points;
 
-  HASH_TABLE<GridPoint*, bool> active_grid_points;
-  HASH_TABLE<GridPoint*, bool>::iterator active_grid_point_iter;
+  HASH_TABLE<GridPoint *, bool> active_grid_points;
+  HASH_TABLE<GridPoint *, bool>::iterator active_grid_point_iter;
 
-  upcxx::dist_object<list<TCell>> circulating_tcells;
+  int64_t num_circulating_tcells;
+  upcxx::dist_object<int64_t> tcells_generated;
 
   // this is static for ease of use in rpcs
-  static GridPoint *get_local_grid_point(grid_points_t &grid_points, const GridCoords &coords);
-
-  SampleData get_grid_point_sample_data(const GridCoords &coords);
-
-  vector<GridCoords> get_neighbors(GridCoords c);
+  static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
   std::set<int> alveoli;
   std::set<int> airway;
 
  public:
-  int64_t tcells_generated = 0;
-
   Tissue();
 
   ~Tissue() {}
 
   int64_t get_num_local_grid_points();
 
-  intrank_t get_rank_for_grid_point(const GridCoords &coords);
+  intrank_t get_rank_for_grid_point(int64_t grid_i);
 
-  bool set_initial_infection(GridCoords coords);
+  vector<int64_t> get_neighbors(GridCoords c);
+
+  bool set_initial_infection(int64_t grid_i);
 
   void accumulate_chemokines(HASH_TABLE<int64_t, double> &chemokines_to_update,
                              IntermittentTimer &timer);
 
   void accumulate_virions(HASH_TABLE<int64_t, int> &virions_to_update, IntermittentTimer &timer);
 
-  double get_chemokine(GridCoords coords);
-
-  list<TCell> *get_circulating_tcells();
+  double get_chemokine(int64_t grid_i);
 
   bool tcells_in_neighborhood(GridPoint *grid_point);
 
-  void add_circulating_tcell(GridCoords coords, TCell tcell);
+  int64_t get_num_circulating_tcells();
 
-  bool try_add_tissue_tcell(GridCoords coords, TCell tcell, bool extravasate);
+  void change_num_circulating_tcells(int num);
 
-  EpiCellStatus try_bind_tcell(GridCoords coords);
+  bool try_add_new_tissue_tcell(int64_t grid_i);
+
+  bool try_add_tissue_tcell(int64_t grid_i, TCell &tcell);
+
+  EpiCellStatus try_bind_tcell(int64_t grid_i);
 
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
@@ -225,12 +223,11 @@ class Tissue {
 
   size_t get_num_actives();
 
-  void get_samples(vector<SampleData> &samples, int64_t &start_id);
+  SampleData get_grid_point_sample_data(int64_t grid_i);
 
   int64_t get_random_airway_epicell_location();
 
 #ifdef DEBUG
   void check_actives(int time_step);
 #endif
-
 };

@@ -4,14 +4,17 @@
 
 #include <iostream>
 #include <regex>
+#include <algorithm>
 #include <upcxx/upcxx.hpp>
 
 #include "CLI11.hpp"
 #include "version.h"
+#include "utils.hpp"
 
 using std::array;
 using std::cout;
 using std::endl;
+using std::sort;
 using std::vector;
 
 #include "upcxx_utils/log.hpp"
@@ -58,7 +61,7 @@ class Options {
         // created the directory - now stripe it if possible
         auto status = std::system("which lfs 2>&1 > /dev/null");
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-          string cmd = "lfs setstripe -c -1 " + output_dir;
+          string cmd = "lfs setstripe -c 24 " + output_dir;
           auto status = std::system(cmd.c_str());
           if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
             cout << "Set Lustre striping on the output directory\n";
@@ -69,18 +72,11 @@ class Options {
       }
     }
     upcxx::barrier();
-    // all change to the output directory
-    if (chdir(output_dir.c_str()) == -1 && !upcxx::rank_me()) {
-      ostringstream oss;
-      oss << KLRED << "Cannot change to output directory " << output_dir << ": " << strerror(errno)
-          << KNORM << endl;
-      throw std::runtime_error(oss.str());
-    }
-    upcxx::barrier();
     // now setup a samples subdirectory
     if (!upcxx::rank_me()) {
       // create the output directory and stripe it
-      if (mkdir("samples", S_IRWXU) == -1) {
+      string samples_dir = output_dir + "/samples";
+      if (mkdir(samples_dir.c_str(), S_IRWXU) == -1) {
         // could not create the directory
         if (errno == EEXIST) {
           cerr << KLRED << "WARNING: " << KNORM
@@ -98,40 +94,133 @@ class Options {
 
   void setup_log_file() {
     if (!upcxx::rank_me()) {
-      // check to see if mhmxx.log exists. If so, rename it
-      if (file_exists("mhmxx.log")) {
-        string new_log_fname = "simcov-" + get_current_time(true) + ".log";
-        cerr << KLRED << "WARNING: " << KNORM << output_dir << "/simcov.log exists. Renaming to "
-             << output_dir << "/" << new_log_fname << endl;
-        if (rename("simcov.log", new_log_fname.c_str()) == -1)
-          DIE("Could not rename simcov.log: ", strerror(errno));
+      string log_fname = output_dir + "/simcov.log";
+      // check to see if simcov.log exists. If so, rename it
+      if (file_exists(log_fname)) {
+        string new_log_fname = output_dir + "/simcov-" + get_current_time(true) + ".log";
+        cerr << KLRED << "WARNING: " << KNORM << log_fname << " exists. Renaming to "
+             << new_log_fname << endl;
+        if (rename(log_fname.c_str(), new_log_fname.c_str()) == -1)
+          DIE("Could not rename ", log_fname, ": ", strerror(errno));
       }
     }
     upcxx::barrier();
   }
 
-  bool parse_infection_coords(vector<string> &coords_strs) {
-    for (auto &coords_str : coords_strs) {
-      auto coords_and_time = splitter(",", coords_str);
-      if (coords_and_time.size() != 4) {
-        if (!rank_me()) {
-          cerr << KLRED << "ERROR: " << KNORM << "incorrect number (" << coords_and_time.size()
-               << ") of coordinates and time step in string \"" << coords_str
-               << " - should be four comma-separated (x,y,z,t) values" << endl;
+  void set_random_infections(int num) {
+    for (int i = 0; i < num; i++) {
+      if (i % rank_n() != rank_me()) continue;
+      infection_coords.push_back({_rnd_gen->get(0, dimensions[0]), _rnd_gen->get(0, dimensions[1]),
+                                  _rnd_gen->get(0, dimensions[2]), 0});
+    }
+  }
+
+  void set_uniform_infections(int num) {
+    vector<array<int, 3>> infections =
+        get_uniform_infections(num, dimensions[0], dimensions[1], dimensions[2]);
+    for (int i = 0; i < infections.size(); i++) {
+      if (i % rank_n() != rank_me()) continue;
+      infection_coords.push_back({infections[i][0], infections[i][1], infections[i][2], 0});
+    }
+  }
+
+  vector<array<int, 3>> get_uniform_infections(int num, int64_t dim_x, int64_t dim_y,
+                                               int64_t dim_z) {
+    vector<array<int, 3>> infections;
+    int x_splits = 1, y_splits = 1, z_splits = 1;
+    while (x_splits * y_splits * z_splits < num) {
+      double x_ratio = (double)dim_x / x_splits;
+      double y_ratio = (double)dim_y / y_splits;
+      double z_ratio = (double)dim_z / z_splits;
+      double ratios[] = {x_ratio, y_ratio, z_ratio};
+      sort(ratios, ratios + 3);
+      if (ratios[2] == x_ratio) {
+        x_splits++;
+      } else if (ratios[2] == y_ratio) {
+        y_splits++;
+      } else {
+        z_splits++;
+      }
+    }
+    int x_spacing = (double)dim_x / (x_splits + 1);
+    int y_spacing = (double)dim_y / (y_splits + 1);
+    int z_spacing = (double)dim_z / (z_splits + 1);
+    if (dim_z == 1) {
+      for (int i = x_spacing; i < dim_x - 1; i += x_spacing) {
+        for (int j = y_spacing; j < dim_y - 1; j += y_spacing) {
+          if (infections.size() == num) return infections;
+          infections.push_back({i, j, 0});
         }
+      }
+    } else {
+      for (int i = x_spacing; i < dim_x - 1; i += x_spacing) {
+        for (int j = y_spacing; j < dim_y - 1; j += y_spacing) {
+          for (int k = z_spacing; k < dim_z - 1; k += z_spacing) {
+            if (infections.size() == num) return infections;
+            infections.push_back({i, j, k});
+          }
+        }
+      }
+    }
+    return infections;
+  }
+
+  bool parse_infection_coords(vector<string> &coords_strs) {
+    auto get_locations_count = [](const string &s, const string &name) -> int {
+      int num = 0;
+      if (s.compare(0, name.length(), name) == 0) {
+        string num_str = s.substr(name.length());
+        try {
+          num = std::stoi(num_str);
+        } catch (std::invalid_argument arg) {
+          num = 0;
+        }
+        if (num < 1) return 0;
+      }
+      return num;
+    };
+
+    if (coords_strs.size() == 1) {
+      int num = get_locations_count(coords_strs[0], "random:");
+      if (num > 0) {
+        set_random_infections(num);
+        return true;
+      }
+      num = get_locations_count(coords_strs[0], "uniform:");
+      if (num > 0) {
+        set_uniform_infections(num);
+        return true;
+      }
+    }
+    for (int i = 0; i < coords_strs.size(); i++) {
+      if (i % rank_n() != rank_me()) continue;
+      auto coords_and_time = splitter(",", coords_strs[i]);
+      if (coords_and_time.size() == 4) {
+        try {
+          infection_coords.push_back({std::stoi(coords_and_time[0]), std::stoi(coords_and_time[1]),
+                                      std::stoi(coords_and_time[2]),
+                                      std::stoi(coords_and_time[3])});
+        } catch (std::invalid_argument arg) {
+          coords_and_time.clear();
+        }
+      }
+      if (coords_and_time.size() != 4) {
+        ostringstream oss;
+        oss << KLRED << "ERROR: " << KNORM << "incorrect specification of infection coords in "
+            << "string \"" << coords_strs[i] << "\"\n"
+            << " - should be four comma-separated (x,y,z,t) values or random:N or uniform:N\n";
+        cerr << oss.str();
         return false;
       }
-      infection_coords.push_back({std::stoi(coords_and_time[0]), std::stoi(coords_and_time[1]),
-                                  std::stoi(coords_and_time[2]), std::stoi(coords_and_time[3])});
     }
     return true;
   }
 
  public:
-  vector<int> dimensions{100, 100, 1};
+  vector<int> dimensions{300, 300, 1};
+  vector<int> whole_lung_dims{48000, 40000, 20000};
   // each time step should be about 1 minute, so one day = 1440 time steps
-  int num_timesteps = 2000;
-  int num_infections = 1;
+  int num_timesteps = 20160;
 
   // x,y,z location and timestep
   vector<array<int, 4>> infection_coords;
@@ -139,37 +228,36 @@ class Options {
   int infectable_spacing = 1;
 
   // these periods are normally distributed with mean and stddev
-  int incubation_period = 100;
-  int apoptosis_period = 30;
-  int expressing_period = 100;
+  int incubation_period = 480;
+  int apoptosis_period = 180;
+  int expressing_period = 2286;
 
-  double tcell_generation_rate = 5;
-  int tcell_initial_delay = 1000;
-  int tcell_vascular_period = 600;
-  int tcell_tissue_period = 60;
-  int tcell_binding_period = 5;
-  double max_binding_prob = 0.1;
+  int tcell_generation_rate = 100000;
+  int tcell_initial_delay = 10080;
+  int tcell_vascular_period = 5760;
+  int tcell_tissue_period = 1440;
+  int tcell_binding_period = 10;
+  double max_binding_prob = 1.0;
 
-  double infectivity = 0.0001;
-  int virion_production = 100;
-  double virion_decay_rate = 0.1;
-  double virion_diffusion_coef = 0.5;
+  double infectivity = 0.02;
+  int virion_production = 35;
+  double virion_decay_rate = 0.002;
+  double virion_diffusion_coef = 1.0;
 
-  double chemokine_production = 0.5;
+  double chemokine_production = 1.0;
   double chemokine_decay_rate = 0.01;
-  double chemokine_diffusion_coef = 0.2;
-  double min_chemokine = 0.001;
+  double chemokine_diffusion_coef = 1.0;
+  double min_chemokine = 1e-6;
 
   double antibody_factor = 1;
-  int antibody_period = 900;
+  int antibody_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  string output_dir = "simcov-run-n" + to_string(upcxx::rank_n()) + "-N" +
-                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n()) + "-" +
-                      get_current_time(true);
-  int sample_period = 1;
-  double sample_resolution = 1.0;
-  int min_blocks_per_proc = 16;
+  string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
+                      to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
+  int sample_period = 0;
+  int sample_resolution = 1;
+  int max_block_dim = 10;
 
   bool tcells_follow_gradient = false;
 
@@ -187,16 +275,19 @@ class Options {
         ->delimiter(',')
         ->expected(3)
         ->capture_default_str();
+    app.add_option("--whole-lung-dim", whole_lung_dims, "Whole lung dimensions: x y z")
+        ->delimiter(',')
+        ->expected(3)
+        ->capture_default_str();
     app.add_option("-t,--timesteps", num_timesteps, "Number of timesteps")
         ->check(CLI::Range(1, 1000000))
         ->capture_default_str();
-    app.add_option("--infections", num_infections, "Number of randomly chosen starting infections")
-        ->capture_default_str();
     app.add_option(
            "--infection-coords", infection_coords_strs,
-           "Location of multiple initial infections, of form "
-           "\"x1,y1,z1,t1 x2,y2,z2,t2;...\" where x,y,z are grid coords and t is a timestep - "
-           "overrides --infections")
+           "Location of multiple initial infections, of form \"x1,y1,z1,t1 x2,y2,z2,t2...\"\n"
+           "where x,y,z are grid coords and t is a timestep, or\n"
+           "\"uniform:N\" for N uniformly distributed points or\n"
+           "\"random:N\" for N randomly distributed points")
         ->delimiter(' ')
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
@@ -253,7 +344,7 @@ class Options {
                    "Number of time steps before antibodies start to be produced")
         ->capture_default_str();
     app.add_option("--tcell-generation-rate", tcell_generation_rate,
-                   "Number of tcells generated at each timestep")
+                   "Number of tcells generated at each timestep for the whole lung")
         ->capture_default_str();
     app.add_option("--tcell-initial-delay", tcell_initial_delay,
                    "Number of time steps before T cells start to be produced")
@@ -279,14 +370,13 @@ class Options {
                    "Number of timesteps between samples (set to 0 to disable sampling)")
         ->capture_default_str();
     app.add_option("--sample-resolution", sample_resolution, "Resolution for sampling")
-        ->check(CLI::Range(0.0, 1.0))
+        ->check(CLI::Range(1, 10000))
         ->capture_default_str();
-    app.add_option(
-           "--min-blocks-per-proc", min_blocks_per_proc,
-           "Minimum number of blocks per process - impacts performance (locality v load balance)")
+    app.add_option("--max-block-dim", max_block_dim,
+                   "Max. block dimension - larger means more locality but worse load balance. Set "
+                   "to 0 for largest possible")
         ->capture_default_str();
-
-    auto *output_dir_opt = app.add_option("-o,--output", output_dir, "Output directory");
+    app.add_option("-o,--output", output_dir, "Output directory")->capture_default_str();
     app.add_flag("--progress", show_progress, "Show progress");
     app.add_flag("-v, --verbose", verbose, "Verbose output");
 
@@ -301,6 +391,7 @@ class Options {
 
     upcxx::barrier();
 
+    _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
 
     if (virion_decay_rate * antibody_factor > 1.0) {
       if (!rank_me())
@@ -309,21 +400,32 @@ class Options {
       return false;
     }
 
-    if (infection_coords_strs.size() == 1 && infection_coords_strs[0] == "none")
-      infection_coords_strs.clear();
-    if (!infection_coords_strs.empty()) {
-      if (!parse_infection_coords(infection_coords_strs)) return false;
-      if (num_infections)
-        SLOG("Initial infection coordinates set; will override --infections (", num_infections,
-             ")\n");
-      num_infections = infection_coords.size();
-      SLOG("Initial infection coords specified, setting number of infection points to ",
-           num_infections, "\n");
+    if (!infection_coords_strs.empty() && !parse_infection_coords(infection_coords_strs))
+      return false;
+
+    if (!max_block_dim) {
+      max_block_dim = min(dimensions[0], dimensions[1]);
+      if (dimensions[2] > 1) max_block_dim = min(dimensions[2], max_block_dim);
+    }
+
+    if (dimensions[0] % sample_resolution || dimensions[1] % sample_resolution ||
+        (dimensions[2] > 1 && dimensions[2] % sample_resolution)) {
+      if (!rank_me())
+        cerr << "Error: sample period " << sample_resolution
+             << " must be a factor of all the dimensions\n";
+      return false;
+    }
+
+    for (int i = 0; i < 3; i++) {
+      if (dimensions[i] > whole_lung_dims[i]) {
+        if (!rank_me()) cerr << "Dimensions must be <= whole lung dimensions\n";
+        return false;
+      }
     }
     setup_output_dir();
     setup_log_file();
 
-    init_logger("simcov.log", verbose);
+    init_logger(output_dir + "/simcov.log", verbose);
 
 #ifdef DEBUG
     open_dbg("debug");
@@ -353,7 +455,7 @@ class Options {
 #endif
     if (!upcxx::rank_me()) {
       // write out configuration file for restarts
-      ofstream ofs("simcov.config");
+      ofstream ofs(output_dir + "/simcov.config");
       ofs << app.config_to_str(true, true);
     }
     upcxx::barrier();

@@ -34,7 +34,8 @@ class Random {
   }
 
  public:
-  Random(unsigned seed) : generator(seed) {}
+  Random(unsigned seed)
+      : generator(seed) {}
 
   int get(int64_t begin, int64_t end) {
     return std::uniform_int_distribution<int64_t>(begin, end - 1)(generator);
