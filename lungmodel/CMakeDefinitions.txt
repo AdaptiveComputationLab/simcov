@@ -1,0 +1,2 @@
+# use colors in the output
+add_definitions(-DCONFIG_USE_COLORS)

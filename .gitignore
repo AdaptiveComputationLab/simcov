@@ -4,3 +4,6 @@ install
 data
 .vscode
 __pycache__
+*.dat
+results
+transfer.sh

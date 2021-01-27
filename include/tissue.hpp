@@ -103,6 +103,7 @@ struct TCell {
 
 enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD"};
+enum class EpiCellType { AIRWAY, ALVEOLI, SAMPLE };
 
 class EpiCell {
   int id;
@@ -112,6 +113,7 @@ class EpiCell {
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
+  EpiCellType type = EpiCellType::AIRWAY;
   bool infectable = true;
 
   EpiCell(int id);
@@ -147,6 +149,7 @@ struct SampleData {
   double tcells = 0;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
+  EpiCellType epicell_type = EpiCellType::AIRWAY;
   float virions = 0;
   float chemokine = 0;
 };
@@ -173,6 +176,9 @@ class Tissue {
 
   // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
+
+  std::set<int> alveoli;
+  std::set<int> airway;
 
  public:
   Tissue();
@@ -220,6 +226,8 @@ class Tissue {
   size_t get_num_actives();
 
   SampleData get_grid_point_sample_data(int64_t grid_i);
+
+  int64_t get_random_airway_epicell_location();
 
 #ifdef DEBUG
   void check_actives(int time_step);
