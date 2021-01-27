@@ -4,10 +4,20 @@ import pyvista as pv
 import matplotlib.pyplot as plt
 import seaborn as sb
 import sys
+from matplotlib import cm
+from matplotlib.colors import ListedColormap
+
 
 def plot_virus(filename, outputName):
+    eps = 10e-7
     mesh = pv.read(filename)
     data = np.reshape(mesh["virus"], (mesh.dimensions[0]-1, mesh.dimensions[1]-1))
+
+    flat = data.flatten()
+
+    plt.figure()
+    sb.distplot(flat)
+    plt.savefig("flat.png")
     plt.figure()
     ax = sb.heatmap(data, cmap="viridis")
     plt.title("Viral Concentration")
@@ -22,8 +32,18 @@ def plot_virus(filename, outputName):
 def plot_chemokine(filename_ch, filename_tc, outputName):
     mesh1 = pv.read(filename_ch)
     data1 = np.reshape(mesh1["chemokine"], (mesh1.dimensions[0]-1, mesh1.dimensions[1]-1))
+    mesh2 = pv.read(filename_tc)
+    data2 = np.reshape(mesh2["t-cell-tissue"], (mesh2.dimensions[0]-1, mesh2.dimensions[1]-1))
+    x = []
+    y = []
+    for i in range(mesh2.dimensions[0]-1):
+        for j in range(mesh2.dimensions[1]-1):
+            if(data2[i,j] > 0):
+                x.append(j)
+                y.append(i)
     plt.figure()
-    ax = sb.heatmap(data1, cmap="Blues")
+    ax = sb.heatmap(data1, cmap="Greys_r")
+    plt.scatter(x,y,color="green",s=5,alpha=0.05)
     cmap2 = sb.color_palette([(0xD1/0xFF, 0xEC/0xFF, 0x9C/0xFF, 0), (0xF1/0xFF, 0xEB/0xFF, 0xF4/0xFF, 1.0)])
     plt.title("Chemokines and t-cells in tissue")
     colorbar = ax.collections[0].colorbar
