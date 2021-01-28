@@ -15,4 +15,4 @@ add_definitions(-DMIN_VIRIONS=1e-10)
 add_definitions(-DMIN_BLOCKS_PER_PROC=100)
 
 # compute average across subsambple block/square instead of just taking the first point
-# add_definitions(-DAVERAGE_SUBSAMPLE)
+add_definitions(-DAVERAGE_SUBSAMPLE)
