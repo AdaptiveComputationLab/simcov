@@ -110,10 +110,12 @@ class Options {
   void set_random_infections(int num) {
     for (int i = 0; i < num; i++) {
       if (i % rank_n() != rank_me()) continue;
-      infection_coords.push_back({_rnd_gen->get(dimensions[0] * 0.1, dimensions[0] * 0.9),
-            _rnd_gen->get(dimensions[1] * 0.1, dimensions[1] * 0.9), 
-            _rnd_gen->get(dimensions[2] > 1 ? dimensions[2] * 0.1 : 0,
-                          dimensions[2] > 1 ? dimensions[2] * 0.9 : dimensions[2]), 0});
+      infection_coords.push_back(
+          {_rnd_gen->get(dimensions[0] * 0.1, dimensions[0] * 0.9),
+           _rnd_gen->get(dimensions[1] * 0.1, dimensions[1] * 0.9),
+           _rnd_gen->get(dimensions[2] > 1 ? dimensions[2] * 0.1 : 0,
+                         dimensions[2] > 1 ? dimensions[2] * 0.9 : dimensions[2]),
+           0});
     }
   }
 
@@ -227,7 +229,8 @@ class Options {
   // x,y,z location and timestep
   vector<array<int, 4>> infection_coords;
   int initial_infection = 1000;
-  int infectable_spacing = 1;
+
+  string lung_model_dir = "";
 
   // these periods are normally distributed with mean and stddev
   int incubation_period = 480;
@@ -294,9 +297,6 @@ class Options {
         ->capture_default_str();
     app.add_option("--initial-infection", initial_infection,
                    "Number of virions at initial infection locations")
-        ->capture_default_str();
-    app.add_option("--infectable-spacing", infectable_spacing,
-                   "Number of grid points to space out infectable cells")
         ->capture_default_str();
     app.add_option("--incubation-period", incubation_period,
                    "Average number of time steps to expressing virions after cell is infected")
@@ -379,6 +379,8 @@ class Options {
                    "to 0 for largest possible")
         ->capture_default_str();
     app.add_option("-o,--output", output_dir, "Output directory")->capture_default_str();
+    app.add_option("--lung-model", lung_model_dir, "Directory containing files for lung model")
+        ->capture_default_str();
     app.add_flag("--progress", show_progress, "Show progress");
     app.add_flag("-v, --verbose", verbose, "Verbose output");
 

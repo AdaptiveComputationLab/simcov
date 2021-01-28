@@ -73,7 +73,7 @@ class SimStats {
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
     vector<float> totals_d;
     totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());// / get_num_grid_points());
+    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());  // / get_num_grid_points());
     auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
     auto perc_infected =
@@ -132,7 +132,8 @@ void seed_infection(Tissue &tissue, int time_step) {
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
     if (infection_coords[3] == time_step) {
-      GridCoords coords(tissue.get_random_airway_epicell_location());//GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
+      GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
+      // GridCoords coords(tissue.get_random_airway_epicell_location());
 
       WARN("Time step ", time_step, ":initial infection at ", coords.str());
 
@@ -640,8 +641,8 @@ void run_sim(Tissue &tissue) {
 
   auto start_t = NOW();
   auto curr_t = start_t;
-  //TODO Allow for 1 timestep
-  auto five_perc = (_options->num_timesteps >= 50) ?  _options->num_timesteps/50 : 1;
+  // TODO Allow for 1 timestep
+  auto five_perc = (_options->num_timesteps >= 50) ? _options->num_timesteps / 50 : 1;
   _sim_stats.init();
   int64_t whole_lung_volume = (int64_t)_options->whole_lung_dims[0] *
                               (int64_t)_options->whole_lung_dims[1] *
@@ -685,7 +686,7 @@ void run_sim(Tissue &tissue) {
       if (grid_point->epicell && !warned_boundary &&
           (!grid_point->coords.x || !grid_point->coords.y ||
            (_grid_size->z > 1 && !grid_point->coords.z)) &&
-           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
+          grid_point->epicell->status != EpiCellStatus::HEALTHY) {
         WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
              " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
         warned_boundary = true;
@@ -697,8 +698,7 @@ void run_sim(Tissue &tissue) {
       // updates)
       if (grid_point->tcell)
         update_tissue_tcell(time_step, tissue, grid_point, *nbs, chemokines_cache);
-      if (grid_point->epicell) 
-        update_epicell(time_step, tissue, grid_point);
+      if (grid_point->epicell) update_epicell(time_step, tissue, grid_point);
       update_chemokines(grid_point, *nbs, chemokines_to_update);
       update_virions(grid_point, *nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);

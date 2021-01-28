@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include "lung.hpp"
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   // Create a full or parital model of the human lung
   bool isFullModel = false;
   if (argc == 2) {
@@ -16,9 +16,8 @@ int main(int argc, char **argv) {
   Lung lung(isFullModel);
   // Write alveolus epithileal cells
   std::string fname = "alveolus.dat";
-  auto fileno = open(fname.c_str(),
-    O_WRONLY | O_CREAT | O_TRUNC,
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  auto fileno =
+      open(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fileno == -1) {
     std::printf("Cannot create file %s\n", fname.c_str());
   }
@@ -28,15 +27,12 @@ int main(int argc, char **argv) {
   }
   if (bytes_written != sizeof(int) * (lung.getAlveoliEpiCellIds()).size()) {
     std::printf("Could not write all %ld bytes; only wrote %d\n",
-      (lung.getAlveoliEpiCellIds()).size(),
-      bytes_written);
+                (lung.getAlveoliEpiCellIds()).size(), bytes_written);
   }
   close(fileno);
   // Write bronchiole epithileal cells
   fname = "bronchiole.dat";
-  fileno = open(fname.c_str(),
-    O_WRONLY | O_CREAT | O_TRUNC,
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  fileno = open(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fileno == -1) {
     std::printf("Cannot create file %s\n", fname.c_str());
   }
@@ -46,8 +42,7 @@ int main(int argc, char **argv) {
   }
   if (bytes_written != sizeof(int) * (lung.getAirwayEpiCellIds()).size()) {
     std::printf("Could not write all %ld bytes; only wrote %d\n",
-      (lung.getAirwayEpiCellIds()).size(),
-      bytes_written);
+                (lung.getAirwayEpiCellIds()).size(), bytes_written);
   }
   close(fileno);
   return 0;

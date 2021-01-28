@@ -256,87 +256,77 @@ Tissue::Tissue()
   SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
        (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim,
        "^", (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
-  // average size for epicells distributed according to the infectable spacing interval
-  double sz_grid_point = sizeof(GridPoint) + (double)sizeof(EpiCell) / _options->infectable_spacing;
+  double sz_grid_point = sizeof(GridPoint) + (double)sizeof(EpiCell);
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
-  // Read alveolus epithileal cells
-  char buf0[256];
-  std::string bname = getcwd(buf0, 256);
-  // int loc_last = bname.rfind("/");
-  // bname = bname.substr(0, loc_last);
-  std::string fname = bname + "/alveolus.dat";
-  auto fileno = open(fname.c_str(),
-    O_RDONLY,
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  int id = 0;
-  if (fileno == -1) {
-    std::printf("Cannot read file %s\n", fname.c_str());
-  } else {
-    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+  if (!_options->lung_model_dir.empty()) {
+    // Read alveolus epithileal cells
+    string fname = _options->lung_model_dir + "/alveolus.dat";
+    auto fileno = open(fname.c_str(), O_RDONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    int id = 0;
+    if (fileno == -1) {
+      SDIE("Cannot load lung model from file ", fname);
+    } else {
+      while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
         alveoli.insert(id);
+      }
+      close(fileno);
     }
-    close(fileno);
-  }
-  // Read bronchiole epithileal cells
-  fname = bname + "/bronchiole.dat";
-  fileno = open(fname.c_str(),
-    O_RDONLY,
-    S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (fileno == -1) {
-    std::printf("Cannot read file %s\n", fname.c_str());
-  } else {
-    id = 0;
-    while (read(fileno, reinterpret_cast<char*>( &id ), sizeof(int))) {
+    // Read bronchiole epithileal cells
+    fname = _options->lung_model_dir + "/bronchiole.dat";
+    fileno = open(fname.c_str(), O_RDONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fileno == -1) {
+      SDIE("Cannot load lung model from file ", fname);
+    } else {
+      id = 0;
+      while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
         airway.insert(id);
+      }
+      close(fileno);
     }
-    close(fileno);
+    SLOG("Lung model loaded ", airway.size() + alveoli.size(), " epithileal cells\n");
   }
-  SLOG("Lung model loaded ",
-    airway.size() + alveoli.size(),
-    " epithileal cells\n");
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id);
-      // FIXME: infectable epicells should be placed according to the underlying lung structure
-      // (gaps, etc)
       if (airway.size() > 0 || alveoli.size() > 0) {
-        if (alveoli.count(id) != 0) { // Add alveoli epi cells
+        if (alveoli.count(id) != 0) {  // Add alveoli epi cells
           EpiCell *epicell = new EpiCell(id);
           epicell->type = EpiCellType::ALVEOLI;
           epicell->infectable = true;
           grid_points->emplace_back(GridPoint({coords, epicell}));
-        } else if (airway.count(id) != 0) { // Add bronchial epi cells
-            EpiCell *epicell = new EpiCell(id);
-            epicell->type = EpiCellType::AIRWAY;
-            epicell->infectable = true;
-            grid_points->emplace_back(GridPoint({coords, epicell}));
-        } else { // Add empty space == air
+        } else if (airway.count(id) != 0) {  // Add bronchial epi cells
+          EpiCell *epicell = new EpiCell(id);
+          epicell->type = EpiCellType::AIRWAY;
+          epicell->infectable = true;
+          grid_points->emplace_back(GridPoint({coords, epicell}));
+        } else {  // Add empty space == air
           grid_points->emplace_back(GridPoint({coords, nullptr}));
         }
       } else {
         EpiCell *epicell = new EpiCell(id);
-        if ((coords.x + coords.y + coords.z) % _options->infectable_spacing != 0)
-          epicell->infectable = false;
+        epicell->type = EpiCellType::ALVEOLI;
+        epicell->infectable = true;
         grid_points->emplace_back(GridPoint({coords, epicell}));
       }
-#ifdef DEBUG
-      DBG("adding grid point ", id, " at ", coords.str(), "\n");
-      auto id_1d = coords.to_1d();
-      if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
-      auto nbs = get_neighbors(coords);
-      ostringstream oss;
-      for (auto nb_grid_i : nbs) {
-        oss << GridCoords(nb_grid_i).str() << " ";
-      }
-      DBG("nbs: ", oss.str(), "\n");
-#endif
     }
+
+#ifdef DEBUG
+    DBG("adding grid point ", id, " at ", coords.str(), "\n");
+    auto id_1d = coords.to_1d();
+    if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
+    auto nbs = get_neighbors(coords);
+    ostringstream oss;
+    for (auto nb_grid_i : nbs) {
+      oss << GridCoords(nb_grid_i).str() << " ";
+    }
+    DBG("nbs: ", oss.str(), "\n");
+#endif
   }
   barrier();
 }
@@ -355,7 +345,8 @@ GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, int64_t grid
 }
 
 SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
-  return rpc(get_rank_for_grid_point(grid_i),
+  return rpc(
+             get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                SampleData sample;
@@ -406,7 +397,8 @@ int64_t Tissue::get_random_airway_epicell_location() {
 }
 
 bool Tissue::set_initial_infection(int64_t grid_i) {
-  return rpc(get_rank_for_grid_point(grid_i),
+  return rpc(
+             get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
                 int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
@@ -438,18 +430,19 @@ void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, float> &chemokines_to_upd
   // dispatch all updates to each target rank in turn
   for (auto &[target_rank, update_vector] : target_rank_updates) {
     progress();
-    auto fut = rpc(target_rank,
-                   [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-                      view<pair<int64_t, float>> update_vector) {
-                     for (auto &[grid_i, chemokine] : update_vector) {
-                       GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
-                       new_active_grid_points->insert({grid_point, true});
-                       // just accumulate the concentrations. We will adjust them to be the average
-                       // of all neighbors later
-                       grid_point->nb_chemokine += chemokine;
-                     }
-                   },
-                   grid_points, new_active_grid_points, make_view(update_vector));
+    auto fut = rpc(
+        target_rank,
+        [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+           view<pair<int64_t, float>> update_vector) {
+          for (auto &[grid_i, chemokine] : update_vector) {
+            GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
+            new_active_grid_points->insert({grid_point, true});
+            // just accumulate the concentrations. We will adjust them to be the average
+            // of all neighbors later
+            grid_point->nb_chemokine += chemokine;
+          }
+        },
+        grid_points, new_active_grid_points, make_view(update_vector));
     fut_chain = when_all(fut_chain, fut);
   }
   fut_chain.wait();
@@ -469,16 +462,17 @@ void Tissue::accumulate_virions(HASH_TABLE<int64_t, float> &virions_to_update,
   // dispatch all updates to each target rank in turn
   for (auto &[target_rank, update_vector] : target_rank_updates) {
     progress();
-    auto fut = rpc(target_rank,
-                   [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
-                      view<pair<int64_t, float>> update_vector) {
-                     for (auto &[grid_i, virions] : update_vector) {
-                       GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
-                       new_active_grid_points->insert({grid_point, true});
-                       grid_point->nb_virions += virions;
-                     }
-                   },
-                   grid_points, new_active_grid_points, make_view(update_vector));
+    auto fut = rpc(
+        target_rank,
+        [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+           view<pair<int64_t, float>> update_vector) {
+          for (auto &[grid_i, virions] : update_vector) {
+            GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
+            new_active_grid_points->insert({grid_point, true});
+            grid_point->nb_virions += virions;
+          }
+        },
+        grid_points, new_active_grid_points, make_view(update_vector));
     fut_chain = when_all(fut_chain, fut);
   }
   fut_chain.wait();
@@ -486,7 +480,8 @@ void Tissue::accumulate_virions(HASH_TABLE<int64_t, float> &virions_to_update,
 }
 
 float Tissue::get_chemokine(int64_t grid_i) {
-  return rpc(get_rank_for_grid_point(grid_i),
+  return rpc(
+             get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                return grid_point->chemokine;
@@ -503,7 +498,8 @@ void Tissue::change_num_circulating_tcells(int num) {
 }
 
 bool Tissue::try_add_new_tissue_tcell(int64_t grid_i) {
-  auto res = rpc(get_rank_for_grid_point(grid_i),
+  auto res = rpc(
+                 get_rank_for_grid_point(grid_i),
                  [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
                     int64_t grid_i, dist_object<int64_t> &tcells_generated) {
                    GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
@@ -525,7 +521,8 @@ bool Tissue::try_add_new_tissue_tcell(int64_t grid_i) {
 }
 
 bool Tissue::try_add_tissue_tcell(int64_t grid_i, TCell &tcell) {
-  return rpc(get_rank_for_grid_point(grid_i),
+  return rpc(
+             get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
                 int64_t grid_i, TCell tcell) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
@@ -541,7 +538,8 @@ bool Tissue::try_add_tissue_tcell(int64_t grid_i, TCell &tcell) {
 }
 
 EpiCellStatus Tissue::try_bind_tcell(int64_t grid_i) {
-  return rpc(get_rank_for_grid_point(grid_i),
+  return rpc(
+             get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points_t,
                 int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
