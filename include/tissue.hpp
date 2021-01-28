@@ -177,8 +177,7 @@ class Tissue {
   // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
-  std::set<int> alveoli;
-  std::set<int> airway;
+  std::vector<EpiCellType> lung_cells;
 
  public:
   Tissue();

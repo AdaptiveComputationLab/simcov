@@ -261,16 +261,21 @@ Tissue::Tissue()
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
+  int64_t num_lung_cells = 0;
   if (!_options->lung_model_dir.empty()) {
     // Read alveolus epithileal cells
     string fname = _options->lung_model_dir + "/alveolus.dat";
     auto fileno = open(fname.c_str(), O_RDONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    int id = 0;
+    int64_t id = 0;
+    lung_cells.resize(num_grid_points, EpiCellType::SAMPLE);
+    Timer t_load_lung_model("load lung model");
+    t_load_lung_model.start();
     if (fileno == -1) {
       SDIE("Cannot load lung model from file ", fname);
     } else {
       while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
-        alveoli.insert(id);
+        lung_cells[id] = EpiCellType::ALVEOLI;
+        num_lung_cells++;
       }
       close(fileno);
     }
@@ -282,11 +287,14 @@ Tissue::Tissue()
     } else {
       id = 0;
       while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
-        airway.insert(id);
+        lung_cells[id] = EpiCellType::AIRWAY;
+        num_lung_cells++;
       }
       close(fileno);
     }
-    SLOG("Lung model loaded ", airway.size() + alveoli.size(), " epithileal cells\n");
+    t_load_lung_model.stop();
+    SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ",
+         fixed, setprecision(2), t_load_lung_model.get_elapsed(), " s\n");
   }
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
@@ -294,15 +302,10 @@ Tissue::Tissue()
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id);
-      if (airway.size() > 0 || alveoli.size() > 0) {
-        if (alveoli.count(id) != 0) {  // Add alveoli epi cells
+      if (num_lung_cells) {
+        if (lung_cells[id] != EpiCellType::SAMPLE) {  
           EpiCell *epicell = new EpiCell(id);
-          epicell->type = EpiCellType::ALVEOLI;
-          epicell->infectable = true;
-          grid_points->emplace_back(GridPoint({coords, epicell}));
-        } else if (airway.count(id) != 0) {  // Add bronchial epi cells
-          EpiCell *epicell = new EpiCell(id);
-          epicell->type = EpiCellType::AIRWAY;
+          epicell->type = lung_cells[id];
           epicell->infectable = true;
           grid_points->emplace_back(GridPoint({coords, epicell}));
         } else {  // Add empty space == air
@@ -391,9 +394,11 @@ vector<int64_t> *Tissue::get_neighbors(GridCoords c) {
 int64_t Tissue::get_num_local_grid_points() { return grid_points->size(); }
 
 int64_t Tissue::get_random_airway_epicell_location() {
-  std::set<int>::iterator it = airway.begin();
+/*  std::set<int>::iterator it = airway.begin();
   std::advance(it, airway.size() / 2);
   return *it;
+*/
+  return 0;
 }
 
 bool Tissue::set_initial_infection(int64_t grid_i) {
