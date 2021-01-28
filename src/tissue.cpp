@@ -274,6 +274,7 @@ Tissue::Tissue()
       SDIE("Cannot load lung model from file ", fname);
     } else {
       while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
+        if (id >= num_grid_points) DIE("Wrong dimensions for lung model");
         lung_cells[id] = EpiCellType::ALVEOLI;
         num_lung_cells++;
       }
@@ -287,15 +288,18 @@ Tissue::Tissue()
     } else {
       id = 0;
       while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
+        if (id >= num_grid_points) DIE("Wrong dimensions for lung model");
         lung_cells[id] = EpiCellType::AIRWAY;
         num_lung_cells++;
       }
       close(fileno);
     }
     t_load_lung_model.stop();
-    SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ",
-         fixed, setprecision(2), t_load_lung_model.get_elapsed(), " s\n");
+    SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
+         t_load_lung_model.get_elapsed(), " s\n");
   }
+
+  // FIXME: this only works for linear partitioning, not block
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
@@ -303,7 +307,7 @@ Tissue::Tissue()
       assert(id < num_grid_points);
       GridCoords coords(id);
       if (num_lung_cells) {
-        if (lung_cells[id] != EpiCellType::SAMPLE) {  
+        if (lung_cells[id] != EpiCellType::SAMPLE) {
           EpiCell *epicell = new EpiCell(id);
           epicell->type = lung_cells[id];
           epicell->infectable = true;
@@ -317,19 +321,18 @@ Tissue::Tissue()
         epicell->infectable = true;
         grid_points->emplace_back(GridPoint({coords, epicell}));
       }
-    }
-
 #ifdef DEBUG
-    DBG("adding grid point ", id, " at ", coords.str(), "\n");
-    auto id_1d = coords.to_1d();
-    if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
-    auto nbs = get_neighbors(coords);
-    ostringstream oss;
-    for (auto nb_grid_i : nbs) {
-      oss << GridCoords(nb_grid_i).str() << " ";
-    }
-    DBG("nbs: ", oss.str(), "\n");
+      DBG("adding grid point ", id, " at ", coords.str(), "\n");
+      auto id_1d = coords.to_1d();
+      if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
+      auto nbs = get_neighbors(coords);
+      ostringstream oss;
+      for (auto nb_grid_i : *nbs) {
+        oss << GridCoords(nb_grid_i).str() << " ";
+      }
+      DBG("nbs: ", oss.str(), "\n");
 #endif
+    }
   }
   barrier();
 }
@@ -394,10 +397,10 @@ vector<int64_t> *Tissue::get_neighbors(GridCoords c) {
 int64_t Tissue::get_num_local_grid_points() { return grid_points->size(); }
 
 int64_t Tissue::get_random_airway_epicell_location() {
-/*  std::set<int>::iterator it = airway.begin();
-  std::advance(it, airway.size() / 2);
-  return *it;
-*/
+  /*  std::set<int>::iterator it = airway.begin();
+    std::advance(it, airway.size() / 2);
+    return *it;
+  */
   return 0;
 }
 
