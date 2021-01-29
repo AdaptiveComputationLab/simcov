@@ -113,8 +113,8 @@ class Lung {
       scale = 2000;  // 1 unit = 5um, 1cm = 10^-2m = 10^4 um, 10^4/5 = 2000 units
       loadEstimatedParameters();
       // Draw last 3 generations upper right lobe
-      gridSize.x = gridSize.y = gridSize.z = 300;
-      constructLobe(21, (24 - 21));  // Construct at alveolar ducts
+      gridSize.x = gridSize.y = gridSize.z = 600;
+      constructLobe(15, (24 - 15));  // Construct at alveolar ducts
     }
     std::printf("Number of alveoli %d epithileal cells %d\n", numAlveoli, numAlveoliCells);
     std::printf("Number of airways %d epithileal cells %d\n", numAirways, numAirwayCells);

@@ -274,11 +274,12 @@ Tissue::Tissue()
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
     // Read alveolus epithileal cells
-    int num_lung_cells = load_data_file(_options->lung_model_dir + "/alveolus.dat", num_grid_points,
-                                        EpiCellType::ALVEOLI);
+    num_lung_cells += load_data_file(_options->lung_model_dir + "/alveolus.dat", num_grid_points,
+                                     EpiCellType::ALVEOLI);
     // Read bronchiole epithileal cells
     num_lung_cells += load_data_file(_options->lung_model_dir + "/bronchiole.dat", num_grid_points,
                                      EpiCellType::AIRWAY);
+
     t_load_lung_model.stop();
     SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
          t_load_lung_model.get_elapsed(), " s\n");
@@ -325,6 +326,8 @@ Tissue::Tissue()
 }
 
 int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type) {
+  int num_lung_cells = 0;
+
   ifstream f(fname, ios::in | ios::binary);
   if (!f) SDIE("Couldn't open file ", fname);
   f.seekg(0, ios::end);
@@ -334,7 +337,6 @@ int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType
   f.clear();
   f.seekg(0, ios::beg);
   vector<int> id_buf(num_ids);
-  int num_lung_cells = 0;
   if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), fsize))
     DIE("Couldn't read all bytes in ", fname);
   for (auto id : id_buf) {
