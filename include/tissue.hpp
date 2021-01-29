@@ -175,11 +175,12 @@ class Tissue {
 
   int64_t num_circulating_tcells;
   upcxx::dist_object<int64_t> tcells_generated;
+  std::vector<EpiCellType> lung_cells;
 
   // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
-  std::vector<EpiCellType> lung_cells;
+  int load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type);
 
  public:
   Tissue();

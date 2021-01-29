@@ -270,45 +270,15 @@ Tissue::Tissue()
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   int64_t num_lung_cells = 0;
   if (!_options->lung_model_dir.empty()) {
-
-    // FIXME: load file in block reads to speed it up
-    // Read alveolus epithileal cells
-    string fname = _options->lung_model_dir + "/alveolus.dat";
-    auto fileno = open(fname.c_str(), O_RDONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    int64_t id = 0;
     lung_cells.resize(num_grid_points, EpiCellType::NONE);
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
-    if (fileno == -1) {
-      SDIE("Cannot load lung model from file ", fname);
-    } else {
-      while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
-        if (id >= num_grid_points) DIE("Wrong dimensions for lung model");
-#ifdef BLOCK_PARTITION
-        id = GridCoords::linear_to_block(id);
-#endif
-        lung_cells[id] = EpiCellType::ALVEOLI;
-        num_lung_cells++;
-      }
-      close(fileno);
-    }
+    // Read alveolus epithileal cells
+    int num_lung_cells = load_data_file(_options->lung_model_dir + "/alveolus.dat", num_grid_points,
+                                        EpiCellType::ALVEOLI);
     // Read bronchiole epithileal cells
-    fname = _options->lung_model_dir + "/bronchiole.dat";
-    fileno = open(fname.c_str(), O_RDONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (fileno == -1) {
-      SDIE("Cannot load lung model from file ", fname);
-    } else {
-      id = 0;
-      while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
-        if (id >= num_grid_points) DIE("Wrong dimensions for lung model");
-#ifdef BLOCK_PARTITION
-        id = GridCoords::linear_to_block(id);
-#endif
-        lung_cells[id] = EpiCellType::AIRWAY;
-        num_lung_cells++;
-      }
-      close(fileno);
-    }
+    num_lung_cells += load_data_file(_options->lung_model_dir + "/bronchiole.dat", num_grid_points,
+                                     EpiCellType::AIRWAY);
     t_load_lung_model.stop();
     SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
          t_load_lung_model.get_elapsed(), " s\n");
@@ -352,6 +322,33 @@ Tissue::Tissue()
     }
   }
   barrier();
+}
+
+int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type) {
+  ifstream f(fname, ios::in | ios::binary);
+  if (!f) SDIE("Couldn't open file ", fname);
+  f.seekg(0, ios::end);
+  auto fsize = f.tellg();
+  auto num_ids = fsize / sizeof(int);
+  if (num_ids > num_grid_points) DIE("Too many ids in ", fname, " max is ", num_grid_points);
+  f.clear();
+  f.seekg(0, ios::beg);
+  vector<int> id_buf(num_ids);
+  int num_lung_cells = 0;
+  if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), fsize))
+    DIE("Couldn't read all bytes in ", fname);
+  for (auto id : id_buf) {
+#ifdef BLOCK_PARTITION
+    SWARN("newid ", GridCoords::linear_to_block(id), " ",
+          (epicell_type == EpiCellType::ALVEOLI ? "alveoli" : "airway"));
+    lung_cells[GridCoords::linear_to_block(id)] = epicell_type;
+#else
+    lung_cells[id] = epicell_type;
+#endif
+    num_lung_cells++;
+  }
+  f.close();
+  return num_lung_cells;
 }
 
 intrank_t Tissue::get_rank_for_grid_point(int64_t grid_i) {
