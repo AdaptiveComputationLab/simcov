@@ -58,6 +58,14 @@ int64_t GridCoords::to_1d(int x, int y, int z) {
 #endif
 }
 
+int64_t GridCoords::linear_to_block(int64_t i) {
+  int z = i / (_grid_size->x * _grid_size->y);
+  i = i % (_grid_size->x * _grid_size->y);
+  int y = i / _grid_size->x;
+  int x = i % _grid_size->x;
+  return GridCoords::to_1d(x, y, z);
+}
+
 int64_t GridCoords::to_1d() const { return GridCoords::to_1d(x, y, z); }
 
 void GridCoords::set_rnd(shared_ptr<Random> rnd_gen) {
@@ -260,14 +268,15 @@ Tissue::Tissue()
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
-  grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   int64_t num_lung_cells = 0;
   if (!_options->lung_model_dir.empty()) {
+
+    // FIXME: load file in block reads to speed it up
     // Read alveolus epithileal cells
     string fname = _options->lung_model_dir + "/alveolus.dat";
     auto fileno = open(fname.c_str(), O_RDONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     int64_t id = 0;
-    lung_cells.resize(num_grid_points, EpiCellType::SAMPLE);
+    lung_cells.resize(num_grid_points, EpiCellType::NONE);
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
     if (fileno == -1) {
@@ -275,6 +284,9 @@ Tissue::Tissue()
     } else {
       while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
         if (id >= num_grid_points) DIE("Wrong dimensions for lung model");
+#ifdef BLOCK_PARTITION
+        id = GridCoords::linear_to_block(id);
+#endif
         lung_cells[id] = EpiCellType::ALVEOLI;
         num_lung_cells++;
       }
@@ -289,6 +301,9 @@ Tissue::Tissue()
       id = 0;
       while (read(fileno, reinterpret_cast<char *>(&id), sizeof(int))) {
         if (id >= num_grid_points) DIE("Wrong dimensions for lung model");
+#ifdef BLOCK_PARTITION
+        id = GridCoords::linear_to_block(id);
+#endif
         lung_cells[id] = EpiCellType::AIRWAY;
         num_lung_cells++;
       }
@@ -299,7 +314,8 @@ Tissue::Tissue()
          t_load_lung_model.get_elapsed(), " s\n");
   }
 
-  // FIXME: this only works for linear partitioning, not block
+  // FIXME: these blocks need to be stride distributed to better load balance
+  grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
@@ -307,7 +323,7 @@ Tissue::Tissue()
       assert(id < num_grid_points);
       GridCoords coords(id);
       if (num_lung_cells) {
-        if (lung_cells[id] != EpiCellType::SAMPLE) {
+        if (lung_cells[id] != EpiCellType::NONE) {
           EpiCell *epicell = new EpiCell(id);
           epicell->type = lung_cells[id];
           epicell->infectable = true;
@@ -318,6 +334,7 @@ Tissue::Tissue()
       } else {
         EpiCell *epicell = new EpiCell(id);
         epicell->type = EpiCellType::ALVEOLI;
+        epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
         epicell->infectable = true;
         grid_points->emplace_back(GridPoint({coords, epicell}));
       }
@@ -347,6 +364,8 @@ GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, int64_t grid
   int64_t i = grid_i % _grid_blocks.block_size + block_i * _grid_blocks.block_size;
   assert(i < grid_points->size());
   GridPoint *grid_point = &(*grid_points)[i];
+  if (grid_point->coords.to_1d() != grid_i)
+    DIE("mismatched coords to grid i ", grid_point->coords.to_1d(), " != ", grid_i);
   return grid_point;
 }
 
@@ -360,7 +379,6 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
                if (grid_point->epicell) {
                  sample.has_epicell = true;
                  sample.epicell_status = grid_point->epicell->status;
-                 sample.epicell_type = grid_point->epicell->type;
                }
                sample.virions = grid_point->virions;
                sample.chemokine = grid_point->chemokine;
@@ -396,13 +414,13 @@ vector<int64_t> *Tissue::get_neighbors(GridCoords c) {
 
 int64_t Tissue::get_num_local_grid_points() { return grid_points->size(); }
 
+/*
 int64_t Tissue::get_random_airway_epicell_location() {
-  /*  std::set<int>::iterator it = airway.begin();
-    std::advance(it, airway.size() / 2);
-    return *it;
-  */
-  return 0;
+  std::set<int>::iterator it = airway.begin();
+  std::advance(it, airway.size() / 2);
+  return *it;
 }
+*/
 
 bool Tissue::set_initial_infection(int64_t grid_i) {
   return rpc(

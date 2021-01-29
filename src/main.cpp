@@ -619,7 +619,6 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             SampleData sd = {.tcells = (double)num_tcells / block_size,
                              .has_epicell = epicell_found,
                              .epicell_status = epi_status,
-                             .epicell_type = EpiCellType::SAMPLE,
                              .virions = virions / block_size,
                              .chemokine = chemokine / block_size};
 #else

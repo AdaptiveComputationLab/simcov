@@ -83,6 +83,9 @@ struct GridCoords {
 
   static int64_t to_1d(int x, int y, int z);
 
+  // convert linear coord system to block - needed to use with external lung model data
+  static int64_t linear_to_block(int64_t i);
+
   string str() const {
     return "(" + to_string(x) + ", " + to_string(y) + ", " + to_string(z) + ")";
   }
@@ -101,9 +104,9 @@ struct TCell {
   TCell();
 };
 
-enum class EpiCellStatus { HEALTHY, INCUBATING, EXPRESSING, APOPTOTIC, DEAD };
+enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4 };
 const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD"};
-enum class EpiCellType { AIRWAY, ALVEOLI, SAMPLE };
+enum class EpiCellType { NONE, AIRWAY, ALVEOLI };
 
 class EpiCell {
   int id;
@@ -149,7 +152,6 @@ struct SampleData {
   double tcells = 0;
   bool has_epicell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
-  EpiCellType epicell_type = EpiCellType::AIRWAY;
   float virions = 0;
   float chemokine = 0;
 };
@@ -226,7 +228,7 @@ class Tissue {
 
   SampleData get_grid_point_sample_data(int64_t grid_i);
 
-  int64_t get_random_airway_epicell_location();
+  // int64_t get_random_airway_epicell_location();
 
 #ifdef DEBUG
   void check_actives(int time_step);
