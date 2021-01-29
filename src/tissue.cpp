@@ -339,8 +339,6 @@ int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType
     DIE("Couldn't read all bytes in ", fname);
   for (auto id : id_buf) {
 #ifdef BLOCK_PARTITION
-    SWARN("newid ", GridCoords::linear_to_block(id), " ",
-          (epicell_type == EpiCellType::ALVEOLI ? "alveoli" : "airway"));
     lung_cells[GridCoords::linear_to_block(id)] = epicell_type;
 #else
     lung_cells[id] = epicell_type;
