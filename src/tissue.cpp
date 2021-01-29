@@ -304,7 +304,7 @@ Tissue::Tissue()
       } else {
         EpiCell *epicell = new EpiCell(id);
         epicell->type = EpiCellType::ALVEOLI;
-        epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
+        // epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
         epicell->infectable = true;
         grid_points->emplace_back(GridPoint({coords, epicell}));
       }

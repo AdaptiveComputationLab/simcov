@@ -688,13 +688,16 @@ void run_sim(Tissue &tissue) {
       if (grid_point->virions > 0)
         DBG("virions\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
             grid_point->coords.z, "\t", grid_point->virions, "\n");
-      if (grid_point->epicell && !warned_boundary &&
-          (!grid_point->coords.x || !grid_point->coords.y ||
-           (_grid_size->z > 1 && !grid_point->coords.z)) &&
+      if (!warned_boundary && grid_point->epicell &&
           grid_point->epicell->status != EpiCellStatus::HEALTHY) {
-        WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
-             " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
-        warned_boundary = true;
+        if (!grid_point->coords.x || grid_point->coords.x == _grid_size->x - 1 ||
+            !grid_point->coords.y || grid_point->coords.y == _grid_size->y - 1 ||
+            (_grid_size->z > 1 &&
+             (!grid_point->coords.z || grid_point->coords.z == _grid_size->z - 1))) {
+          WARN("Hit boundary at ", grid_point->coords.str(), " ", grid_point->epicell->str(),
+               " virions ", grid_point->virions, " chemokine ", grid_point->chemokine);
+          warned_boundary = true;
+        }
       }
       // DBG("updating grid point ", grid_point->str(), "\n");
       upcxx::progress();
