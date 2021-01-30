@@ -181,6 +181,7 @@ class Tissue {
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
   int load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type);
+  vector<int> get_model_dims(const string &fname);
 
  public:
   Tissue();

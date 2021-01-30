@@ -230,6 +230,7 @@ Tissue::Tissue()
     return ((double)numerator / denominator - (numerator / denominator) != 0);
   };
   BarrierTimer timer(__FILEFUNC__, false, true);
+
   _grid_size = make_shared<GridCoords>(
       GridCoords(_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]));
   int64_t num_grid_points = get_num_grid_points();
@@ -326,25 +327,25 @@ Tissue::Tissue()
 }
 
 int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type) {
-  int num_lung_cells = 0;
-
   ifstream f(fname, ios::in | ios::binary);
   if (!f) SDIE("Couldn't open file ", fname);
   f.seekg(0, ios::end);
   auto fsize = f.tellg();
   auto num_ids = fsize / sizeof(int);
-  if (num_ids > num_grid_points) DIE("Too many ids in ", fname, " max is ", num_grid_points);
+  if (num_ids > num_grid_points + 3) DIE("Too many ids in ", fname, " max is ", num_grid_points);
   f.clear();
   f.seekg(0, ios::beg);
   vector<int> id_buf(num_ids);
   if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), fsize))
     DIE("Couldn't read all bytes in ", fname);
-  for (auto id : id_buf) {
+  int num_lung_cells = 0;
+  // skip first three wwhich are dimensions
+  for (int i = 3; i < id_buf.size(); i++) {
+    auto id = id_buf[i];
 #ifdef BLOCK_PARTITION
-    lung_cells[GridCoords::linear_to_block(id)] = epicell_type;
-#else
-    lung_cells[id] = epicell_type;
+    id = GridCoords::linear_to_block(id);
 #endif
+    lung_cells[id] = epicell_type;
     num_lung_cells++;
   }
   f.close();

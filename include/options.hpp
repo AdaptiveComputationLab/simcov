@@ -220,6 +220,20 @@ class Options {
     return true;
   }
 
+  vector<int> get_model_dims(const string &fname) {
+    ifstream f(fname, std::ios::in | std::ios::binary);
+    if (!f) {
+      cerr << "Couldn't open file " << fname << endl;
+      return {};
+    }
+    vector<int> dims(3);
+    if (!f.read(reinterpret_cast<char *>(&(dims[0])), 3 * sizeof(int))) {
+      cerr << "Couldn't read dims in " << fname << endl;
+      return {};
+    }
+    return dims;
+  }
+
  public:
   vector<int> dimensions{300, 300, 1};
   vector<int> whole_lung_dims{48000, 40000, 20000};
@@ -396,6 +410,21 @@ class Options {
     upcxx::barrier();
 
     _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
+
+    if (!lung_model_dir.empty()) {
+      auto model_dims = get_model_dims(lung_model_dir + "/alveolus.dat");
+      if (model_dims.size() < 3) return false;
+      for (int i = 0; i < 3; i++) {
+        if (model_dims[i] != dimensions[i]) {
+          dimensions = model_dims;
+          if (!rank_me())
+            cerr << KLRED << "WARNING: " << KNORM
+                 << "Setting dimensions to model data: " << dimensions[0] << ", " << dimensions[1]
+                 << ", " << dimensions[2] << endl;
+          break;
+        }
+      }
+    }
 
     if (virion_decay_rate * antibody_factor > 1.0) {
       if (!rank_me())

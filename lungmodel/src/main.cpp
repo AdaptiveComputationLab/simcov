@@ -58,11 +58,14 @@ int main(int argc, char** argv) {
     cerr << "ERROR: Cannot create file " << fname << " " << strerror(errno) << "\n";
     exit(1);
   }
-  int bytes_written = 0;
+  int bytes_written =
+      write(fileno, reinterpret_cast<const char*>(&dimensions[0]), sizeof(int) * dimensions.size());
+
   for (const int& a : lung.getAlveoliEpiCellIds()) {
     bytes_written += write(fileno, reinterpret_cast<const char*>(&a), sizeof(int));
   }
-  if (bytes_written != sizeof(int) * (lung.getAlveoliEpiCellIds()).size()) {
+  if (bytes_written !=
+      sizeof(int) * (lung.getAlveoliEpiCellIds()).size() + sizeof(int) * dimensions.size()) {
     cerr << "ERROR: Could not write all " << lung.getAlveoliEpiCellIds().size() << " bytes, wrote "
          << bytes_written << endl;
     exit(1);
@@ -75,11 +78,13 @@ int main(int argc, char** argv) {
     cerr << "ERROR: Cannot create file " << fname << " " << strerror(errno) << "\n";
     exit(1);
   }
-  bytes_written = 0;
+  bytes_written =
+      write(fileno, reinterpret_cast<const char*>(&dimensions[0]), sizeof(int) * dimensions.size());
   for (const int& a : lung.getAirwayEpiCellIds()) {
     bytes_written += write(fileno, reinterpret_cast<const char*>(&a), sizeof(int));
   }
-  if (bytes_written != sizeof(int) * (lung.getAirwayEpiCellIds()).size()) {
+  if (bytes_written !=
+      sizeof(int) * (lung.getAirwayEpiCellIds()).size() + sizeof(int) * dimensions.size()) {
     cerr << "ERROR: Could not write all " << lung.getAirwayEpiCellIds().size() << " bytes, wrote "
          << bytes_written << endl;
     exit(1);
