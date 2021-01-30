@@ -91,13 +91,14 @@ struct Level {
 
 class Lung {
  public:
-  Lung(bool isFullModel) {
-    this->isFullModel = isFullModel;
+  Lung(bool isFullModel, int levels_to_model, double scale, Int3D gridSize)
+      : isFullModel(isFullModel)
+      , scale(scale)
+      , levels_to_model(levels_to_model)
+      , gridSize(gridSize) {
     this->rnd_gen = std::make_shared<Random>(753695190);
     if (isFullModel) {
-      scale = 10;  // 1 unit = 1mm, 1cm = 10^-2m = 10^4 um, 10^4/10^3 = 10 units
       loadEstimatedParameters();
-      gridSize.x = gridSize.y = gridSize.z = 300;
       // Draw upper right lobe 24 gen
       constructLobe(0, 24);
       // Draw middle right lobe 24 gen
@@ -109,12 +110,9 @@ class Lung {
       // Draw lower left lobe 25 gen
       constructLobe(98, 25);
     } else {
-      // scale = 200; // 1 unit = 50um, 1cm = 10^-2m = 10^4 umm 10^4/50 = 200 units
-      scale = 2000;  // 1 unit = 5um, 1cm = 10^-2m = 10^4 um, 10^4/5 = 2000 units
       loadEstimatedParameters();
-      // Draw last 3 generations upper right lobe
-      gridSize.x = gridSize.y = gridSize.z = 300;
-      constructLobe(20, (24 - 20));  // Construct at alveolar ducts
+      int top_level = 24 - levels_to_model;
+      constructLobe(top_level, (24 - top_level));  // Construct at alveolar ducts
     }
     std::printf("Number of alveoli %d epithileal cells %d\n", numAlveoli, numAlveoliCells);
     std::printf("Number of airways %d epithileal cells %d\n", numAirways, numAirwayCells);
@@ -130,13 +128,14 @@ class Lung {
 
  private:
   bool isFullModel = false;
-  double scale = 1.0;
+  double scale = 2000;
+  int levels_to_model = 3;
   int numAlveoli = 0, numAlveoliCells = 0, numAirways = 0, numAirwayCells = 0;
   std::vector<Level> levels;
   std::set<int> alveoliEpiCellPositions1D;
   std::set<int> airwayEpiCellPositions1D;
   std::vector<Int3D> positions;
-  Int3D gridSize;
+  Int3D gridSize = {300, 300, 300};
   std::shared_ptr<Random> rnd_gen;
 
   Int3D rotate(const Int3D &vec, const Double3D &axis, const double &angle) {
@@ -233,6 +232,10 @@ class Lung {
         airwayEpiCellPositions1D.insert(newPosition1.x + newPosition1.y * gridSize.x +
                                         newPosition1.z * gridSize.x * gridSize.y);
         numAirwayCells++;
+      } else {
+        //        std::cerr << "Point (" << newPosition1.x << ", " << newPosition1.y << ", " <<
+        //        newPosition1.z
+        //                  << ") is outside the grid\n";
       }
     }
     // Create root for next generation

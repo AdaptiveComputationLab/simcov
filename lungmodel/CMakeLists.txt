@@ -31,6 +31,6 @@ endif()
 
 include(CMakeDefinitions.txt)
 
-include_directories(include)
+include_directories(../include include)
 
 add_subdirectory(src)
