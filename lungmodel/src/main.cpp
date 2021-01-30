@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
       ->expected(3)
       ->capture_default_str();
   app.add_option("--levels", levels, "Number of levels to model a single lobe (0 for full lung)")
+      ->check(CLI::Range(0, 24))
       ->capture_default_str();
   app.add_option("--scale", scale, "Scale factor for model")->capture_default_str();
   app.add_option("-o,--output", output_dir, "Output directory")->capture_default_str();
