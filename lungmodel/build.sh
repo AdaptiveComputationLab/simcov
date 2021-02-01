@@ -13,9 +13,8 @@ rootdir=`pwd`
 INSTALL_PATH=${LUNGMODEL_INSTALL_PATH:=$rootdir}
 
 if [ "$1" == "clean" ]; then
-    rm -rf lungmodel alveolus.dat bronchiole.dat $rootdir/.build $INSTALL_PATH/cmake ../alveolus.dat ../bronchiole.dat
+    rm -rf lungmodel $rootdir/.build $INSTALL_PATH/cmake lung_model_data
 else
-    rm -rf $INSTALL_PATH/cmake
     mkdir -p $rootdir/.build
     cd $rootdir/.build
     rm -rf *
