@@ -82,10 +82,14 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
         #if labels[j].startswith('Linear'):
         #    print(xs)
         #    print(ys)
-        if lw > 0:
-            ax.plot(xs, ys[j], label=labels[j][0:7], lw=lw, alpha=alpha, color=colors[j])
+        if labels[j].startswith('Linear'):
+            label = 'RNA copies/swab'
         else:
-            ax.plot(xs, ys[j], label=labels[j][0:7], lw=0, marker='x', color='red')
+            label = labels[j][0:7]
+        if lw > 0:
+            ax.plot(xs, ys[j], label=label, lw=lw, alpha=alpha, color=colors[j])
+        else:
+            ax.plot(xs, ys[j], label=label, lw=0, marker='x', color='red')
     ax.legend(loc='upper left')
     ax.set_xlabel('Time (days)')
     ax.set_title(title)
@@ -93,8 +97,8 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
     if xticks[1] - xticks[0] > 1 and len(xs) > 0:
         ax.set_xticks(range(0, int(max(xs)) + 1, 1))
     if log_scale:
-        if numpy.min(ys) < 0.0001:
-            ax.set_ylim(0.0001, 10 * numpy.max(ys))
+        #if numpy.min(ys) < 0.0001:
+        ax.set_ylim(1, 10 * numpy.max(ys))
         ax.set_yscale('log')
     plt.tight_layout()
 

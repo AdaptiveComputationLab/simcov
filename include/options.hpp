@@ -259,7 +259,7 @@ class Options {
   double max_binding_prob = 1.0;
 
   double infectivity = 0.02;
-  int virion_production = 35;
+  double virion_production = 35;
   double virion_decay_rate = 0.002;
   double virion_diffusion_coef = 1.0;
 

@@ -7,3 +7,5 @@ __pycache__
 *.dat
 results
 transfer.sh
+batch-scripts/*.out
+configs
