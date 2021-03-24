@@ -101,6 +101,23 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
         ax.set_ylim(1, 10 * numpy.max(ys))
         ax.set_yscale('log')
     plt.tight_layout()
+    return xs, ys[j]
+
+
+def compute_rmse(emp_xs, emp_ys, sim_xs, sim_ys):
+    diffs = []
+    for i in range(len(emp_xs)):
+        for j in range(len(sim_xs)):
+            if int(sim_xs[j]) == int(emp_xs[i]):
+                sim = max(1.0, numpy.log(max(1.0, sim_ys[j])))
+                emp = max(1.0, numpy.log(emp_ys[i]))
+                diffs.append(numpy.square(sim - emp))
+                print(emp_xs[i], '%.2f %.2f %.2f' % (sim, emp, diffs[-1]))
+                break
+
+    #print(diffs)
+    return numpy.sqrt(numpy.mean(diffs))
+
 
 def animate(i):
     global moddate
@@ -126,13 +143,16 @@ def animate(i):
                 plot_subplot(options.compare_file, ax_tcells, [6, 5], 'tcells', lw=4, alpha=0.3, clear=False,
                              log_scale=options.log_scale)
 
-            plot_subplot(options.stats_file, ax_virus, [8], 'avg virions per cell', log_scale=options.log_scale)
+            sim_xs, sim_ys = plot_subplot(options.stats_file, ax_virus, [8], 'avg virions per cell', log_scale=options.log_scale,
+                                          scale=options.virus_scale)
             if options.compare_file != '':
                 plot_subplot(options.compare_file, ax_virus, [8], 'avg virions per cell', lw=4, alpha=0.3, clear=False,
                              log_scale=options.log_scale, scale=options.virus_scale)
             if options.empirical_data != '':
-                plot_subplot(options.empirical_data, ax_virus, [3], 'avg virions per cell', lw=0, alpha=0.3, clear=False,
-                             log_scale=options.log_scale, scale=options.virus_scale, xcol=1, xscale=24*60)
+                emp_xs, emp_ys = plot_subplot(options.empirical_data, ax_virus, [3], 'avg virions per cell', lw=0, alpha=0.3,
+                                              clear=False, log_scale=options.log_scale, scale=1.0, xcol=1,
+                                              xscale=24*60)
+                print('rmse %.3f' % compute_rmse(emp_xs, emp_ys, sim_xs, sim_ys))
 
             plot_subplot(options.stats_file, ax_chemo, [7], 'avg chemokines per cell')
             if options.compare_file != '':
