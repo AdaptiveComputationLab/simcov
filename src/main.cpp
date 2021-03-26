@@ -378,7 +378,7 @@ void update_chemokines(GridPoint *grid_point, vector<int64_t> &nbs,
 void update_virions(GridPoint *grid_point, vector<int64_t> &nbs,
                     HASH_TABLE<int64_t, float> &virions_to_update) {
   update_concentration_timer.start();
-  grid_point->virions = grid_point->virions * (1.0 - _options->virion_decay_rate);
+  grid_point->virions = grid_point->virions * (1.0 - _options->virion_clearance_rate);
   assert(grid_point->virions >= 0);
   if (grid_point->virions > 0) {
     for (auto &nb_grid_i : nbs) {
@@ -669,7 +669,7 @@ void run_sim(Tissue &tissue) {
     seed_infection(tissue, time_step);
     barrier();
     if (time_step == _options->antibody_period)
-      _options->virion_decay_rate *= _options->antibody_factor;
+      _options->virion_clearance_rate *= _options->antibody_factor;
     chemokines_to_update.clear();
     virions_to_update.clear();
     chemokines_cache.clear();

@@ -260,7 +260,7 @@ class Options {
 
   double infectivity = 0.02;
   double virion_production = 35;
-  double virion_decay_rate = 0.002;
+  double virion_clearance_rate = 0.002;
   double virion_diffusion_coef = 1.0;
 
   double chemokine_production = 1.0;
@@ -328,7 +328,7 @@ class Options {
     app.add_option("--virion-production", virion_production,
                    "Number of virions produced by expressing cell each time step")
         ->capture_default_str();
-    app.add_option("--virion-decay", virion_decay_rate,
+    app.add_option("--virion-clearance", virion_clearance_rate,
                    "Fraction by which virion count drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
@@ -354,7 +354,7 @@ class Options {
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--antibody-factor", antibody_factor,
-                   "Impact of antibodies; multiplier for virion decay")
+                   "Impact of antibodies; multiplier for virion clearance")
         ->capture_default_str();
     app.add_option("--antibody-period", antibody_period,
                    "Number of time steps before antibodies start to be produced")
@@ -426,9 +426,9 @@ class Options {
       }
     }
 
-    if (virion_decay_rate * antibody_factor > 1.0) {
+    if (virion_clearance_rate * antibody_factor > 1.0) {
       if (!rank_me())
-        cerr << "Invalid parameter settings: virion-decay * antibody_factor > 1.\n"
+        cerr << "Invalid parameter settings: virion-clearance * antibody_factor > 1.\n"
              << "Reduce either or both of those settings\n";
       return false;
     }

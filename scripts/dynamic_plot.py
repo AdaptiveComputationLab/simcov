@@ -67,9 +67,15 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
         if line.startswith('#'):
             continue
         fields = line.split('\t')
-        xs.append((float(fields[xcol]) * xscale) / options.resolution)
+        if xscale == 1:
+            xs.append((float(fields[xcol]) + 1) * xscale / options.resolution)
+        else:
+            xs.append((float(fields[xcol]) * xscale) / options.resolution)
         for j in range(len(columns)):
-            ys[j].append(scale * float(fields[columns[j]]))
+            if log_scale:
+                ys[j].append(1.0 + scale * float(fields[columns[j]]))
+            else:
+                ys[j].append(scale * float(fields[columns[j]]))
             if ys[j][-1] > 0:
                 zero_max = False
     if clear:
@@ -98,19 +104,19 @@ def plot_subplot(fname, ax, columns, title, lw=2, alpha=1.0, clear=True, log_sca
         ax.set_xticks(range(0, int(max(xs)) + 1, 1))
     if log_scale:
         #if numpy.min(ys) < 0.0001:
-        ax.set_ylim(1, 10 * numpy.max(ys))
+        ax.set_ylim(0.5, 10 * numpy.max(ys))
         ax.set_yscale('log')
     plt.tight_layout()
     return xs, ys[j]
 
 
-def compute_rmse(emp_xs, emp_ys, sim_xs, sim_ys):
+def compute_rmsle(emp_xs, emp_ys, sim_xs, sim_ys):
     diffs = []
     for i in range(len(emp_xs)):
         for j in range(len(sim_xs)):
             if int(sim_xs[j]) == int(emp_xs[i]):
-                sim = max(1.0, numpy.log(max(1.0, sim_ys[j])))
-                emp = max(1.0, numpy.log(emp_ys[i]))
+                sim = numpy.log(sim_ys[j])
+                emp = numpy.log(emp_ys[i])
                 diffs.append(numpy.square(sim - emp))
                 print(emp_xs[i], '%.2f %.2f %.2f' % (sim, emp, diffs[-1]))
                 break
@@ -152,7 +158,7 @@ def animate(i):
                 emp_xs, emp_ys = plot_subplot(options.empirical_data, ax_virus, [3], 'avg virions per cell', lw=0, alpha=0.3,
                                               clear=False, log_scale=options.log_scale, scale=1.0, xcol=1,
                                               xscale=24*60)
-                print('rmse %.3f' % compute_rmse(emp_xs, emp_ys, sim_xs, sim_ys))
+                print('rmsle %.3f' % compute_rmsle(emp_xs, emp_ys, sim_xs, sim_ys))
 
             plot_subplot(options.stats_file, ax_chemo, [7], 'avg chemokines per cell')
             if options.compare_file != '':
@@ -170,5 +176,6 @@ def animate(i):
         return
 
     
-ani = animation.FuncAnimation(fig, animate, interval=1000)
+#ani = animation.FuncAnimation(fig, animate, interval=1000)
+animate(0)
 plt.show()
