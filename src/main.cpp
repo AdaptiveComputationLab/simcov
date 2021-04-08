@@ -652,7 +652,7 @@ void run_sim(Tissue &tissue) {
   int64_t whole_lung_volume = (int64_t)_options->whole_lung_dims[0] *
                               (int64_t)_options->whole_lung_dims[1] *
                               (int64_t)_options->whole_lung_dims[2];
-  auto sim_volume = _grid_size->x * _grid_size->y * _grid_size->z;
+  auto sim_volume = get_num_grid_points();
   double extravasate_fraction = (double)sim_volume / whole_lung_volume;
   SLOG("Fraction of circulating T cells extravasating is ", extravasate_fraction, "\n");
   SLOG("# datetime                    step    ", _sim_stats.header(STATS_COL_WIDTH),
