@@ -17,11 +17,8 @@ int main(int argc, char** argv) {
   string output_dir = "lung_model_data";
   bool full_lung = false;
   int levels = 3;
-  // scale = 10;  // 1 unit = 1mm, 1cm = 10^-2m = 10^4 um, 10^4/10^3 = 10 units
-  // scale = 200; // 1 unit = 50um, 1cm = 10^-2m = 10^4 umm 10^4/50 = 200 units
-  double scale = 2000;  // 1 unit = 5um, 1cm = 10^-2m = 10^4 um, 10^4/5 = 2000 units
+  double scale = 2000;
   vector<int> dimensions{300, 300, 300};
-
   app.add_option("-d,--dim", dimensions, "Dimensions: x y z")
       ->delimiter(',')
       ->expected(3)
@@ -37,6 +34,12 @@ int main(int argc, char** argv) {
     app.exit(e);
   }
   if (levels == 0) full_lung = true;
+  Lung lung(full_lung,
+    levels,
+    scale,
+    {dimensions[0], dimensions[1], dimensions[2]});
+#ifndef COMPUTE_ONLY
+  // Create output directory
   if (mkdir(output_dir.c_str(), S_IRWXU) == -1) {
     // could not create the directory
     if (errno == EEXIST) {
@@ -48,8 +51,6 @@ int main(int argc, char** argv) {
       exit(1);
     }
   }
-
-  Lung lung(full_lung, levels, scale, {dimensions[0], dimensions[1], dimensions[2]});
   // Write alveolus epithileal cells
   string fname = output_dir + "/alveolus.dat";
   auto fileno =
@@ -58,14 +59,14 @@ int main(int argc, char** argv) {
     cerr << "ERROR: Cannot create file " << fname << " " << strerror(errno) << "\n";
     exit(1);
   }
-  int bytes_written =
-      write(fileno, reinterpret_cast<const char*>(&dimensions[0]), sizeof(int) * dimensions.size());
-
-  for (const int& a : lung.getAlveoliEpiCellIds()) {
-    bytes_written += write(fileno, reinterpret_cast<const char*>(&a), sizeof(int));
+  int64_t bytes_written =
+      write(fileno, reinterpret_cast<const char*>(&dimensions[0]), sizeof(int64_t) * dimensions.size());
+  //TODO change simcov to input int64_t
+  for (const int64_t& a : lung.getAlveoliEpiCellIds()) {
+    bytes_written += write(fileno, reinterpret_cast<const char*>(&a), sizeof(int64_t));
   }
   if (bytes_written !=
-      sizeof(int) * (lung.getAlveoliEpiCellIds()).size() + sizeof(int) * dimensions.size()) {
+      sizeof(int64_t) * (lung.getAlveoliEpiCellIds()).size() + sizeof(int64_t) * dimensions.size()) {
     cerr << "ERROR: Could not write all " << lung.getAlveoliEpiCellIds().size() << " bytes, wrote "
          << bytes_written << endl;
     exit(1);
@@ -79,16 +80,18 @@ int main(int argc, char** argv) {
     exit(1);
   }
   bytes_written =
-      write(fileno, reinterpret_cast<const char*>(&dimensions[0]), sizeof(int) * dimensions.size());
-  for (const int& a : lung.getAirwayEpiCellIds()) {
-    bytes_written += write(fileno, reinterpret_cast<const char*>(&a), sizeof(int));
+      write(fileno, reinterpret_cast<const char*>(&dimensions[0]), sizeof(int64_t) * dimensions.size());
+  for (const int64_t& a : lung.getAirwayEpiCellIds()) {
+    bytes_written += write(fileno, reinterpret_cast<const char*>(&a), sizeof(int64_t));
   }
   if (bytes_written !=
-      sizeof(int) * (lung.getAirwayEpiCellIds()).size() + sizeof(int) * dimensions.size()) {
+      sizeof(int64_t) * (lung.getAirwayEpiCellIds()).size() + sizeof(int64_t) * dimensions.size()) {
     cerr << "ERROR: Could not write all " << lung.getAirwayEpiCellIds().size() << " bytes, wrote "
          << bytes_written << endl;
     exit(1);
   }
   close(fileno);
+#endif
+
   return 0;
 }
