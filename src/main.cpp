@@ -132,19 +132,18 @@ void seed_infection(Tissue &tissue, int time_step) {
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
     if (infection_coords[3] == time_step) {
-      /*
-      if (!_options->lung_model_dir.empty()) {
-        GridCoords coords(tissue.get_random_airway_epicell_location());
-        WARN("Time step ", time_step, ":initial infection at ", coords.str());
-        DBG("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
-        tissue.set_initial_infection(coords.to_1d());
-      } else {
-        */
       GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
-      WARN("Time step ", time_step, ":initial infection at ", coords.str());
-      DBG("Time step ", time_step, ":initial infection at ", coords.str() + "\n");
-      tissue.set_initial_infection(coords.to_1d());
-      //}
+      auto coords_1d = coords.to_1d();
+      while (true) {
+        GridCoords new_coords(coords_1d);
+        WARN("Time step ", time_step, ": attempt initial infection at ", new_coords.str() + "\n");
+        if (tissue.set_initial_infection(coords_1d)) {
+          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + "\n");
+          break;
+        }
+        coords_1d++;
+        if (coords_1d >= get_num_grid_points()) break;
+      }
       _options->infection_coords.erase(it--);
     }
   }
