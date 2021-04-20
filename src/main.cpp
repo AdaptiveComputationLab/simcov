@@ -134,15 +134,19 @@ void seed_infection(Tissue &tissue, int time_step) {
     if (infection_coords[3] == time_step) {
       GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
       auto coords_1d = coords.to_1d();
+      int64_t num_tries = 0;
       while (true) {
         GridCoords new_coords(coords_1d);
-        WARN("Time step ", time_step, ": attempt initial infection at ", new_coords.str() + "\n");
         if (tissue.set_initial_infection(coords_1d)) {
-          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + "\n");
+          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries");
           break;
         }
+        num_tries++;
         coords_1d++;
-        if (coords_1d >= get_num_grid_points()) break;
+        if (coords_1d >= get_num_grid_points()) {
+          WARN("Could not find epicell to match uniform initial infection coord at ", coords.str());
+          break;
+        }
       }
       _options->infection_coords.erase(it--);
     }
