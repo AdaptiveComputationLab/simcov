@@ -25,6 +25,8 @@ rootdir=`pwd`
 
 INSTALL_PATH=${SIMCOV_INSTALL_PATH:=$rootdir/install}
 
+echo "Installing to $INSTALL_PATH"
+
 rm -rf $INSTALL_PATH/bin/simcov
 
 if [ "$1" == "clean" ]; then
