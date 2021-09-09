@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #PBS -q default
-#PBS -l nodes=1:ppn=8
-#PBS -l walltime=48:00:00
+#PBS -l nodes=2:ppn=8
+#PBS -l walltime=00:30:00
 #PBS -N simcov_test
 #PBS -j oe
 
@@ -14,4 +14,4 @@ module load cmake-3.18.2-gcc-9.3.0-57ha7sw
 
 cd $PBS_O_WORKDIR
 
-upcxx-run -n $PBS_NP -N $PBS_NUM_NODES -- install/bin/simcov
+upcxx-run -n $PBS_NP -N $PBS_NUM_NODES -- install/bin/simcov --config=covid_default.config --output=results
