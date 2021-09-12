@@ -2,7 +2,7 @@
 #SBATCH --partition=singleGPU
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=16
-#SBATCH --time=0-00:30:00
+#SBATCH --time=0-01:00:00
 #SBATCH --job-name=simcov_test
 #SBATCh --output=simcov.out
 

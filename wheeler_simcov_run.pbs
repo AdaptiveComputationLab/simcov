@@ -2,7 +2,7 @@
 
 #PBS -q default
 #PBS -l nodes=2:ppn=8
-#PBS -l walltime=00:30:00
+#PBS -l walltime=01:00:00
 #PBS -N simcov_test
 #PBS -j oe
 
