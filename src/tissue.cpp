@@ -275,7 +275,7 @@ Tissue::Tissue()
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
     // Read epithileal cells
-    num_lung_cells = load_data_file(_options->lung_model_dir + "/airways.dat", num_grid_points);
+    num_lung_cells = load_data_file(_options->lung_model_dir, num_grid_points);
     t_load_lung_model.stop();
     SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
          t_load_lung_model.get_elapsed(), " s\n");
@@ -321,30 +321,27 @@ Tissue::Tissue()
   barrier();
 }
 
-int Tissue::load_data_file(const string &fname, int num_grid_points) {
+int64_t Tissue::load_data_file(const string &fname, int64_t num_grid_points) {
   ifstream f(fname, ios::in | ios::binary);
   if (!f) SDIE("Couldn't open file ", fname);
-  f.seekg(0, ios::end);
-  auto fsize = f.tellg();
-  auto num_ids = fsize / sizeof(int);
-  if (num_ids > num_grid_points + 3) DIE("Too many ids in ", fname, " max is ", num_grid_points);
+  f.seekg(0, f.end);
+  int64_t num_ids = f.tellg(); // no need to divide by sizeof(char) = 1
+  if (num_ids > num_grid_points) DIE("Too many ids in ", fname, " max is ", num_grid_points);
   f.clear();
   f.seekg(0, ios::beg);
-  vector<int> id_buf(num_ids);
-  if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), fsize))
+  vector<char> id_buf(num_ids);
+  if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), num_ids))
     DIE("Couldn't read all bytes in ", fname);
-  int num_lung_cells = 0;
-  // skip first three wwhich are dimensions
-  for (int i = 0; i < id_buf.size(); i++) {
-    auto id = id_buf[i];
-//#ifdef BLOCK_PARTITION
-//    id = GridCoords::linear_to_block(id);
-//#endif
-    if (id == 2) {
-        lung_cells[i] = EpiCellType::ALVEOLI;
+  int64_t num_lung_cells = 0;
+  for (int64_t i = 0; i < id_buf.size(); i++) {
+#ifdef BLOCK_PARTITION
+    auto id = GridCoords::linear_to_block(i);
+#endif
+    if (id_buf[i] == '2') {
+        lung_cells[id] = EpiCellType::ALVEOLI;
     }
-    else if (id == 1) {
-        lung_cells[i] = EpiCellType::AIRWAY;
+    else if (id_buf[i] == '1') {
+        lung_cells[id] = EpiCellType::AIRWAY;
     }
     num_lung_cells++;
   }
