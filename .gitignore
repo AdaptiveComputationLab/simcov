@@ -9,3 +9,5 @@ results
 transfer.sh
 batch-scripts/*.out
 .vs
+*.stats
+*.png

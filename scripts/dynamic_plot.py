@@ -178,4 +178,5 @@ def animate(i):
     
 #ani = animation.FuncAnimation(fig, animate, interval=1000)
 animate(0)
-plt.show()
+#plt.show()
+plt.savefig(options.output + '.png')
