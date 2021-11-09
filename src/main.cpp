@@ -308,7 +308,6 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
   }
   update_tcell_timer.stop();
 }
-
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   update_epicell_timer.start();
   if (!grid_point->epicell->infectable || grid_point->epicell->status == EpiCellStatus::DEAD) {
@@ -319,14 +318,22 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     DBG(time_step, " epicell ", grid_point->epicell->str(), "\n");
   bool produce_virions = false;
   switch (grid_point->epicell->status) {
-    case EpiCellStatus::HEALTHY:
+    case EpiCellStatus::HEALTHY: {
+      // In the presence of inflammatory signal, infectivity is reduced
+      // We expect that the multiplier reducing infectivity should be between 0.9 and 0.7
+      // based on values in literature demonstrating a reduction of cell death in vitro with IFN
+      double local_infectivity = _options->infectivity;
+      if (grid_point->chemokine > 0) {
+        local_infectivity = _options->infectivity*0.9;
+      }
       if (grid_point->virions > 0) {
-        if (_rnd_gen->trial_success(_options->infectivity * grid_point->virions)) {
+        if (_rnd_gen->trial_success(local_infectivity * grid_point->virions)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
         }
       }
       break;
+    }
     case EpiCellStatus::INCUBATING:
       if (grid_point->epicell->transition_to_expressing()) {
         _sim_stats.incubating--;
@@ -351,8 +358,16 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       break;
     default: break;
   }
+  // In the presence of inflammatory signal, the virion production rate is reduced.
+  // We expect that this reduction should be represented by a multiplier betweeon 0.05 and 0.15.
   if (produce_virions) {
-    grid_point->virions += _options->virion_production;
+//     if (grid_point->chemokine > 0) {
+//       double local_virion_production = _options->virion_production * 0.1;
+//     }else{
+//       double local_virion_production = _options->virion_production;
+//     }
+    double local_virion_production = _options->virion_production;
+    grid_point->virions += local_virion_production;
     grid_point->chemokine = min(grid_point->chemokine + _options->chemokine_production, 1.0);
   }
   update_epicell_timer.stop();
