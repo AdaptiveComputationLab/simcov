@@ -322,6 +322,8 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       // In the presence of inflammatory signal, infectivity is reduced
       // We expect that the multiplier reducing infectivity should be between 0.9 and 0.7
       // based on values in literature demonstrating a reduction of cell death in vitro with IFN
+     // NOTE: Infectivity seems to have little impact on outcomes in SIMCoV. This is still being explored
+     // by the IFN team. For now, we recommend focusing on modifying virion production.
       double local_infectivity = _options->infectivity;
       if (grid_point->chemokine > 0) {
         local_infectivity = _options->infectivity*0.9;
