@@ -40,7 +40,7 @@ class SimStats {
   int64_t tcells_tissue = 0;
   float chemokines = 0;
   int64_t num_chemo_pts = 0;
-  float virions = 0;
+  float virions = 0; 
 
   void init() {
     if (!rank_me()) {
@@ -138,7 +138,7 @@ void seed_infection(Tissue &tissue, int time_step) {
       while (true) {
         GridCoords new_coords(coords_1d);
         if (tissue.set_initial_infection(coords_1d)) {
-          SLOG_VERBOSE("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries\n");
+          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries");
           break;
         }
         num_tries++;
@@ -308,6 +308,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
   }
   update_tcell_timer.stop();
 }
+
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   update_epicell_timer.start();
   if (!grid_point->epicell->infectable || grid_point->epicell->status == EpiCellStatus::DEAD) {
@@ -322,11 +323,9 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       // In the presence of inflammatory signal, infectivity is reduced
       // We expect that the multiplier reducing infectivity should be between 0.9 and 0.7
       // based on values in literature demonstrating a reduction of cell death in vitro with IFN
-     // NOTE: Infectivity seems to have little impact on outcomes in SIMCoV. This is still being explored
-     // by the IFN team. For now, we recommend focusing on modifying virion production.
       double local_infectivity = _options->infectivity;
       if (grid_point->chemokine > 0) {
-        local_infectivity = _options->infectivity*0.9;
+        local_infectivity = _options->infectivity*_options->infectivity_multiplier;
       }
       if (grid_point->virions > 0) {
         if (_rnd_gen->trial_success(local_infectivity * grid_point->virions)) {
@@ -363,12 +362,11 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   // In the presence of inflammatory signal, the virion production rate is reduced.
   // We expect that this reduction should be represented by a multiplier betweeon 0.05 and 0.15.
   if (produce_virions) {
-//     if (grid_point->chemokine > 0) {
-//       double local_virion_production = _options->virion_production * 0.1;
-//     }else{
-//       double local_virion_production = _options->virion_production;
-//     }
-    double local_virion_production = _options->virion_production;
+    if (grid_point->chemokine > 0) {
+      double local_virion_production = _options->virion_production * _options->virion_production_multiplier;
+    }else{
+      double local_virion_production = _options->virion_production;
+    }
     grid_point->virions += local_virion_production;
     grid_point->chemokine = min(grid_point->chemokine + _options->chemokine_production, 1.0);
   }
