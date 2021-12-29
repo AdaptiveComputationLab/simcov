@@ -1,1 +1,3 @@
-Note: For generating figure 7, the model directory must be extracted and pointed to in the corresponding config file.
+# Lung Model #
+
+Before running this configuration file for figure 7, see instructions in lungmodel folder in master simcov directory to generate data files.
