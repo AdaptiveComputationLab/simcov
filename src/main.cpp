@@ -249,6 +249,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
         DBG(time_step, " tcell ", tcell->id, " binds at ", grid_point->coords.str(), "\n");
         tcell->binding_period = _options->tcell_binding_period;
         _sim_stats.apoptotic++;
+        break; //only allow tcell to bind to one cell!
       }
     }
   }

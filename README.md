@@ -88,3 +88,9 @@ The above command will generate a file called `paraview-state.pvsm` and this can
 ```
 paraview paraview-state.pvsm
 ```
+
+## Versions
+
+The version of simcov at commit id a7aa913288bd8139cd6fef5410811c2fad097236 on Aug 30, 2021 was used with pre-print publication https://www.biorxiv.org/content/10.1101/2021.05.19.444569v3 and the published version https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009735.
+
+Note that the config folders in this version of the source code are numbered according to the figure order corresponding to the preprint, but different from the final published version.
