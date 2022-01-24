@@ -271,11 +271,11 @@ Tissue::Tissue()
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   int64_t num_lung_cells = 0;
   if (!_options->lung_model_dir.empty()) {
-    lung_cells.resize(num_grid_points, EpiCellType::NONE);
+    lung_cells.resize(num_grid_points, EpiCellType::AIR_INTERSTITUAL);
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
     // Read epithileal cells
-    num_lung_cells = load_data_file(_options->lung_model_dir, num_grid_points);
+    num_lung_cells = load_data_file(_options->lung_model_dir + "/airways.dat", num_grid_points);
     t_load_lung_model.stop();
     SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
          t_load_lung_model.get_elapsed(), " s\n");
@@ -290,17 +290,21 @@ Tissue::Tissue()
       assert(id < num_grid_points);
       GridCoords coords(id);
       if (num_lung_cells) {
-        if (lung_cells[id] != EpiCellType::NONE) {
-          EpiCell *epicell = new EpiCell(id);
-          epicell->type = lung_cells[id];
-          epicell->infectable = true;
-          grid_points->emplace_back(GridPoint({coords, epicell}));
-        } else {  // Add empty space == air
-          grid_points->emplace_back(GridPoint({coords, nullptr}));
+        if (lung_cells[id] == EpiCellType::AIR_INTERSTITUAL) {
+            grid_points->emplace_back(GridPoint({ coords, nullptr }));
+        }
+        else {
+            EpiCell* epicell = new EpiCell(id);
+            epicell->type = lung_cells[id];
+            epicell->infectable = false;
+            if (lung_cells[id] == EpiCellType::TYPE2) {
+                epicell->infectable = true;
+            }
+            grid_points->emplace_back(GridPoint({ coords, epicell }));
         }
       } else {
         EpiCell *epicell = new EpiCell(id);
-        epicell->type = EpiCellType::ALVEOLI;
+        epicell->type = EpiCellType::TYPE2;
         // epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
         epicell->infectable = true;
         grid_points->emplace_back(GridPoint({coords, epicell}));
@@ -337,11 +341,14 @@ int64_t Tissue::load_data_file(const string &fname, int64_t num_grid_points) {
 #ifdef BLOCK_PARTITION
     auto id = GridCoords::linear_to_block(i);
 #endif
-    if (id_buf[i] == '2') {
-        lung_cells[id] = EpiCellType::ALVEOLI;
+    if (id_buf[i] == '3') {
+        lung_cells[id] = EpiCellType::TYPE2;
+    }
+    else if (id_buf[i] == '2') {
+        lung_cells[id] = EpiCellType::TYPE1;
     }
     else if (id_buf[i] == '1') {
-        lung_cells[id] = EpiCellType::AIRWAY;
+        lung_cells[id] = EpiCellType::EPITHELIAL;
     }
     num_lung_cells++;
   }
