@@ -269,16 +269,18 @@ Tissue::Tissue()
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
-  int64_t num_lung_cells = 0;
   if (!_options->lung_model_dir.empty()) {
-    lung_cells.resize(num_grid_points, EpiCellType::AIR_INTERSTITUAL);
-    Timer t_load_lung_model("load lung model");
-    t_load_lung_model.start();
-    // Read epithileal cells
-    num_lung_cells = load_data_file(_options->lung_model_dir + "/airways.dat", num_grid_points);
-    t_load_lung_model.stop();
-    SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
-         t_load_lung_model.get_elapsed(), " s\n");
+      lung_cells.resize(num_grid_points, EpiCellType::AIR_INTERSTITUAL);
+      Timer t_load_lung_model("load lung model");
+      t_load_lung_model.start();
+      // Read lung cells
+      num_lung_cells = load_data_file(_options->lung_model_dir + "/airways.dat", num_grid_points);
+      t_load_lung_model.stop();
+      SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
+              t_load_lung_model.get_elapsed(), " s\n");
+  }
+  else {
+      num_lung_cells = 0;
   }
 
   // FIXME: these blocks need to be stride distributed to better load balance
@@ -289,7 +291,7 @@ Tissue::Tissue()
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id);
-      if (num_lung_cells) {
+      if (num_lung_cells > 0) {
         if (lung_cells[id] == EpiCellType::AIR_INTERSTITUAL) {
             grid_points->emplace_back(GridPoint({ coords, nullptr }));
         }
@@ -634,6 +636,8 @@ void Tissue::add_new_actives(IntermittentTimer &timer) {
 }
 
 size_t Tissue::get_num_actives() { return active_grid_points.size(); }
+
+int64_t Tissue::get_num_lung_cells() { return num_lung_cells; }
 
 #ifdef DEBUG
 void Tissue::check_actives(int time_step) {

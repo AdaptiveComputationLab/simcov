@@ -11,3 +11,5 @@ batch-scripts/*.out
 .vs
 *.stats
 *.png
+*.vtk
+*.log
