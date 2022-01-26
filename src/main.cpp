@@ -72,16 +72,21 @@ class SimStats {
     totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
     vector<float> totals_d;
-    int64_t num_grid_points = get_num_grid_points();
+    auto perc_infected = 100.0
+        * (float)(totals[0] + totals[1] + totals[2] + totals[3])
+        / get_num_grid_points();
     if (!_options->lung_model_dir.empty()) {
-        num_grid_points = 0;
+        perc_infected = 100.0
+            * (float)(totals[0] + totals[1] + totals[2] + totals[3])
+            / Tissue::get_num_lung_cells();
+        totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / Tissue::get_num_lung_cells());
     }
-    totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / num_grid_points);
+    else {
+        totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
+    }
     totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());
     auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
-    auto perc_infected =
-        100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) / num_grid_points;
     ostringstream oss;
     oss << left;
     for (auto tot : totals) {

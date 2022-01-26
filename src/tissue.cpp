@@ -338,21 +338,23 @@ int64_t Tissue::load_data_file(const string &fname, int64_t num_grid_points) {
   vector<char> id_buf(num_ids);
   if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), num_ids))
     DIE("Couldn't read all bytes in ", fname);
-  int64_t num_lung_cells = 0;
+  num_lung_cells = 0;
   for (int64_t i = 0; i < id_buf.size(); i++) {
 #ifdef BLOCK_PARTITION
     auto id = GridCoords::linear_to_block(i);
 #endif
     if (id_buf[i] == '3') {
         lung_cells[id] = EpiCellType::TYPE2;
+        num_lung_cells++;
     }
     else if (id_buf[i] == '2') {
         lung_cells[id] = EpiCellType::TYPE1;
+        num_lung_cells++;
     }
     else if (id_buf[i] == '1') {
         lung_cells[id] = EpiCellType::EPITHELIAL;
+        num_lung_cells++;
     }
-    num_lung_cells++;
   }
   f.close();
   return num_lung_cells;
@@ -637,7 +639,9 @@ void Tissue::add_new_actives(IntermittentTimer &timer) {
 
 size_t Tissue::get_num_actives() { return active_grid_points.size(); }
 
-int64_t Tissue::get_num_lung_cells() { return num_lung_cells; }
+int64_t Tissue::num_lung_cells = 0;
+
+int64_t Tissue::get_num_lung_cells() { return Tissue::num_lung_cells; }
 
 #ifdef DEBUG
 void Tissue::check_actives(int time_step) {

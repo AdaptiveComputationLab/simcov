@@ -174,7 +174,7 @@ class Tissue {
   HASH_TABLE<GridPoint *, bool>::iterator active_grid_point_iter;
 
   int64_t num_circulating_tcells;
-  int64_t num_lung_cells;
+  static int64_t num_lung_cells;
   upcxx::dist_object<int64_t> tcells_generated;
   std::vector<EpiCellType> lung_cells;
 
@@ -231,7 +231,7 @@ class Tissue {
 
   SampleData get_grid_point_sample_data(int64_t grid_i);
 
-  int64_t get_num_lung_cells();
+  static int64_t get_num_lung_cells();
 
 #ifdef DEBUG
   void check_actives(int time_step);
