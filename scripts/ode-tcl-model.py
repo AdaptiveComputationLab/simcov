@@ -65,7 +65,7 @@ def create_ode_txt_file(T, E, I, V, VS_log, name):
     time = np.array(range(20160))
     A = np.zeros(T.shape[0])
     title = name + '.txt'
-    np.savetxt(title, np.transpose([time,E,I,A,T,V,VS_log]), delimiter="\t", header="time\tincubating\texpressing\tapoptotic\tdead\tode-virus-log\tode-virus-linear")
+    np.savetxt(title, np.transpose([time,E,I,A,T,V,VS_log]), delimiter="\t", header="time\tincubating\texpressing\tapoptotic\tdead\tode-virus-linear\tode-virus-log")
 
 time_scale = 1440 ## rates are per day, but we want per minute rates
 
