@@ -327,13 +327,20 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   if (grid_point->epicell->status != EpiCellStatus::HEALTHY)
     DBG(time_step, " epicell ", grid_point->epicell->str(), "\n");
   bool produce_virions = false;
+  double local_infectivity = _options->infectivity;
   switch (grid_point->epicell->status) {
-    case EpiCellStatus::HEALTHY:
+  case EpiCellStatus::HEALTHY:
       if (grid_point->virions > 0) {
-        if (_rnd_gen->trial_success(_options->infectivity * grid_point->virions)) {
-          grid_point->epicell->infect();
-          _sim_stats.incubating++;
-        }
+          // In the presence of inflammatory signal, infectivity is reduced
+          // We expect that the multiplier reducing infectivity should be between 0.9 and 0.7
+          // based on values in literature demonstrating a reduction of cell death in vitro with IFN
+          if (grid_point->chemokine > 0) {
+              local_infectivity = _options->infectivity * _options->infectivity_multiplier;
+          }
+          if (_rnd_gen->trial_success(local_infectivity * grid_point->virions)) {
+              grid_point->epicell->infect();
+              _sim_stats.incubating++;
+          }
       }
       break;
     case EpiCellStatus::INCUBATING:

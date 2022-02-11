@@ -259,6 +259,7 @@ class Options {
   double max_binding_prob = 1.0;
 
   double infectivity = 0.02;
+  double infectivity_multiplier = 1.0;
   double virion_production = 35;
   double virion_clearance_rate = 0.002;
   double virion_diffusion_coef = 1.0;
@@ -323,6 +324,10 @@ class Options {
         ->capture_default_str();
     app.add_option("--infectivity", infectivity,
                    "Factor multiplied by number of virions to determine probability of infection")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+    app.add_option("--infectivity-multiplier", infectivity_multiplier,
+        "Multiplier to reduce infectivity rate")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--virion-production", virion_production,
