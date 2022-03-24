@@ -1,16 +1,14 @@
 #!/bin/bash
 
-#PBS -q default
+#PBS -q normal
 #PBS -l nodes=2:ppn=8
 #PBS -l walltime=01:00:00
 #PBS -N simcov_test
 #PBS -j oe
 
-module load gcc-10.2.0-gcc-4.8.5-cj4mljw
-
-module load upcxx-2021.3.0-gcc-10.2.0-python3-osslnvl
-
-module load cmake-3.20.2-gcc-10.2.0-olbc6i4
+module load gcc/11.2.0-otgt
+module load upcxx/2021.9.0-r4of
+module load cmake/3.22.2-c2dw
 
 cd $PBS_O_WORKDIR
 
