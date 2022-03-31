@@ -5,6 +5,7 @@ from matplotlib.ticker import FixedLocator, FixedFormatter
 import numpy as np
 from scipy.integrate import odeint
 from scipy.interpolate import make_interp_spline, BSpline
+import copy
 
 def ode_solver(t, initial_conditions, params, ode_model):
     initT1, initT2, initE1, initE2, initI1, initI2, initVT, initVS = initial_conditions
@@ -59,12 +60,12 @@ def plot_graph(ax, VS, time, letter):
     ax.yaxis.set_major_formatter(y_formatter)
     ax.yaxis.set_major_locator(y_locator)
     
-def create_ode_txt_file(T, E, I, V, name):
+def create_ode_txt_file(T, E, I, V, VS_log, name):
     T = 480000000 - T
     time = np.array(range(20160))
     A = np.zeros(T.shape[0])
     title = name + '.txt'
-    np.savetxt(title, np.transpose([time,E,I,A,T,V]), delimiter="\t", header="time\tincubating\texpressing\tapoptotic\tdead\tode-virus")
+    np.savetxt(title, np.transpose([time,E,I,A,T,V,VS_log]), delimiter="\t", header="time\tincubating\texpressing\tapoptotic\tdead\tode-virus-linear\tode-virus-log")
 
 time_scale = 1440 ## rates are per day, but we want per minute rates
 
@@ -176,9 +177,10 @@ for i in range(8):
                                 minutes,
                                 ode_model,
                                 letter)
-
-    plot_graph(axes[i // 4][i % 4], VS, minutes, letter)
-    create_ode_txt_file(T, E, I, VS, 'patient_' + letter + '_ode')
+    
+    VS_copy = copy.deepcopy(VS)
+    plot_graph(axes[i // 4][i % 4], VS_copy, minutes, letter)
+    create_ode_txt_file(T, E, I, VS, VS_copy, 'patient_' + letter + '_ode')
 
 fig.suptitle("Viral Log Over 14 Days")
 fig.text(0.5, 0.04, "Days post infection", ha='center', va='center')
