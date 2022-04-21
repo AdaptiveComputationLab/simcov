@@ -259,7 +259,9 @@ class Options {
   double max_binding_prob = 1.0;
 
   double infectivity = 0.02;
+  double infectivity_multiplier = 1.0;
   double virion_production = 35;
+  double virion_production_multiplier = 1.0;
   double virion_clearance_rate = 0.002;
   double virion_diffusion_coef = 1.0;
 
@@ -325,8 +327,16 @@ class Options {
                    "Factor multiplied by number of virions to determine probability of infection")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
+    app.add_option("--infectivity-multiplier", infectivity_multiplier,
+                   "Multiplier to reduce infectivity rate")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
     app.add_option("--virion-production", virion_production,
                    "Number of virions produced by expressing cell each time step")
+        ->capture_default_str();
+    app.add_option("--virion-production-multiplier", virion_production_multiplier,
+                   "Multiplier to reduce virion production rate")
+        ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--virion-clearance", virion_clearance_rate,
                    "Fraction by which virion count drops each time step")
@@ -410,21 +420,6 @@ class Options {
     upcxx::barrier();
 
     _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
-
-    if (!lung_model_dir.empty()) {
-      auto model_dims = get_model_dims(lung_model_dir + "/alveolus.dat");
-      if (model_dims.size() < 3) return false;
-      for (int i = 0; i < 3; i++) {
-        if (model_dims[i] != dimensions[i]) {
-          dimensions = model_dims;
-          if (!rank_me())
-            cerr << KLRED << "WARNING: " << KNORM
-                 << "Setting dimensions to model data: " << dimensions[0] << ", " << dimensions[1]
-                 << ", " << dimensions[2] << endl;
-          break;
-        }
-      }
-    }
 
     if (virion_clearance_rate * antibody_factor > 1.0) {
       if (!rank_me())

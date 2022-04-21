@@ -14,6 +14,9 @@ its behalf a paid-up, nonexclusive, irrevocable, worldwide license in the
 Software to reproduce, distribute copies to the public, prepare derivative 
 works, and perform publicly and display publicly, and to permit others to do so.
 
+# Special Notes about This Fork of SIMCoV #
+This fork of SIMCoV includes small changes that permit the modelling of local effects of interferon. When running this fork of SIMCoV, use the .config file as included in this repo, not the original repo. In order to change the magnitude of the impact of the presence of inflammatory signal when running, change the parameters "inflammatory_signal_multiplier" and "virion_production_multiplier" in the .config file. Note that the code as provided requires that the multipliers be within \[0.0, 1.0\]. The process to build and run this fork of SIMCoV has not changed. The below instructions should continue to work.
+
 # SimCov #
 
 This is a model for simulating the response of the immune system to infections in the lungs.
