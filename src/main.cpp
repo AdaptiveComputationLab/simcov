@@ -300,19 +300,25 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
           GridCoords(selected_grid_i).str(), "\n");
     }
     // try a few times to find an open spot
-    for (int i = 0; i < 5; i++) {
-      if (tissue.try_add_tissue_tcell(selected_grid_i, *tcell)) {
-        DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
-            GridCoords(selected_grid_i).str(), "\n");
-        delete grid_point->tcell;
-        grid_point->tcell = nullptr;
-        break;
-      }
-      // choose another location at random
-      auto rnd_nb_i = _rnd_gen->get(0, (int64_t)nbs.size());
-      selected_grid_i = nbs[rnd_nb_i];
-      DBG(time_step, " tcell ", tcell->id, " try random move to ",
-          GridCoords(selected_grid_i).str(), "\n");
+    if (_options->lung_model_dir.empty() || tcell->move_time_steps == 0) { //MOD require 3 timesteps given 5um/s speed
+        for (int i = 0; i < 5; i++) {
+            if (tissue.try_add_tissue_tcell(selected_grid_i, *tcell)) {
+                DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
+                    GridCoords(selected_grid_i).str(), "\n");
+                delete grid_point->tcell;
+                grid_point->tcell = nullptr;
+                break;
+            }
+            // choose another location at random
+            auto rnd_nb_i = _rnd_gen->get(0, (int64_t)nbs.size());
+            selected_grid_i = nbs[rnd_nb_i];
+            DBG(time_step, " tcell ", tcell->id, " try random move to ",
+                GridCoords(selected_grid_i).str(), "\n");
+        }
+        tcell->move_time_steps = 3;
+    }
+    else {
+        tcell->move_time_steps--;
     }
   }
   update_tcell_timer.stop();

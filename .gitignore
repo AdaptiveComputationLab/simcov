@@ -6,6 +6,7 @@ data
 __pycache__
 *.dat
 results
+out
 transfer.sh
 batch-scripts/*.out
 .vs

@@ -436,6 +436,7 @@ bool Tissue::set_initial_infection(int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
                if (!grid_point->epicell) return false;
+               if (!((grid_point->epicell)->infectable)) return false;
                grid_point->virions = _options->initial_infection;
                new_active_grid_points->insert({grid_point, true});
                return true;

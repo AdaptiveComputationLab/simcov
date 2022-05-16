@@ -95,6 +95,7 @@ struct TCell {
   string id;
   int binding_period = -1;
   int tissue_time_steps = -1;
+  int move_time_steps = 3; //MOD Based on config 1 min time steps
   bool moved = true;
 
   UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved);
