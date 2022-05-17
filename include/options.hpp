@@ -495,42 +495,4 @@ class Options {
     return true;
   }
 
-  void load_branching_airways() {
-    // To support 5um -> 15um cell diameter, convert 1 min -> 3 min timesteps
-    //vector<int> dimensions{300, 300, 1};
-    //vector<int> whole_lung_dims{48000, 40000, 20000};
-    int num_timesteps = 20160;
-    //vector<array<int, 4>> infection_coords;
-    int initial_infection = 1000;
-    int incubation_period = 480;
-    int apoptosis_period = 180;
-    int expressing_period = 2286;
-    double infectivity = 0.02;
-    double virion_production = 35;
-    double virion_clearance_rate = 0.002;
-    double virion_diffusion_coef = 1.0;
-    double chemokine_production = 1.0;
-    double chemokine_decay_rate = 0.01;
-    double chemokine_diffusion_coef = 1.0;
-    //double min_chemokine = 1e-6;
-    double antibody_factor = 1;
-    int antibody_period = 5760;
-    int tcell_generation_rate = 100000;
-    int tcell_initial_delay = 10080;
-    int tcell_vascular_period = 5760;
-    int tcell_tissue_period = 1440;
-    int tcell_binding_period = 10;
-    //double max_binding_prob = 1.0;
-    //bool tcells_follow_gradient = false;
-    //unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    //int sample_period = 0;
-    //int sample_resolution = 1;
-    //int max_block_dim = 10;
-    //string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
-                        //to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
-    //string lung_model_dir = "";
-    //bool show_progress = false;
-    //bool verbose = false;
-  }
-
 };
