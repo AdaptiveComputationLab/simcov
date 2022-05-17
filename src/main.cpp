@@ -300,7 +300,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
           GridCoords(selected_grid_i).str(), "\n");
     }
     // try a few times to find an open spot
-    if (_options->lung_model_dir.empty() || tcell->move_time_steps == 0) { //MOD require 3 timesteps given 5um/s speed
+    //if (_options->lung_model_dir.empty() || tcell->move_time_steps == 0) { //MOD require 3 timesteps given 5um/s speed
         for (int i = 0; i < 5; i++) {
             if (tissue.try_add_tissue_tcell(selected_grid_i, *tcell)) {
                 DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
@@ -315,11 +315,11 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
             DBG(time_step, " tcell ", tcell->id, " try random move to ",
                 GridCoords(selected_grid_i).str(), "\n");
         }
-        tcell->move_time_steps = 3;
-    }
-    else {
-        tcell->move_time_steps--;
-    }
+        //tcell->move_time_steps = 3;
+    //}
+    //else {
+    //    tcell->move_time_steps--;
+    //}
   }
   update_tcell_timer.stop();
 }
@@ -672,6 +672,9 @@ void run_sim(Tissue &tissue) {
                               (int64_t)_options->whole_lung_dims[2];
   auto sim_volume = get_num_grid_points();
   double extravasate_fraction = (double)sim_volume / whole_lung_volume;
+  if (!_options->lung_model_dir.empty()) { // Multiply by (3)^3 for 15um calculation
+      extravasate_fraction *= 27.0;
+  }
   SLOG("Fraction of circulating T cells extravasating is ", extravasate_fraction, "\n");
   SLOG("# datetime                    step    ", _sim_stats.header(STATS_COL_WIDTH),
        "<%active  lbln>\n");
