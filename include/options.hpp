@@ -338,7 +338,8 @@ class Options {
         ->capture_default_str();
     app.add_option("--chemokine-production", chemokine_production,
                    "Amount of chemokine produced by expressing cells each time step")
-        ->check(CLI::Range(0.0, 1.0))
+        //->check(CLI::Range(0.0, 1.0))
+        ->check(CLI::Range(0.0, 3.0))
         ->capture_default_str();
     app.add_option("--chemokine-decay", chemokine_decay_rate,
                    "Amount by which chemokine concentration drops each time step")
