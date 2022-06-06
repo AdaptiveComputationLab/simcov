@@ -300,7 +300,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
           GridCoords(selected_grid_i).str(), "\n");
     }
     // try a few times to find an open spot
-    //if (_options->lung_model_dir.empty() || tcell->move_time_steps == 0) { //MOD require 3 timesteps given 5um/s speed
+    if (_options->lung_model_dir.empty() || tcell->move_time_steps == 0) { //MOD require 3 timesteps given 5um/s speed
         for (int i = 0; i < 5; i++) {
             if (tissue.try_add_tissue_tcell(selected_grid_i, *tcell)) {
                 DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
@@ -315,11 +315,11 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
             DBG(time_step, " tcell ", tcell->id, " try random move to ",
                 GridCoords(selected_grid_i).str(), "\n");
         }
-    //    tcell->move_time_steps = 3;
-    //}
-    //else {
-    //    tcell->move_time_steps--;
-    //}
+        tcell->move_time_steps = 3;
+    }
+    else {
+        tcell->move_time_steps--;
+    }
   }
   update_tcell_timer.stop();
 }
@@ -334,8 +334,11 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     DBG(time_step, " epicell ", grid_point->epicell->str(), "\n");
   bool produce_virions = false;
   // MOD:
-  // 1. don't allow epicells to be infected
-  // 2. allow infection only (case healthy)
+  // 1. allow no cases (don't allow epicells to be infected)
+  // 2. allow case healthy (infect)
+  // 3. allow case incubating
+  // 4. allow case expressing
+  // 5. allow case apoptosis
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY:
       if (grid_point->virions > 0) {
@@ -345,28 +348,28 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
         }
       }
       break;
-  //  case EpiCellStatus::INCUBATING:
-  //    if (grid_point->epicell->transition_to_expressing()) {
-  //      _sim_stats.incubating--;
-  //      _sim_stats.expressing++;
-  //    }
-  //    break;
-  //  case EpiCellStatus::EXPRESSING:
-  //    if (grid_point->epicell->infection_death()) {
-  //      _sim_stats.dead++;
-  //      _sim_stats.expressing--;
-  //    } else {
-  //      produce_virions = true;
-  //    }
-  //    break;
-  //  case EpiCellStatus::APOPTOTIC:
-  //    if (grid_point->epicell->apoptosis_death()) {
-  //      _sim_stats.dead++;
-  //      _sim_stats.apoptotic--;
-  //    } else if (grid_point->epicell->was_expressing()) {
-  //      produce_virions = true;
-  //    }
-  //    break;
+    case EpiCellStatus::INCUBATING:
+      if (grid_point->epicell->transition_to_expressing()) {
+        _sim_stats.incubating--;
+        _sim_stats.expressing++;
+      }
+      break;
+    case EpiCellStatus::EXPRESSING:
+      if (grid_point->epicell->infection_death()) {
+        _sim_stats.dead++;
+        _sim_stats.expressing--;
+      } else {
+        produce_virions = true;
+      }
+      break;
+    case EpiCellStatus::APOPTOTIC:
+      if (grid_point->epicell->apoptosis_death()) {
+        _sim_stats.dead++;
+        _sim_stats.apoptotic--;
+      } else if (grid_point->epicell->was_expressing()) {
+        produce_virions = true;
+      }
+      break;
     default: break;
   }
   if (produce_virions) {
