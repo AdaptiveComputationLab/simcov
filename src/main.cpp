@@ -40,7 +40,7 @@ class SimStats {
   int64_t tcells_tissue = 0;
   float chemokines = 0;
   int64_t num_chemo_pts = 0;
-  float virions = 0; 
+  float virions = 0;
 
   void init() {
     if (!rank_me()) {
@@ -321,12 +321,9 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   bool produce_virions = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY: {
-      // In the presence of inflammatory signal, infectivity is reduced
-      // We expect that the multiplier reducing infectivity should be between 0.9 and 0.7
-      // based on values in literature demonstrating a reduction of cell death in vitro with IFN
       double local_infectivity = _options->infectivity;
       if (grid_point->chemokine > 0) {
-        local_infectivity = _options->infectivity*_options->infectivity_multiplier;
+        local_infectivity *= _options->infectivity_multiplier;
       }
       if (grid_point->virions > 0) {
         if (_rnd_gen->trial_success(local_infectivity * grid_point->virions)) {
@@ -360,13 +357,10 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       break;
     default: break;
   }
-  // In the presence of inflammatory signal, the virion production rate is reduced.
-  // We expect that this reduction should be represented by a multiplier betweeon 0.05 and 0.15.
   if (produce_virions) {
+    double local_virion_production = _options->virion_production;
     if (grid_point->chemokine > 0) {
-      double local_virion_production = _options->virion_production * _options->virion_production_multiplier;
-    }else{
-      double local_virion_production = _options->virion_production;
+        local_virion_production *= _options->virion_production_multiplier;
     }
     grid_point->virions += local_virion_production;
     grid_point->chemokine = min(grid_point->chemokine + _options->chemokine_production, 1.0);
