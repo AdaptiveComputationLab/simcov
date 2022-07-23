@@ -146,7 +146,12 @@ void seed_infection(Tissue &tissue, int time_step) {
       while (true) {
         GridCoords new_coords(coords_1d);
         if (tissue.set_initial_infection(coords_1d)) {
-          SLOG_VERBOSE("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries\n");
+          ostringstream oss;
+          oss << "rank " << rank_me() << " of " << rank_n() << " time step " << time_step
+              << ": SUCCESSFUL initial infection at " << new_coords.str() << " after "
+              << num_tries << " tries\n";
+          cerr << oss.str();
+          //SLOG_VERBOSE("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries\n");
           break;
         }
         num_tries++;
