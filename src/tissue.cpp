@@ -111,6 +111,11 @@ bool EpiCell::transition_to_expressing() {
   return true;
 }
 
+void EpiCell::transition_to_expressing_DES() {
+  assert(status == EpiCellStatus::INCUBATING);
+  status = EpiCellStatus::EXPRESSING;
+}
+
 bool EpiCell::was_expressing() {
   // this is used to determine if the epicell was expressing before apoptosis was induced
   assert(status == EpiCellStatus::APOPTOTIC);
@@ -125,11 +130,20 @@ bool EpiCell::apoptosis_death() {
   return true;
 }
 
+void EpiCell::apoptosis_death_DES() {
+  assert(status == EpiCellStatus::APOPTOTIC);
+  status = EpiCellStatus::DEAD;
+}
+
 bool EpiCell::infection_death() {
   expressing_time_steps--;
   if (expressing_time_steps > 0) return false;
   status = EpiCellStatus::DEAD;
   return true;
+}
+
+void EpiCell::infection_death_DES() {
+  status = EpiCellStatus::DEAD;
 }
 
 bool EpiCell::is_active() {
@@ -157,6 +171,14 @@ string GridPoint::str() const {
 bool GridPoint::is_active() {
   // it could be incubating but without anything else set
   return ((epicell && epicell->is_active()) || virions > 0 || chemokine > 0 || tcell);
+}
+
+void GridPoint::advance_time(int sample_time) {
+  if (next_time > sample_time) {
+    curr_time = sample_time;
+  } else {
+    curr_time = next_time;
+  }
 }
 
 static int get_cube_block_dim(int64_t num_grid_points) {

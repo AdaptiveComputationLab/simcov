@@ -125,8 +125,11 @@ class EpiCell {
 
   void infect();
   bool transition_to_expressing();
+  void transition_to_expressing_DES();
   bool apoptosis_death();
+  void apoptosis_death_DES();
   bool infection_death();
+  void infection_death_DES();
   bool is_active();
   double get_binding_prob();
   bool was_expressing();
@@ -142,10 +145,12 @@ struct GridPoint {
   vector<int64_t> *neighbors = nullptr;
   float chemokine = 0, nb_chemokine = 0;
   float virions = 0, nb_virions = 0;
+  int curr_time = 0, next_time = 1;
 
   string str() const;
 
   bool is_active();
+  void advance_time(int sample_time);
 };
 
 struct SampleData {
