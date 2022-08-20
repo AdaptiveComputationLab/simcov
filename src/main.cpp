@@ -475,7 +475,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   int z_dim = _options->dimensions[2] / _options->sample_resolution;
   if (z_dim == 0) z_dim = 1;
   size_t tot_sz = x_dim * y_dim * z_dim;
-  int spacing = 5 * _options->sample_resolution;
+  int spacing = 15;//5 * _options->sample_resolution;
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
              << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step
@@ -696,6 +696,7 @@ void run_sim(Tissue &tissue) {
   HASH_TABLE<int64_t, float> virions_to_update;
   bool warned_boundary = false;
   vector<SampleData> samples;
+  int min_x = 0, min_y = 0, min_z = 0, max_x = 0, max_y = 0, max_z = 0;//TODO remove
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     seed_infection(tissue, time_step);
@@ -714,9 +715,16 @@ void run_sim(Tissue &tissue) {
     // iterate through all active local grid points and update
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
-      if (grid_point->chemokine > 0)
+      if (grid_point->chemokine > 0) {
         DBG("chemokine\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
             grid_point->coords.z, "\t", grid_point->chemokine, "\n");
+        if (grid_point->coords.x > max_x) max_x = grid_point->coords.x;//TODO remove x,y,z
+        if (grid_point->coords.x < min_x) min_x = grid_point->coords.x;
+        if (grid_point->coords.y > max_y) max_y = grid_point->coords.y;
+        if (grid_point->coords.y < min_y) min_y = grid_point->coords.y;
+        if (grid_point->coords.z > max_z) max_z = grid_point->coords.z;
+        if (grid_point->coords.z < min_z) min_z = grid_point->coords.z;
+      }
       if (grid_point->virions > 0)
         DBG("virions\t", time_step, "\t", grid_point->coords.x, "\t", grid_point->coords.y, "\t",
             grid_point->coords.z, "\t", grid_point->virions, "\n");
@@ -769,6 +777,8 @@ void run_sim(Tissue &tissue) {
     set_active_grid_points(tissue);
     barrier();
 
+    //if ((time_step >= 10080 && time_step <= 12960) &&
+    //    (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)) {//TODO remove
     if (_options->sample_period > 0 &&
         (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)) {
       sample_timer.start();
@@ -810,6 +820,7 @@ void run_sim(Tissue &tissue) {
   SLOG("Finished ", _options->num_timesteps, " time steps in ", setprecision(4), fixed,
        t_elapsed.count(), " s (", (double)t_elapsed.count() / _options->num_timesteps,
        " s per step)\n");
+  SLOG("Chemokine bounds ", min_x, " ", max_x, " ", min_y, " ", max_y, " ", min_z, " ", max_z, "\n");//TODO remove
 }
 
 int main(int argc, char **argv) {
