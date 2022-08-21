@@ -270,7 +270,7 @@ Tissue::Tissue()
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
   if (!_options->lung_model_dir.empty()) {
-    lung_cells.resize(num_grid_points, EpiCellType::AIR_INTERSTITUAL);
+    lung_cells.resize(num_grid_points, EpiCellType::AIR);
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
     // Read lung cells

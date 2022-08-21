@@ -333,11 +333,11 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   bool produce_virions = false;
   switch (grid_point->epicell->status) {
     case EpiCellStatus::HEALTHY: {
-      double local_infectivity = _options->infectivity;
-      if (grid_point->chemokine > 0) {
-        local_infectivity *= _options->infectivity_multiplier;
-      }
       if (grid_point->virions > 0) {
+        double local_infectivity = _options->infectivity;
+        if (grid_point->chemokine > 0) {
+          local_infectivity *= _options->infectivity_multiplier;
+        }
         if (_rnd_gen->trial_success(local_infectivity * grid_point->virions)) {
           grid_point->epicell->infect();
           _sim_stats.incubating++;
@@ -370,11 +370,11 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
     default: break;
   }
   if (produce_virions) {
-    double local_virion_production = _options->virion_production;
     if (grid_point->chemokine > 0) {
-        local_virion_production *= _options->virion_production_multiplier;
+      grid_point->virions += _options->virion_production * _options->virion_production_multiplier;
+    } else {
+      grid_point->virions += _options->virion_production;
     }
-    grid_point->virions += local_virion_production;
     grid_point->chemokine = min(grid_point->chemokine + _options->chemokine_production, 1.0);
   }
   update_epicell_timer.stop();
