@@ -421,20 +421,20 @@ class Options {
 
     _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
     
-    if (!lung_model_dir.empty()) {
-      auto model_dims = get_model_dims(lung_model_dir + "/alveolus.dat");
-      if (model_dims.size() < 3) return false;
-      for (int i = 0; i < 3; i++) {
-        if (model_dims[i] != dimensions[i]) {
-          dimensions = model_dims;
-          if (!rank_me())
-            cerr << KLRED << "WARNING: " << KNORM
-                 << "Setting dimensions to model data: " << dimensions[0] << ", " << dimensions[1]
-                 << ", " << dimensions[2] << endl;
-          break;
-        }
-      }
-    }
+    //if (!lung_model_dir.empty()) {
+    //  auto model_dims = get_model_dims(lung_model_dir + "/alveolus.dat");
+    //  if (model_dims.size() < 3) return false;
+    //  for (int i = 0; i < 3; i++) {
+    //    if (model_dims[i] != dimensions[i]) {
+    //      dimensions = model_dims;
+    //      if (!rank_me())
+    //        cerr << KLRED << "WARNING: " << KNORM
+    //             << "Setting dimensions to model data: " << dimensions[0] << ", " << dimensions[1]
+    //             << ", " << dimensions[2] << endl;
+    //      break;
+    //    }
+    //  }
+    //}
 
     if (virion_clearance_rate * antibody_factor > 1.0) {
       if (!rank_me())

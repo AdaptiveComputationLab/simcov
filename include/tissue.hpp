@@ -105,8 +105,8 @@ struct TCell {
 };
 
 enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4 };
-const string EpiCellStatusStr[] = {"HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD"};
-enum class EpiCellType { NONE, AIRWAY, ALVEOLI };
+const string EpiCellStatusStr[] = { "HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
+enum class EpiCellType{ AIR, EPITHELIAL, TYPE1, TYPE2 };
 
 class EpiCell {
   int id;
@@ -116,7 +116,7 @@ class EpiCell {
 
  public:
   EpiCellStatus status = EpiCellStatus::HEALTHY;
-  EpiCellType type = EpiCellType::AIRWAY;
+  EpiCellType type = EpiCellType::EPITHELIAL;
   bool infectable = true;
 
   EpiCell(int id);
@@ -174,13 +174,14 @@ class Tissue {
   HASH_TABLE<GridPoint *, bool>::iterator active_grid_point_iter;
 
   int64_t num_circulating_tcells;
+  static int64_t num_lung_cells;
   upcxx::dist_object<int64_t> tcells_generated;
   std::vector<EpiCellType> lung_cells;
 
   // this is static for ease of use in rpcs
   static GridPoint *get_local_grid_point(grid_points_t &grid_points, int64_t grid_i);
 
-  int load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type);
+  int64_t load_data_file(const string &fname, int64_t num_grid_points);
   vector<int> get_model_dims(const string &fname);
 
  public:
@@ -230,7 +231,7 @@ class Tissue {
 
   SampleData get_grid_point_sample_data(int64_t grid_i);
 
-  // int64_t get_random_airway_epicell_location();
+  static int64_t get_num_lung_cells();
 
 #ifdef DEBUG
   void check_actives(int time_step);

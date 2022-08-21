@@ -72,12 +72,19 @@ class SimStats {
     totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
     vector<float> totals_d;
-    totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());  // / get_num_grid_points());
-    auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
-    totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
     auto perc_infected =
         100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
+    if (!_options->lung_model_dir.empty()) {
+      perc_infected = 100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) /
+                      Tissue::get_num_lung_cells();
+      totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() /
+                         Tissue::get_num_lung_cells());
+    } else {
+      totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
+    }
+    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());
+    auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
+    totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
 
     ostringstream oss;
     oss << left;
@@ -94,7 +101,7 @@ class SimStats {
       else
         oss << '\t' << tot;
     }
-    oss << fixed << setprecision(2) << showpoint;
+    oss << fixed << setprecision(10) << showpoint;
     if (width)
       oss << setw(width) << perc_infected;
     else
@@ -139,6 +146,11 @@ void seed_infection(Tissue &tissue, int time_step) {
         GridCoords new_coords(coords_1d);
         if (tissue.set_initial_infection(coords_1d)) {
           WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries");
+          //ostringstream oss;
+          //oss << "rank " << rank_me() << " of " << rank_n() << " time step " << time_step
+          //    << ": SUCCESSFUL initial infection at " << new_coords.str() << " after " << num_tries
+          //    << " tries\n";
+          //cerr << oss.str();
           break;
         }
         num_tries++;
@@ -459,7 +471,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   int z_dim = _options->dimensions[2] / _options->sample_resolution;
   if (z_dim == 0) z_dim = 1;
   size_t tot_sz = x_dim * y_dim * z_dim;
-  int spacing = 5 * _options->sample_resolution;
+  int spacing = 15 * _options->sample_resolution;
   ostringstream header_oss;
   header_oss << "# vtk DataFile Version 4.2\n"
              << "SimCov sample " << basename(_options->output_dir.c_str()) << time_step

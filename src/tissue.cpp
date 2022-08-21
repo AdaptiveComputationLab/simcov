@@ -269,20 +269,17 @@ Tissue::Tissue()
   auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
   SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
        " with each grid point requiring on average ", sz_grid_point, " bytes\n");
-  int64_t num_lung_cells = 0;
   if (!_options->lung_model_dir.empty()) {
-    lung_cells.resize(num_grid_points, EpiCellType::NONE);
+    lung_cells.resize(num_grid_points, EpiCellType::AIR_INTERSTITUAL);
     Timer t_load_lung_model("load lung model");
     t_load_lung_model.start();
-    // Read alveolus epithileal cells
-    num_lung_cells += load_data_file(_options->lung_model_dir + "/alveolus.dat", num_grid_points,
-                                     EpiCellType::ALVEOLI);
-    // Read bronchiole epithileal cells
-    num_lung_cells += load_data_file(_options->lung_model_dir + "/bronchiole.dat", num_grid_points,
-                                     EpiCellType::AIRWAY);
+    // Read lung cells
+    num_lung_cells = load_data_file(_options->lung_model_dir + "/airways.dat", num_grid_points);
     t_load_lung_model.stop();
     SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
          t_load_lung_model.get_elapsed(), " s\n");
+  } else {
+    num_lung_cells = 0;
   }
 
   // FIXME: these blocks need to be stride distributed to better load balance
@@ -293,18 +290,21 @@ Tissue::Tissue()
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id);
-      if (num_lung_cells) {
-        if (lung_cells[id] != EpiCellType::NONE) {
+      if (num_lung_cells > 0) {
+        if (lung_cells[id] == EpiCellType::AIR) {
+          grid_points->emplace_back(GridPoint({coords, nullptr}));
+        } else {
           EpiCell *epicell = new EpiCell(id);
           epicell->type = lung_cells[id];
-          epicell->infectable = true;
+          epicell->infectable = false;
+          if (lung_cells[id] == EpiCellType::TYPE2) {
+            epicell->infectable = true;
+          }
           grid_points->emplace_back(GridPoint({coords, epicell}));
-        } else {  // Add empty space == air
-          grid_points->emplace_back(GridPoint({coords, nullptr}));
         }
       } else {
         EpiCell *epicell = new EpiCell(id);
-        epicell->type = EpiCellType::ALVEOLI;
+        epicell->type = EpiCellType::TYPE2;
         // epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
         epicell->infectable = true;
         grid_points->emplace_back(GridPoint({coords, epicell}));
@@ -325,27 +325,32 @@ Tissue::Tissue()
   barrier();
 }
 
-int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type) {
+int64_t Tissue::load_data_file(const string &fname, int64_t num_grid_points) {
   ifstream f(fname, ios::in | ios::binary);
   if (!f) SDIE("Couldn't open file ", fname);
-  f.seekg(0, ios::end);
-  auto fsize = f.tellg();
-  auto num_ids = fsize / sizeof(int);
-  if (num_ids > num_grid_points + 3) DIE("Too many ids in ", fname, " max is ", num_grid_points);
+  f.seekg(0, f.end);
+  int64_t num_ids = f.tellg();  // no need to divide by sizeof(char) = 1
+  if (num_ids > num_grid_points) DIE("Too many ids in ", fname, " max is ", num_grid_points);
   f.clear();
   f.seekg(0, ios::beg);
-  vector<int> id_buf(num_ids);
-  if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), fsize))
+  vector<char> id_buf(num_ids);
+  if (!f.read(reinterpret_cast<char *>(&(id_buf[0])), num_ids))
     DIE("Couldn't read all bytes in ", fname);
-  int num_lung_cells = 0;
-  // skip first three wwhich are dimensions
-  for (int i = 3; i < id_buf.size(); i++) {
-    auto id = id_buf[i];
+  num_lung_cells = 0;
+  for (int64_t i = 0; i < id_buf.size(); i++) {
 #ifdef BLOCK_PARTITION
-    id = GridCoords::linear_to_block(id);
+    auto id = GridCoords::linear_to_block(i);
 #endif
-    lung_cells[id] = epicell_type;
-    num_lung_cells++;
+    if (id_buf[i] == '3') {
+      lung_cells[id] = EpiCellType::TYPE2;
+      num_lung_cells++;
+    } else if (id_buf[i] == '2') {
+      lung_cells[id] = EpiCellType::TYPE1;
+      num_lung_cells++;
+    } else if (id_buf[i] == '1') {
+      lung_cells[id] = EpiCellType::EPITHELIAL;
+      num_lung_cells++;
+    }
   }
   f.close();
   return num_lung_cells;
@@ -427,6 +432,7 @@ bool Tissue::set_initial_infection(int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                DBG("set infected for grid point ", grid_point, " ", grid_point->str(), "\n");
                if (!grid_point->epicell) return false;
+               if (!((grid_point->epicell)->infectable)) return false;
                grid_point->virions = _options->initial_infection;
                new_active_grid_points->insert({grid_point, true});
                return true;
@@ -629,6 +635,10 @@ void Tissue::add_new_actives(IntermittentTimer &timer) {
 }
 
 size_t Tissue::get_num_actives() { return active_grid_points.size(); }
+
+int64_t Tissue::num_lung_cells = 0;
+
+int64_t Tissue::get_num_lung_cells() { return Tissue::num_lung_cells; }
 
 #ifdef DEBUG
 void Tissue::check_actives(int time_step) {

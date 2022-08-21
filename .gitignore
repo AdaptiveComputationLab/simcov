@@ -8,3 +8,4 @@ __pycache__
 results
 transfer.sh
 batch-scripts/*.out
+.vs
