@@ -31,7 +31,13 @@ using std::shared_ptr;
 using std::to_string;
 using std::vector;
 
-enum class ViewObject { VIRUS, TCELL_TISSUE, EPICELL, CHEMOKINE };
+enum class ViewObject {
+  VIRUS,
+  TCELL_TISSUE,
+  EPICELL,
+  CHEMOKINE,
+  INFLAM_SIGNAL_CELL
+};
 
 inline string view_object_str(ViewObject view_object) {
   switch (view_object) {
@@ -39,6 +45,7 @@ inline string view_object_str(ViewObject view_object) {
     case ViewObject::VIRUS: return "virus";
     case ViewObject::EPICELL: return "epicell";
     case ViewObject::CHEMOKINE: return "chemokine";
+    case ViewObject::INFLAM_SIGNAL_CELL: return "inflamsignalcell";
     default: DIE("Unknown view object");
   }
   return "";
@@ -142,6 +149,8 @@ struct GridPoint {
   vector<int64_t> *neighbors = nullptr;
   float chemokine = 0, nb_chemokine = 0;
   float virions = 0, nb_virions = 0;
+  bool inflam_signal_all = false;
+  bool inflam_signal_cell = false;
 
   string str() const;
 
@@ -151,6 +160,7 @@ struct GridPoint {
 struct SampleData {
   double tcells = 0;
   bool has_epicell = false;
+  bool has_inflam_signal_cell = false;
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
   float virions = 0;
   float chemokine = 0;

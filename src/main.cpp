@@ -38,9 +38,9 @@ class SimStats {
   int64_t dead = 0;
   int64_t tcells_vasculature = 0;
   int64_t tcells_tissue = 0;
-  float chemokines = 0;
-  int64_t num_chemo_pts = 0;
   float virions = 0;
+  int64_t num_inflam_signal_all = 0;
+  int64_t num_inflam_signal_cell = 0;
 
   void init() {
     if (!rank_me()) {
@@ -50,8 +50,8 @@ class SimStats {
   }
 
   string header(int width) {
-    vector<string> columns = {"incb", "expr", "apop", "dead",    "tvas",
-                              "ttis", "chem", "virs", "chempts", "%infct"};
+    vector<string> columns = {"incb", "expr", "apop", "dead", "tvas",
+                              "ttis", "inflcell", "inflall" "virs", "%infct"};
     ostringstream oss;
     oss << left;
     for (auto column : columns) {
@@ -71,20 +71,17 @@ class SimStats {
     totals.push_back(reduce_one(dead, op_fast_add, 0).wait());
     totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(num_inflam_signal_cell, op_fast_add, 0).wait());
+    totals.push_back(reduce_one(num_inflam_signal_all, op_fast_add, 0).wait());
     vector<float> totals_d;
+    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());
     auto perc_infected =
         100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
     if (!_options->lung_model_dir.empty()) {
-      perc_infected = 100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) /
-                      Tissue::get_num_lung_cells();
-      totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() /
-                         Tissue::get_num_lung_cells());
-    } else {
-      totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
+      perc_infected = 100.0
+          * (float)(totals[0] + totals[1] + totals[2] + totals[3])
+          / Tissue::get_num_lung_cells();
     }
-    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());
-    auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
-    totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
 
     ostringstream oss;
     oss << left;
@@ -445,16 +442,9 @@ void set_active_grid_points(Tissue &tissue) {
     spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
                    nbs->size());
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
-    // only count up chemokine in healthy epicells or empty spaces
-    // this will be added to the total number of infected and dead epicells to get cumulative
-    // chemokine spread
-    if (grid_point->chemokine > 0 &&
-        (!grid_point->epicell || grid_point->epicell->status == EpiCellStatus::HEALTHY))
-      _sim_stats.num_chemo_pts++;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->virions < MIN_VIRIONS) grid_point->virions = 0;
     if (grid_point->tcell) grid_point->tcell->moved = false;
-    _sim_stats.chemokines += grid_point->chemokine;
     _sim_stats.virions += grid_point->virions;
     if (!grid_point->is_active()) to_erase.push_back(grid_point);
   }
@@ -493,6 +483,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
     case ViewObject::TCELL_TISSUE: header_oss << "t-cell-tissue"; break;
     case ViewObject::EPICELL: header_oss << "epicell"; break;
     case ViewObject::CHEMOKINE: header_oss << "chemokine"; break;
+    case ViewObject::INFLAM_SIGNAL_CELL: header_oss << "inflamsignalcell"; break;
     default: SDIE("unknown view object");
   }
   header_oss << " unsigned_char\n"
@@ -553,6 +544,10 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         if (scaled_chemo > 1) val = chemo_scale * log(scaled_chemo);
         if (sample.chemokine > 0 && val == 0) val = 1;
         break;
+      case ViewObject::INFLAM_SIGNAL_CELL:
+        if (sample.has_inflam_signal_cell) val = static_cast<unsigned char>(1);
+        break;
+      default: break;
     }
     buf[i] = val;
   }
@@ -596,6 +591,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             float chemokine = 0;
             int num_tcells = 0;
             bool epicell_found = false;
+            bool inflam_signal_found = false;
             array<int, 5> epicell_counts{0};
             block_samples.clear();
             bool done_sub = false;
@@ -617,6 +613,9 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
                       case EpiCellStatus::APOPTOTIC: epicell_counts[3]++; break;
                       case EpiCellStatus::DEAD: epicell_counts[4]++; break;
                     }
+                  }
+                  if (sub_sd.has_inflam_signal_cell) {
+                    inflam_signal_found = true;
                   }
                   chemokine += sub_sd.chemokine;
                   virions += sub_sd.virions;
@@ -643,6 +642,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             }
             SampleData sd = {.tcells = (double)num_tcells / block_size,
                              .has_epicell = epicell_found,
+                             .has_inflam_signal_cell = inflam_signal_found,
                              .epicell_status = epi_status,
                              .virions = virions / block_size,
                              .chemokine = chemokine / block_size};
@@ -732,6 +732,14 @@ void run_sim(Tissue &tissue) {
       if (grid_point->tcell)
         update_tissue_tcell(time_step, tissue, grid_point, *nbs, chemokines_cache);
       if (grid_point->epicell) update_epicell(time_step, tissue, grid_point);
+      if (!grid_point->inflam_signal_all && grid_point->chemokine > 0) {
+        grid_point->inflam_signal_all = true;
+        _sim_stats.num_inflam_signal_all++;
+        if (grid_point->epicell && grid_point->epicell->type != EpiCellType::AIR) {
+          grid_point->inflam_signal_cell = true;
+          _sim_stats.num_inflam_signal_cell++;
+        }
+      }
       update_chemokines(grid_point, *nbs, chemokines_to_update);
       update_virions(grid_point, *nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
@@ -757,8 +765,7 @@ void run_sim(Tissue &tissue) {
     barrier();
 
     _sim_stats.virions = 0;
-    _sim_stats.chemokines = 0;
-    _sim_stats.num_chemo_pts = 0;
+
     set_active_grid_points(tissue);
     barrier();
 
@@ -771,6 +778,7 @@ void run_sim(Tissue &tissue) {
       sample(time_step, samples, start_id, ViewObject::TCELL_TISSUE);
       sample(time_step, samples, start_id, ViewObject::VIRUS);
       sample(time_step, samples, start_id, ViewObject::CHEMOKINE);
+      sample(time_step, samples, start_id, ViewObject::INFLAM_SIGNAL_CELL);
       sample_timer.stop();
     }
 

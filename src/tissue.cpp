@@ -382,6 +382,9 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
                  sample.has_epicell = true;
                  sample.epicell_status = grid_point->epicell->status;
                }
+               if (grid_point->inflam_signal_cell) {
+                 sample.has_inflam_signal_cell = true;
+               }
                sample.virions = grid_point->virions;
                sample.chemokine = grid_point->chemokine;
                return sample;
