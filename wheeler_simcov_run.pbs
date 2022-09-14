@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#PBS -q default
+#PBS -q normal
 #PBS -l nodes=2:ppn=8
 #PBS -l walltime=01:00:00
 #PBS -N simcov_test
