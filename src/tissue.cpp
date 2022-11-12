@@ -393,7 +393,7 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
       .wait();
 }
 
-vector<int64_t> *Tissue::get_neighbors(GridCoords c) {
+vector<int64_t> *Tissue::get_neighbors(GridCoords c, EpiCellType type, bool comp) {
   GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, c.to_1d());
   if (!grid_point->neighbors) {
     grid_point->neighbors = new vector<int64_t>;
@@ -407,7 +407,13 @@ vector<int64_t> *Tissue::get_neighbors(GridCoords c) {
           if ((newx >= 0 && newx < _grid_size->x) && (newy >= 0 && newy < _grid_size->y) &&
               (newz >= 0 && newz < _grid_size->z)) {
             if (newx != c.x || newy != c.y || newz != c.z) {
-              grid_point->neighbors->push_back(GridCoords::to_1d(newx, newy, newz));
+              auto grid_coords = GridCoords::to_1d(newx, newy, newz);
+              GridPoint *ng_grid_point = Tissue::get_local_grid_point(grid_points, c.to_1d());
+              if (comp == false && ng_grid_point->epicell->type == type) {
+                grid_point->neighbors->push_back(grid_coords);
+              } else if (comp == true && ng_grid_point->epicell->type != type) {
+                grid_point->neighbors->push_back(grid_coords);
+              }
             }
           }
         }

@@ -113,7 +113,7 @@ struct TCell {
 
 enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4 };
 const string EpiCellStatusStr[] = { "HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
-enum class EpiCellType{ AIR, EPITHELIAL, TYPE1, TYPE2 };
+enum class EpiCellType{ NONE, AIR, EPITHELIAL, TYPE1, TYPE2 };
 
 class EpiCell {
   int id;
@@ -203,7 +203,7 @@ class Tissue {
 
   intrank_t get_rank_for_grid_point(int64_t grid_i);
 
-  vector<int64_t> *get_neighbors(GridCoords c);
+  vector<int64_t> *get_neighbors(GridCoords c, EpiCellType type, bool comp = false);
 
   bool set_initial_infection(int64_t grid_i);
 
