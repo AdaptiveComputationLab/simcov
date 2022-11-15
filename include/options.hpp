@@ -264,11 +264,12 @@ class Options {
   double virion_production_multiplier = 1.0;
   double virion_clearance_rate = 0.002;
   double virion_diffusion_coef = 1.0;
+  double virion_air_diffusion_coef = 0.0;
 
   double chemokine_production = 1.0;
   double chemokine_decay_rate = 0.01;
   double chemokine_diffusion_coef = 1.0;
-  double air_diffusion_coef = 1.0;
+  double chemokine_air_diffusion_coef = 0.0;
   double min_chemokine = 1e-6;
 
   double antibody_factor = 1;
@@ -347,6 +348,11 @@ class Options {
                    "Fraction of virions that diffuse into all neighbors each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
+    app.add_option("--virion-air-diffusion", virion_air_diffusion_coef,
+                   "Fraction of chemokine concentration that diffuses into all neighbors through air "
+                   "each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
     app.add_option("--chemokine-production", chemokine_production,
                    "Amount of chemokine produced by expressing cells each time step")
         ->check(CLI::Range(0.0, 1.0))
@@ -360,7 +366,7 @@ class Options {
                    "each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--air-diffusion", air_diffusion_coef,
+    app.add_option("--chemokine-air-diffusion", chemokine_air_diffusion_coef,
                    "Fraction of chemokine concentration that diffuses into all neighbors through air "
                    "each time step")
         ->check(CLI::Range(0.0, 1.0))
