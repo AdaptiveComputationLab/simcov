@@ -279,6 +279,31 @@ class Lung {
     }
     numAlveoli++;
   }
+  void constructCubeAlveoli(const Int3D &pos) {
+    // Single alveolar volume 200um x 200um x 200um, ? et al ?
+    // 40 x 40 x 40 units, [-20, 20]
+    int idim = 20;
+    for (int x = -idim; x <= idim; x++) {
+      for (int y = -idim; y <= idim; y++) {
+        for (int z = -idim; z <= idim; z++) {
+          // Cells in the two x planes
+          if (x == -idim || x == idim) {
+            addPosition(x, y, z, pos, bAngle, rotateZ);
+          }
+          // Cells in the two y planes
+          if (y == -idim || y == idim) {
+            addPosition(x, y, z, pos, bAngle, rotateZ);
+          }
+          // Cells in the one z plane at bottom of alveoli
+          if (z == -idim || z == idim) {
+            addPosition(x, y, z, pos, bAngle, rotateZ);
+          }
+        }
+      }
+    }
+    numAlveoli++;
+  }
+
 
   void addPosition(int x, int y, int z, const Int3D &pos, double bAngle, double rotateZ) {
 #ifndef COMPUTE_ONLY
