@@ -1,3 +1,5 @@
+This repo is a forked adaptation of:
+
 simcov Copyright (c) 2021, The Regents of the University of California,
 through Lawrence Berkeley National Laboratory (subject to receipt of
 any required approvals from the U.S. Dept. of Energy), Arizona State
@@ -14,9 +16,9 @@ its behalf a paid-up, nonexclusive, irrevocable, worldwide license in the
 Software to reproduce, distribute copies to the public, prepare derivative 
 works, and perform publicly and display publicly, and to permit others to do so.
 
-# SimCov #
+# SimForager #
 
-This is a model for simulating the response of the immune system to infections in the lungs.
+This is a model for simulating large amounts of [currently homogeneous] foragers.
 
 ## Installing and building
 
@@ -24,7 +26,7 @@ It requires [UPC++](https://bitbucket.org/berkeleylab/upcxx/wiki/Home), C++ and 
 
 This repo contains a submodule, so to install, it's best to run
 
-`git clone --recurse-submodules git@github.com:AdaptiveComputationLab/simcov.git`
+`git clone --recurse-submodules git@github.com:cswritlarge/simforager.git`
 
 to fully initialize the submodules.
 
