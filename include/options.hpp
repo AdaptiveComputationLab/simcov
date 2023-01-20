@@ -94,10 +94,10 @@ class Options {
 
   void setup_log_file() {
     if (!upcxx::rank_me()) {
-      string log_fname = output_dir + "/simcov.log";
-      // check to see if simcov.log exists. If so, rename it
+      string log_fname = output_dir + "/simforager.log";
+      // check to see if simforager.log exists. If so, rename it
       if (file_exists(log_fname)) {
-        string new_log_fname = output_dir + "/simcov-" + get_current_time(true) + ".log";
+        string new_log_fname = output_dir + "/simforager-" + get_current_time(true) + ".log";
         cerr << KLRED << "WARNING: " << KNORM << log_fname << " exists. Renaming to "
              << new_log_fname << endl;
         if (rename(log_fname.c_str(), new_log_fname.c_str()) == -1)
@@ -274,7 +274,7 @@ class Options {
   int antibody_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
+  string output_dir = "simforager-results-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
   int sample_period = 0;
   int sample_resolution = 1;
@@ -286,9 +286,9 @@ class Options {
   bool verbose = false;
 
   bool load(int argc, char **argv) {
-    // SIMCOV version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
-    string full_version_str = "SimCov version " + string(SIMCOV_VERSION) + "-" +
-                              string(SIMCOV_BRANCH) + " built on " + string(SIMCOV_BUILD_DATE);
+    // SIMFORAGER version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
+    string full_version_str = "SimForager version " + string(SIMFORAGER_VERSION) + "-" +
+                              string(SIMFORAGERR_BRANCH) + " built on " + string(SIMFORAGER_BUILD_DATE);
     vector<string> infection_coords_strs;
 
     CLI::App app(full_version_str);
@@ -468,13 +468,13 @@ class Options {
     setup_output_dir();
     setup_log_file();
 
-    init_logger(output_dir + "/simcov.log", verbose);
+    init_logger(output_dir + "/simforager.log", verbose);
 
 #ifdef DEBUG
     open_dbg("debug");
 #endif
 
-    SLOG(KLBLUE, "SimCov version ", full_version_str, KNORM, "\n");
+    SLOG(KLBLUE, "SimForager version ", full_version_str, KNORM, "\n");
 
     if (upcxx::rank_me() == 0) {
       // print out all compiler definitions
@@ -498,7 +498,7 @@ class Options {
 #endif
     if (!upcxx::rank_me()) {
       // write out configuration file for restarts
-      ofstream ofs(output_dir + "/simcov.config");
+      ofstream ofs(output_dir + "/simforager.config");
       ofs << app.config_to_str(true, true);
     }
     upcxx::barrier();
