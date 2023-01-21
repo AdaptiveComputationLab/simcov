@@ -823,7 +823,7 @@ int main(int argc, char **argv) {
   memory_tracker.stop();
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(),
-       " for SimCov version ", SIMCOV_VERSION, "\n");
+       " for SimForager version ", SIMFORAGER_VERSION, "\n");
   barrier();
   upcxx::finalize();
   return 0;

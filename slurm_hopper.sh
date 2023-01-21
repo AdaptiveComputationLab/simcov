@@ -27,4 +27,4 @@ module load cmake/3.11.4-qkyj
 module load openmpi/4.1.3-j6zb
 module load upcxx/2020.10.0-6eh2
 
-srun --mpi=pmi2 install/bin/simcov --config covid_default.config
+srun --mpi=pmi2 install/bin/simforager --config simforager_null.config
