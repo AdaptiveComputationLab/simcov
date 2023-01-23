@@ -3,7 +3,7 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=32
 #SBATCH --time=2-00:00
-#SBATCH --job-name=simcov-tutorial
+#SBATCH --job-name=simforagger-tutorial
 #SBATCH --mail-user=
 #SBATCH --mail-type=END
 
