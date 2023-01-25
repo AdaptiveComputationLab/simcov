@@ -16,9 +16,10 @@ git clone --recurse-submodules https://github.com/AdaptiveComputationLab/simcov.
 
 ## Build SIMCoV
 
-Change to the root directory just cloned: 
+Change to the root directory just cloned and ensure build script is executable: 
 ```
 cd simcov
+chmod +x ./build_hopper.sh
 ```
 
 Load Hopper modules, set UPCXX variables, and build SIMCoV:
@@ -41,7 +42,7 @@ sbatch slurm_hopper.sh
 
 Check the status of your simuation in the batch system:
 ```
-squeue -u <your_user_name>
+squeue -u $USER
 ```
 
 View job console outputs (e.g. cat slurm-35489.out):
