@@ -117,37 +117,3 @@ The 'results/samples' directory contains simulation results for virus, chemokine
 On the top menu bar click 'Next Frame' button to display each timestep and 'Play' button to animate frames. Using the top file menu option create a screenshot using 'File->Save ScreenShot...' and a video using 'File->Save Animation...'.
 
 The 'scripts' directory also contains a ParaView Python (pvpyton) script 'generate_paraview_state.py' that generates a ParaView state file from simulation results that can be loaded using the top file menu option 'File->Load State...'. You can find full instructions on [SIMCoV Readme.md](https://github.com/AdaptiveComputationLab/simcov).
-
-## Running SIMCoV with Branching Airways
-
-A description of the Branching Airways is on pages 10-12 of the paper and results visualized in Figures 7 and 8. Do the following to configure simcov to run with Branching Airways:
-
-1. Change to simcov root directory and checkout the latest branch
-```
-cd simcov
-git checkout branching_airways_3min_model
-```
-
-2. Edit the covid_ba.config file to point to your simcov directory (__*Note:__ Current BA build is configured for a 3 minute timestep where simcov baseline uses 1 minute timestep)
-```
-; *Directory containing files for lung model
-lung-model =                  /users/<Your-User-Name>/simcov
-```
-
-3. Build and submit batch job
-```
-./build_hopper.sh Release
-sbatch slurm_hopper.sh
-```
-
-4. Check the status of your simuation in the batch system:
-```
-squeue -u <your_user_name>
-```
-
-5. View job console outputs (e.g. cat slurm-35489.out):
-```
-cat slurm-<your_job_id>.out
-```
-
-6. Launch ParaView to visualize results (see [Examples](#examples-modifying-parameters-plotting-results-with-python-and-visualizing-results-with-paraview) Section)
