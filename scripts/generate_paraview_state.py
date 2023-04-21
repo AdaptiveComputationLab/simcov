@@ -59,7 +59,7 @@ def create_chart_view(ylabel, log_scale=False, left_max_range=1000):
 
     
 def get_sample_fnames(prefix, data_dir):
-    return sorted(glob.glob(data_dir + '/' + prefix + '*'), key=lambda s: int(s.split('_')[2].split('.')[0]))
+    return sorted(glob.glob(data_dir + '/' + prefix + '*'), key=lambda s: int(s.split('_')[-1].split('.')[0]))
 
 
 def display_data(prefix, data_dir, render_view, label, color_func, representation='Surface'):
