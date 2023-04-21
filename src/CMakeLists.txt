@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
 
+# Cmake versions after 3.12 complain the ROOT path policy is not set.
+# The following sets the policy to respect ROOT package paths.
+if (POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 message(STATUS "finding UPCXX for SimCov build")
 #find_package(UPCXX 2019.9.0.1 REQUIRED)
 find_package(UPCXX REQUIRED)
