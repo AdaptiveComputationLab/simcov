@@ -16,97 +16,18 @@
 
 using namespace std;
 
+//Primary SIMCoV Includes
 #include "options.hpp"
 #include "tissue.hpp"
 #include "upcxx_utils.hpp"
 #include "utils.hpp"
+#include "simstats.hpp"
 
 using namespace upcxx;
 using namespace upcxx_utils;
 
 #define NOW chrono::high_resolution_clock::now
 #define STATS_COL_WIDTH 11
-
-class SimStats {
- private:
-  ofstream log_file;
-
- public:
-  int64_t incubating = 0;
-  int64_t expressing = 0;
-  int64_t apoptotic = 0;
-  int64_t dead = 0;
-  int64_t tcells_vasculature = 0;
-  int64_t tcells_tissue = 0;
-  float chemokines = 0;
-  int64_t num_chemo_pts = 0;
-  float virions = 0;
-
-  void init() {
-    if (!rank_me()) {
-      log_file.open(_options->output_dir + "/simcov.stats");
-      log_file << "# time" << header(0) << endl;
-    }
-  }
-
-  string header(int width) {
-    vector<string> columns = {"incb", "expr", "apop", "dead",    "tvas",
-                              "ttis", "chem", "virs", "chempts", "%infct"};
-    ostringstream oss;
-    oss << left;
-    for (auto column : columns) {
-      if (width)
-        oss << setw(width) << column;
-      else
-        oss << '\t' << column;
-    }
-    return oss.str();
-  }
-
-  string to_str(int width) {
-    vector<int64_t> totals;
-    totals.push_back(reduce_one(incubating, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(expressing, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(apoptotic, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(dead, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
-    vector<float> totals_d;
-    totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());  // / get_num_grid_points());
-    auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
-    totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
-    auto perc_infected =
-        100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
-
-    ostringstream oss;
-    oss << left;
-    for (auto tot : totals) {
-      if (width)
-        oss << setw(width) << tot;
-      else
-        oss << '\t' << tot;
-    }
-    oss << fixed << setprecision(2) << scientific;
-    for (auto tot : totals_d) {
-      if (width)
-        oss << setw(width) << tot;
-      else
-        oss << '\t' << tot;
-    }
-    oss << fixed << setprecision(2) << showpoint;
-    if (width)
-      oss << setw(width) << perc_infected;
-    else
-      oss << '\t' << perc_infected;
-    return oss.str();
-  }
-
-  void log(int time_step) {
-    string s = to_str(0);
-    if (!rank_me()) log_file << time_step << s << endl;
-  }
-};
 
 ofstream _logstream;
 bool _verbose = false;
@@ -797,6 +718,7 @@ int main(int argc, char **argv) {
   upcxx::init();
   auto start_t = NOW();
   _options = make_shared<Options>();
+  _sim_stats = new SimStats(_options);
   if (!_options->load(argc, argv)) return 0;
   ProgressBar::SHOW_PROGRESS = _options->show_progress;
   if (pin_thread(getpid(), local_team().rank_me()) == -1)
