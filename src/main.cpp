@@ -31,7 +31,7 @@ using namespace upcxx_utils;
 
 ofstream _logstream;
 bool _verbose = false;
-SimStats _sim_stats;
+shared_ptr<SimStats> _sim_stats;
 shared_ptr<Options> _options;
 
 IntermittentTimer generate_tcell_timer(__FILENAME__ + string(":") + "generate tcells");
@@ -718,7 +718,7 @@ int main(int argc, char **argv) {
   upcxx::init();
   auto start_t = NOW();
   _options = make_shared<Options>();
-  _sim_stats = new SimStats(_options);
+  _sim_stats = make_shared<SimStats>(_options);
   if (!_options->load(argc, argv)) return 0;
   ProgressBar::SHOW_PROGRESS = _options->show_progress;
   if (pin_thread(getpid(), local_team().rank_me()) == -1)
