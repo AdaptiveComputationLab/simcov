@@ -107,7 +107,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
   int num_dying = floor(portion_dying);
   if (_rnd_gen->trial_success(portion_dying - num_dying)) num_dying++;
   tissue.change_num_circulating_tcells(-num_dying);
-  _sim_stats.tcells_vasculature -= num_dying;
+  _sim_stats->tcells_vasculature -= num_dying;
   num_circulating = tissue.get_num_circulating_tcells();
   double portion_xtravasing = extravasate_fraction * num_circulating;
   int num_xtravasing = floor(portion_xtravasing);
@@ -116,11 +116,11 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
     progress();
     GridCoords coords(_rnd_gen);
     if (tissue.try_add_new_tissue_tcell(coords.to_1d())) {
-      _sim_stats.tcells_tissue++;
+      _sim_stats->tcells_tissue++;
       DBG(time_step, " tcell extravasates at ", coords.str(), "\n");
     }
   }
-  _sim_stats.tcells_vasculature = num_circulating;
+  _sim_stats->tcells_vasculature = num_circulating;
   update_circulating_tcells_timer.stop();
 }
 
@@ -136,7 +136,7 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
   }
   tcell->tissue_time_steps--;
   if (tcell->tissue_time_steps == 0) {
-    _sim_stats.tcells_tissue--;
+    _sim_stats->tcells_tissue--;
     DBG(time_step, " tcell ", tcell->id, " dies in tissue at ", grid_point->coords.str(), "\n");
     // not adding to a new location means this tcell is not preserved to the next time step
     delete grid_point->tcell;
@@ -161,15 +161,15 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
       auto nb_epicell_status = tissue.try_bind_tcell(nb_grid_i);
       bool bound = true;
       switch (nb_epicell_status) {
-        case EpiCellStatus::EXPRESSING: _sim_stats.expressing--; break;
-        case EpiCellStatus::INCUBATING: _sim_stats.incubating--; break;
-        case EpiCellStatus::APOPTOTIC: _sim_stats.apoptotic--; break;
+        case EpiCellStatus::EXPRESSING: _sim_stats->expressing--; break;
+        case EpiCellStatus::INCUBATING: _sim_stats->incubating--; break;
+        case EpiCellStatus::APOPTOTIC: _sim_stats->apoptotic--; break;
         default: bound = false;
       }
       if (bound) {
         DBG(time_step, " tcell ", tcell->id, " binds at ", grid_point->coords.str(), "\n");
         tcell->binding_period = _options->tcell_binding_period;
-        _sim_stats.apoptotic++;
+        _sim_stats->apoptotic++;
         break; //only allow tcell to bind to one cell!
       }
     }
@@ -249,29 +249,29 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
       if (grid_point->virions > 0) {
         if (_rnd_gen->trial_success(local_infectivity * grid_point->virions)) {
           grid_point->epicell->infect();
-          _sim_stats.incubating++;
+          _sim_stats->incubating++;
         }
       }
       break;
     }
     case EpiCellStatus::INCUBATING:
       if (grid_point->epicell->transition_to_expressing()) {
-        _sim_stats.incubating--;
-        _sim_stats.expressing++;
+        _sim_stats->incubating--;
+        _sim_stats->expressing++;
       }
       break;
     case EpiCellStatus::EXPRESSING:
       if (grid_point->epicell->infection_death()) {
-        _sim_stats.dead++;
-        _sim_stats.expressing--;
+        _sim_stats->dead++;
+        _sim_stats->expressing--;
       } else {
         produce_virions = true;
       }
       break;
     case EpiCellStatus::APOPTOTIC:
       if (grid_point->epicell->apoptosis_death()) {
-        _sim_stats.dead++;
-        _sim_stats.apoptotic--;
+        _sim_stats->dead++;
+        _sim_stats->apoptotic--;
       } else if (grid_point->epicell->was_expressing()) {
         produce_virions = true;
       }
@@ -359,12 +359,12 @@ void set_active_grid_points(Tissue &tissue) {
     // chemokine spread
     if (grid_point->chemokine > 0 &&
         (!grid_point->epicell || grid_point->epicell->status == EpiCellStatus::HEALTHY))
-      _sim_stats.num_chemo_pts++;
+      _sim_stats->num_chemo_pts++;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->virions < MIN_VIRIONS) grid_point->virions = 0;
     if (grid_point->tcell) grid_point->tcell->moved = false;
-    _sim_stats.chemokines += grid_point->chemokine;
-    _sim_stats.virions += grid_point->virions;
+    _sim_stats->chemokines += grid_point->chemokine;
+    _sim_stats->virions += grid_point->virions;
     if (!grid_point->is_active()) to_erase.push_back(grid_point);
   }
   for (auto grid_point : to_erase) tissue.erase_active(grid_point);
@@ -582,14 +582,14 @@ void run_sim(Tissue &tissue) {
   auto curr_t = start_t;
   // TODO Allow for 1 timestep
   auto five_perc = (_options->num_timesteps >= 50) ? _options->num_timesteps / 50 : 1;
-  _sim_stats.init();
+  _sim_stats->init();
   int64_t whole_lung_volume = (int64_t)_options->whole_lung_dims[0] *
                               (int64_t)_options->whole_lung_dims[1] *
                               (int64_t)_options->whole_lung_dims[2];
   auto sim_volume = get_num_grid_points();
   double extravasate_fraction = (double)sim_volume / whole_lung_volume;
   SLOG("Fraction of circulating T cells extravasating is ", extravasate_fraction, "\n");
-  SLOG("# datetime                    step    ", _sim_stats.header(STATS_COL_WIDTH),
+  SLOG("# datetime                    step    ", _sim_stats->header(STATS_COL_WIDTH),
        "<%active  lbln>\n");
   // store the total concentration increment updates for target grid points
   // chemokine, virions
@@ -658,16 +658,16 @@ void run_sim(Tissue &tissue) {
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG("[", get_current_time(), " ", setprecision(2), fixed, setw(7), right, t_elapsed.count(),
-           "s]: ", setw(8), left, time_step, _sim_stats.to_str(STATS_COL_WIDTH), setprecision(3),
+           "s]: ", setw(8), left, time_step, _sim_stats->to_str(STATS_COL_WIDTH), setprecision(3),
            fixed, "< ", perc_actives, " ", load_balance, " >\n");
     }
     barrier();
     tissue.add_new_actives(add_new_actives_timer);
     barrier();
 
-    _sim_stats.virions = 0;
-    _sim_stats.chemokines = 0;
-    _sim_stats.num_chemo_pts = 0;
+    _sim_stats->virions = 0;
+    _sim_stats->chemokines = 0;
+    _sim_stats->num_chemo_pts = 0;
     set_active_grid_points(tissue);
     barrier();
 
@@ -684,7 +684,7 @@ void run_sim(Tissue &tissue) {
     }
 
     log_timer.start();
-    _sim_stats.log(time_step);
+    _sim_stats->log(time_step);
     barrier();
     log_timer.stop();
 
