@@ -1,4 +1,3 @@
-#pragma once
 #include "simstats.hpp"
 
 /**
@@ -23,7 +22,7 @@ std::string SimStats::header(int width) {
     oss << std::left;
     for (auto column : columns) {
         if (width)
-            oss << setw(width) << column;
+            oss << std::setw(width) << column;
         else
             oss << '\t' << column;
     }

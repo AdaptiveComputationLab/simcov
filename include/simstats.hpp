@@ -20,8 +20,8 @@ class SimStats {
 
     SimStats(std::shared_ptr<Options> opt);
     void init();
-    string header(int width);
-    string to_str(int width);
+    std::string header(int width);
+    std::string to_str(int width);
     void log(int time_step);
 
 
