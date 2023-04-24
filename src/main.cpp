@@ -717,8 +717,8 @@ void run_sim(Tissue &tissue) {
 int main(int argc, char **argv) {
   upcxx::init();
   auto start_t = NOW();
-  _options = make_shared<Options>();
-  _sim_stats = make_shared<SimStats>(_options);
+  _options = std::make_shared<Options>();
+  _sim_stats = std::make_shared<SimStats>(_options);
   if (!_options->load(argc, argv)) return 0;
   ProgressBar::SHOW_PROGRESS = _options->show_progress;
   if (pin_thread(getpid(), local_team().rank_me()) == -1)
