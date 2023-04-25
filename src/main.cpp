@@ -6,7 +6,6 @@
 #include <math.h>
 #include <stdarg.h>
 #include <unistd.h>
-
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -17,11 +16,8 @@
 using namespace std;
 
 //Primary SIMCoV Includes
-#include "options.hpp"
-#include "tissue.hpp"
+#include "simcov.hpp"
 #include "upcxx_utils.hpp"
-#include "utils.hpp"
-#include "simstats.hpp"
 
 using namespace upcxx;
 using namespace upcxx_utils;
