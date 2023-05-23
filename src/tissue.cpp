@@ -284,6 +284,7 @@ Tissue::Tissue()
 
   // FIXME: these blocks need to be stride distributed to better load balance
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
+  int32_t cnt = 0;//TODO
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
@@ -303,11 +304,21 @@ Tissue::Tissue()
           grid_points->emplace_back(GridPoint({coords, epicell}));
         }
       } else {
-        EpiCell *epicell = new EpiCell(id);
-        epicell->type = EpiCellType::TYPE2;
-        // epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
-        epicell->infectable = true;
+        EpiCell *epicell = new EpiCell(id);//TODO
+        if (cnt < 2) {
+          epicell->type = EpiCellType::TYPE2;
+          epicell->infectable = true;
+        } else {
+          epicell->type = EpiCellType::TYPE1;
+          epicell->infectable = false;
+        }
         grid_points->emplace_back(GridPoint({coords, epicell}));
+        if (++cnt > 26) cnt = 0;
+        //EpiCell *epicell = new EpiCell(id);//TODO
+        //epicell->type = EpiCellType::TYPE2;
+        //// epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
+        //epicell->infectable = true;
+        //grid_points->emplace_back(GridPoint({coords, epicell}));
       }
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");

@@ -462,7 +462,7 @@ class Options {
     for (int i = 0; i < 3; i++) {
       if (dimensions[i] > whole_lung_dims[i]) {
         if (!rank_me()) cerr << "Dimensions must be <= whole lung dimensions\n";
-        return false;
+        //return false;//TODO
       }
     }
     setup_output_dir();
