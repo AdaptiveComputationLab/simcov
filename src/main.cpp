@@ -131,35 +131,105 @@ IntermittentTimer sample_timer(__FILENAME__ + string(":") + "sample");
 IntermittentTimer sample_write_timer(__FILENAME__ + string(":") + "sample write");
 IntermittentTimer log_timer(__FILENAME__ + string(":") + "log");
 
+struct Point {
+    double x, y, z;
+
+    // Define less-than operator for set comparison
+    bool operator<(const Point& other) const {
+        if (x != other.x) return x < other.x;
+        if (y != other.y) return y < other.y;
+        return z < other.z;
+    }
+};
+
+// Function to generate all points in a sphere given the center
+std::vector<Point> generateAllPointsInSphere(Point center, double radius, int numPoints) {
+    std::vector<Point> points;
+	set<Point> generatedPoints;  // Set to store generated points
+
+    while (points.size() < numPoints) {
+        // Generate random spherical coordinates
+        double theta = 2.0 * M_PI * rand() / RAND_MAX;
+        double phi = M_PI * rand() / RAND_MAX;
+
+        // Convert spherical coordinates to Cartesian coordinates
+        double x = center.x + radius * sin(phi) * cos(theta);
+        double y = center.y + radius * sin(phi) * sin(theta);
+        double z = center.z + radius * cos(phi);
+
+        // Create a new point
+        Point p = {x, y, z};
+
+        // Add the point to the set
+        if (generatedPoints.count(p) == 0) {
+            // Add the point to the set
+            generatedPoints.insert(p);
+		    points.push_back(p);
+        }
+    }
+
+    // Convert the set of points to a vector and return
+    //std::vector<Point> result(generatedPoints.begin(), generatedPoints.end());
+    return points;
+}
+	
+
+
+
 void seed_infection(Tissue &tissue, int time_step) {
   // _options->infection_coords contains the coords assigned just to rank_me()
+  int64_t num_success = 0;
+  int64_t num_failure = 0;
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
+	int64_t num_points = 1000000;
     if (infection_coords[3] == time_step) {
-      GridCoords coords({infection_coords[0], infection_coords[1], infection_coords[2]});
-      auto coords_1d = coords.to_1d();
-      int64_t num_tries = 0;
-      while (true) {
-        GridCoords new_coords(coords_1d);
+	  Point center = {infection_coords[0], infection_coords[1], infection_coords[2]};
+	  
+	  std::vector<Point> points = generateAllPointsInSphere(center, 20.0, num_points);
+	  // Process the generated points as needed
+	  for (const auto& point : points) {
+		// Do something with each point, such as setting initial infection
+		std::cout << "Processing point (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
+		// ...
+		GridCoords coords({point.x, point.y, point.z});
+		auto coords_1d = coords.to_1d();
+		
+		//while (true) {
+        //GridCoords new_coords(coords_1d);
         if (tissue.set_initial_infection(coords_1d)) {
-          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", new_coords.str() + " after ", num_tries, " tries");
+          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", coords.str());
           //ostringstream oss;
           //oss << "rank " << rank_me() << " of " << rank_n() << " time step " << time_step
           //    << ": SUCCESSFUL initial infection at " << new_coords.str() << " after " << num_tries
           //    << " tries\n";
           //cerr << oss.str();
-          break;
+          //break;
+		  num_success++;
         }
-        num_tries++;
+		else{
+		  num_failure++;
+		}
+		
         coords_1d++;
+	
         if (coords_1d >= get_num_grid_points()) {
           WARN("Could not find epicell to match uniform initial infection coord at ", coords.str());
           break;
         }
-      }
+	  //}
+	 }
+
       _options->infection_coords.erase(it--);
+	  
+	  WARN("total points ", num_points);
+	  double suc_per = ((double)num_success/(double)num_points)*100;
+	  double fail_per =  ((double)num_failure/(double)num_points)*100;
+	  WARN("Success ", num_success, " and Failure ", num_failure);
+	  WARN("Success ", suc_per, "% and Failure ", fail_per,"%");
     }
   }
+  
   barrier();
   tissue.add_new_actives(add_new_actives_timer);
   barrier();
