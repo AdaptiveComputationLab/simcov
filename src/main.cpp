@@ -13,6 +13,9 @@
 #include <iostream>
 #include <string>
 #include <upcxx/upcxx.hpp>
+#include <vector>
+#include <random>
+#include <unordered_set>
 
 using namespace std;
 
@@ -142,6 +145,12 @@ struct Point {
     }
 };
 
+struct Point3D {
+    double x;
+    double y;
+    double z;
+};
+
 // Function to generate all points in a sphere given the center
 std::vector<Point> generateAllPointsInSphere(Point center, double radius, int numPoints) {
     std::vector<Point> points;
@@ -172,7 +181,57 @@ std::vector<Point> generateAllPointsInSphere(Point center, double radius, int nu
     //std::vector<Point> result(generatedPoints.begin(), generatedPoints.end());
     return points;
 }
-	
+
+// Function to generate unique random points on the surface of a cube with a specified center
+std::vector<Point3D> generateUniqueRandomPointsOnCube(int numPoints, double sideLength, const Point3D& center) {
+    std::vector<Point3D> points;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> dis(-0.5 * sideLength, 0.5 * sideLength);
+    std::unordered_set<int> usedIndices;
+
+    while (points.size() < numPoints) {
+        Point3D point;
+        int face = std::uniform_int_distribution<int>(0, 5)(gen);
+        
+        if (face == 0) { // front face
+            point.x = center.x + dis(gen);
+            point.y = center.y + dis(gen);
+            point.z = center.z + 0.5 * sideLength;
+        } else if (face == 1) { // back face
+            point.x = center.x + dis(gen);
+            point.y = center.y + dis(gen);
+            point.z = center.z - 0.5 * sideLength;
+        } else if (face == 2) { // top face
+            point.x = center.x + dis(gen);
+            point.y = center.y + 0.5 * sideLength;
+            point.z = center.z + dis(gen);
+        } else if (face == 3) { // bottom face
+            point.x = center.x + dis(gen);
+            point.y = center.y - 0.5 * sideLength;
+            point.z = center.z + dis(gen);
+        } else if (face == 4) { // left face
+            point.x = center.x - 0.5 * sideLength;
+            point.y = center.y + dis(gen);
+            point.z = center.z + dis(gen);
+        } else { // right face
+            point.x = center.x + 0.5 * sideLength;
+            point.y = center.y + dis(gen);
+            point.z = center.z + dis(gen);
+        }
+
+        // Generate a unique hash for the point
+        int pointHash = static_cast<int>(point.x * 10000 + point.y * 100 + point.z);
+
+        // Check if the point is already generated
+        if (usedIndices.find(pointHash) == usedIndices.end()) {
+            usedIndices.insert(pointHash);
+            points.push_back(point);
+        }
+    }
+    
+    return points;
+}	
 
 
 
@@ -183,10 +242,12 @@ void seed_infection(Tissue &tissue, int time_step) {
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
 	int64_t num_points = 1000000;
+	double sideLength = 100.0;	
     if (infection_coords[3] == time_step) {
-	  Point center = {infection_coords[0], infection_coords[1], infection_coords[2]};
+	  Point3D center = {infection_coords[0], infection_coords[1], infection_coords[2]};
 	  
-	  std::vector<Point> points = generateAllPointsInSphere(center, 20.0, num_points);
+	  //std::vector<Point> points = generateAllPointsInSphere(center, 20.0, num_points);
+	  std::vector<Point3D> points = generateUniqueRandomPointsOnCube(num_points, sideLength, center);
 	  // Process the generated points as needed
 	  for (const auto& point : points) {
 		// Do something with each point, such as setting initial infection
