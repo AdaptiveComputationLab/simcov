@@ -1,10 +1,21 @@
 #include "tissue.hpp"
+#include <random>
+
+// ...
+
+
 
 using namespace std;
 using upcxx::make_view;
 using upcxx::progress;
 using upcxx::rpc;
 using upcxx::view;
+
+
+
+std::random_device rd; //obtain a random seed
+std::mt19937 gen(rd()); //random number engine
+std::uniform_real_distribution<> dis(0.0, 1.0); //defines the range of random values between 0.0 and 1.0
 
 GridCoords::GridCoords(int64_t i) {
 #ifdef BLOCK_PARTITION
@@ -284,7 +295,7 @@ Tissue::Tissue()
 
   // FIXME: these blocks need to be stride distributed to better load balance
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
-  int32_t cnt = 0;//TODO
+  //int32_t cnt = 0;//TODO
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
@@ -305,7 +316,8 @@ Tissue::Tissue()
         }
       } else {
         EpiCell *epicell = new EpiCell(id);//TODO
-        if (cnt < 2) {
+        double randomValue = dis(gen);
+		if (randomValue < 0.069) {
           epicell->type = EpiCellType::TYPE2;
           epicell->infectable = true;
         } else {
@@ -313,7 +325,7 @@ Tissue::Tissue()
           epicell->infectable = false;
         }
         grid_points->emplace_back(GridPoint({coords, epicell}));
-        if (++cnt > 26) cnt = 0;
+        //if (++cnt > 26) cnt = 0;
         //EpiCell *epicell = new EpiCell(id);//TODO
         //epicell->type = EpiCellType::TYPE2;
         //// epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
