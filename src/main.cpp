@@ -231,29 +231,49 @@ std::vector<Point3D> generateUniqueRandomPointsOnCube(int numPoints, double side
     }
     
     return points;
-}	
+}
+
+// Function to generate unique random points inside the cube cube with a specified center
+std::vector<Point3D> generateAllPointsInsideCube(double sideLength, const Point3D& center) {
+    std::vector<Point3D> points;
+
+    for (double x = center.x - 0.5 * sideLength; x <= center.x + 0.5 * sideLength; x++) {
+        for (double y = center.y - 0.5 * sideLength; y <= center.y + 0.5 * sideLength; y++) {
+            for (double z = center.z - 0.5 * sideLength; z <= center.z + 0.5 * sideLength; z++) {
+                points.push_back({x, y, z});
+            }
+        }
+    }
+
+    return points;
+}
 
 
-
+//void seed_infection(Tissue &tissue, int time_step, GridPoint *grid_point) {
 void seed_infection(Tissue &tissue, int time_step) {
   // _options->infection_coords contains the coords assigned just to rank_me()
   int64_t num_success = 0;
   int64_t num_failure = 0;
+  
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
-	int64_t num_points = 1000000;
-	double sideLength = 100.0;	
+	int64_t num_points = 60000;
+	double sideLength = 100.0;
+
     if (infection_coords[3] == time_step) {
 	  Point3D center = {infection_coords[0], infection_coords[1], infection_coords[2]};
 	  
 	  //std::vector<Point> points = generateAllPointsInSphere(center, 20.0, num_points);
 	  std::vector<Point3D> points = generateUniqueRandomPointsOnCube(num_points, sideLength, center);
+	  //std::vector<Point3D> inside_points = generateAllPointsInsideCube(sideLength, center);
 	  // Process the generated points as needed
+	  
+	  
 	  for (const auto& point : points) {
 		// Do something with each point, such as setting initial infection
 		std::cout << "Processing point (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
 		// ...
-		GridCoords coords({point.x, point.y, point.z});
+		GridCoords coords({point.x, point.y,point.z});
 		auto coords_1d = coords.to_1d();
 		
 		//while (true) {
@@ -280,6 +300,19 @@ void seed_infection(Tissue &tissue, int time_step) {
         }
 	  //}
 	 }
+	 
+	 //for (const auto& point : inside_points) {
+		//GridCoords coords({point.x, point.y,point.z});
+		//int64_t grid_i = coords.to_1d();
+		//tissue.make_epi_dead(grid_i);
+                
+		//GridPoint *grid_point = tissue.get_local_grid_point(tissue.grid_points, coords.to_1d());
+		//assign air to these points
+		//auto grid_point = tissue.get_grid_point_sample_data(coords.to_1d());
+		
+		//grid_point->epicell = EpiCellStatus::DEAD
+		
+	  //}
 
       _options->infection_coords.erase(it--);
 	  
@@ -471,6 +504,9 @@ void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
           _sim_stats.incubating++;
         }
       }
+
+	   
+	  
       break;
     }
     case EpiCellStatus::INCUBATING:
@@ -570,8 +606,15 @@ void set_active_grid_points(Tissue &tissue) {
     auto nbs = tissue.get_neighbors(grid_point->coords);
     diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
             nbs->size());
-    spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+	if (grid_point->epicell->type == EpiCellType::TYPE2)
+		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_infectable,
                    nbs->size());
+	else if (grid_point->epicell->type == EpiCellType::TYPE1)
+		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_interstitial,
+                   nbs->size());
+	else
+		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_air,
+                   nbs->size());		
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->virions < MIN_VIRIONS) grid_point->virions = 0;
@@ -723,7 +766,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             int num_tcells = 0;
             bool epicell_found = false;
             bool inflam_signal_found = false;
-            array<int, 5> epicell_counts{0};
+            array<int, 8> epicell_counts{0};
             block_samples.clear();
             bool done_sub = false;
             for (int subx = x; subx < x + _options->sample_resolution; subx++) {
@@ -743,6 +786,9 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
                       case EpiCellStatus::EXPRESSING: epicell_counts[2]++; break;
                       case EpiCellStatus::APOPTOTIC: epicell_counts[3]++; break;
                       case EpiCellStatus::DEAD: epicell_counts[4]++; break;
+					  //case EpiCellStatus::TYPE2: epicell_counts[5]++; break;
+					  //case EpiCellStatus::TYPE1: epicell_counts[6]++; break;
+					  //case EpiCellStatus::AIR: epicell_counts[7]++; break;
                     }
                   }
                   if (sub_sd.has_inflam_signal_cell) {
@@ -769,6 +815,10 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
                 case 2: epi_status = EpiCellStatus::EXPRESSING; break;
                 case 3: epi_status = EpiCellStatus::APOPTOTIC; break;
                 case 4: epi_status = EpiCellStatus::DEAD; break;
+				//case 5: epi_status = EpiCellStatus::TYPE2; break;
+				//case 6: epi_status = EpiCellStatus::TYPE1; break;
+				//case 7: epi_status = EpiCellStatus::AIR; break;
+				
               }
             }
             SampleData sd = {.tcells = (double)num_tcells / block_size,
@@ -822,7 +872,10 @@ void run_sim(Tissue &tissue) {
   vector<SampleData> samples;
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
-    seed_infection(tissue, time_step);
+    //Change
+	auto grid_point = tissue.get_first_active_grid_point();
+	//seed_infection(tissue, time_step, grid_point);
+	seed_infection(tissue, time_step);
     barrier();
     if (time_step == _options->antibody_period)
       _options->virion_clearance_rate *= _options->antibody_factor;
