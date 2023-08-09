@@ -263,7 +263,10 @@ class Options {
   double virion_production = 35;
   double virion_production_multiplier = 1.0;
   double virion_clearance_rate = 0.002;
-  double virion_diffusion_coef = 1.0;
+  //double virion_diffusion_coef = 1.0;
+  double virion_diffusion_coef_air = 1.0;
+  double virion_diffusion_coef_interstitial = 1.0;
+  double virion_diffusion_coef_infectable = 1.0;
 
   double chemokine_production = 1.0;
   double chemokine_decay_rate = 0.01;
@@ -342,8 +345,23 @@ class Options {
                    "Fraction by which virion count drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--virion-diffusion", virion_diffusion_coef,
-                   "Fraction of virions that diffuse into all neighbors each time step")
+    //app.add_option("--virion-diffusion", virion_diffusion_coef,
+      //             "Fraction of virions that diffuse into all neighbors each time step")
+        //->check(CLI::Range(0.0, 1.0))
+        //->capture_default_str();
+	
+	app.add_option("--virion-diffusion-air", virion_diffusion_coef_air,
+                   "Fraction of virions that diffuse into air each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+	
+	app.add_option("--virion-diffusion-interstitial", virion_diffusion_coef_interstitial,
+                   "Fraction of virions that diffuse into interstitial space  each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+		
+	app.add_option("--virion-diffusion-infectable", virion_diffusion_coef_infectable,
+                   "Fraction of virions that diffuse into infectable cells each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
     app.add_option("--chemokine-production", chemokine_production,

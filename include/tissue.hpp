@@ -111,7 +111,9 @@ struct TCell {
   TCell();
 };
 
-enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4 };
+//viz hack
+//enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4, TYPE2 = 5, TYPE1 = 6, AIR = 7  };
+enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4};
 const string EpiCellStatusStr[] = { "HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
 enum class EpiCellType{ AIR, EPITHELIAL, TYPE1, TYPE2 };
 
@@ -131,6 +133,10 @@ class EpiCell {
   string str();
 
   void infect();
+  //adding
+  //void assign_type2();
+  //void assign_type1();
+  //void assign_air();
   bool transition_to_expressing();
   bool apoptosis_death();
   bool infection_death();
@@ -206,6 +212,8 @@ class Tissue {
   vector<int64_t> *get_neighbors(GridCoords c);
 
   bool set_initial_infection(int64_t grid_i);
+  
+  
 
   void accumulate_chemokines(HASH_TABLE<int64_t, float> &chemokines_to_update,
                              IntermittentTimer &timer);

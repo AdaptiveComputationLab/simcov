@@ -114,6 +114,24 @@ void EpiCell::infect() {
   status = EpiCellStatus::INCUBATING;
 }
 
+//changes for the grid
+//void EpiCell::assign_type2(){
+  //status = EpiCellStatus::TYPE2;
+
+//}
+
+//void EpiCell::assign_type1(){
+  //status = EpiCellStatus::TYPE1;
+
+//}
+
+//void EpiCell::assign_air(){
+  //status = EpiCellStatus::AIR;
+
+//}
+
+//changes for the grid
+
 bool EpiCell::transition_to_expressing() {
   assert(status == EpiCellStatus::INCUBATING);
   incubation_time_steps--;
@@ -232,6 +250,9 @@ static int get_square_block_dim(int64_t num_grid_points) {
   return block_dim;
 }
 
+
+/* Prev code
+
 Tissue::Tissue()
     : grid_points({})
     , new_active_grid_points({})
@@ -245,6 +266,9 @@ Tissue::Tissue()
   _grid_size = make_shared<GridCoords>(
       GridCoords(_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]));
   int64_t num_grid_points = get_num_grid_points();
+  // Inside the Tissue class definition
+  
+
   // find the biggest cube that perfectly divides the grid and gives enough
   // data for at least two cubes per rank (for load
   // balance)
@@ -295,14 +319,14 @@ Tissue::Tissue()
 
   // FIXME: these blocks need to be stride distributed to better load balance
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
-  //int32_t cnt = 0;//TODO
+  int32_t cnt = 0;//TODO
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       GridCoords coords(id);
-      if (num_lung_cells > 0) {
+	  if (num_lung_cells > 0) {
         if (lung_cells[id] == EpiCellType::AIR) {
           grid_points->emplace_back(GridPoint({coords, nullptr}));
         } else {
@@ -316,16 +340,24 @@ Tissue::Tissue()
         }
       } else {
         EpiCell *epicell = new EpiCell(id);//TODO
-        double randomValue = dis(gen);
-		if (randomValue < 0.069) {
+        //double randomValue = dis(gen);
+		if (cnt == 0 || cnt ==1 || cnt == 95 || cnt == 96) {
           epicell->type = EpiCellType::TYPE2;
           epicell->infectable = true;
-        } else {
+		  epicell->status = EpiCellStatus::TYPE2;
+        } else if (cnt == 97 || cnt == 98 || cnt == 99) {
           epicell->type = EpiCellType::TYPE1;
           epicell->infectable = false;
+		  epicell->status = EpiCellStatus::TYPE1;
         }
+		else{
+		  epicell->type = EpiCellType::AIR;
+          epicell->infectable = false;
+		  epicell->status = EpiCellStatus::AIR;
+				
+		}
         grid_points->emplace_back(GridPoint({coords, epicell}));
-        //if (++cnt > 26) cnt = 0;
+        if (++cnt > 99) cnt = 0;
         //EpiCell *epicell = new EpiCell(id);//TODO
         //epicell->type = EpiCellType::TYPE2;
         //// epicell->status = static_cast<EpiCellStatus>(rank_me() % 4);
@@ -347,6 +379,129 @@ Tissue::Tissue()
   }
   barrier();
 }
+*/
+
+Tissue::Tissue()
+    : grid_points({})
+    , new_active_grid_points({})
+    , num_circulating_tcells(0)
+    , tcells_generated({0}) {
+  auto remainder = [](int64_t numerator, int64_t denominator) -> bool {
+    return ((double)numerator / denominator - (numerator / denominator) != 0);
+  };
+  BarrierTimer timer(__FILEFUNC__, false, true);
+
+  _grid_size = make_shared<GridCoords>(
+      GridCoords(_options->dimensions[0], _options->dimensions[1], _options->dimensions[2]));
+  int64_t num_grid_points = get_num_grid_points();
+  // Inside the Tissue class definition
+  
+
+  // find the biggest cube that perfectly divides the grid and gives enough
+  // data for at least two cubes per rank (for load
+  // balance)
+  // This is a trade-off: the more data is blocked, the better the locality,
+  // but load balance could be a problem if not all
+  // ranks get the same number of cubes. Also, having bigger cubes could lead
+  // to load imbalance if all of the computation is
+  // happening within a cube.
+  int64_t block_dim = (_grid_size->z > 1 ? get_cube_block_dim(num_grid_points) :
+                                           get_square_block_dim(num_grid_points));
+  if (block_dim == 1)
+    SWARN("Using a block size of 1: this will result in a lot of "
+          "communication. You should change the dimensions.");
+
+  _grid_blocks.block_size =
+      (_grid_size->z > 1 ? block_dim * block_dim * block_dim : block_dim * block_dim);
+  _grid_blocks.num_x = _grid_size->x / block_dim;
+  _grid_blocks.num_y = _grid_size->y / block_dim;
+  _grid_blocks.num_z = (_grid_size->z > 1 ? _grid_size->z / block_dim : 1);
+  _grid_blocks.size_x = block_dim;
+  _grid_blocks.size_y = block_dim;
+  _grid_blocks.size_z = (_grid_size->z > 1 ? block_dim : 1);
+
+  int64_t num_blocks = num_grid_points / _grid_blocks.block_size;
+
+  int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
+
+  bool threeD = _grid_size->z > 1;
+  SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
+       (threeD ? " blocks" : " squares"), " of size ", _grid_blocks.block_size, " (", block_dim,
+       "^", (threeD ? 3 : 2), "), with ", blocks_per_rank, " per process\n");
+  double sz_grid_point = sizeof(GridPoint) + (double)sizeof(EpiCell);
+  auto mem_reqd = sz_grid_point * blocks_per_rank * _grid_blocks.block_size;
+  SLOG("Total initial memory required per process is at least ", get_size_str(mem_reqd),
+       " with each grid point requiring on average ", sz_grid_point, " bytes\n");
+  if (!_options->lung_model_dir.empty()) {
+    lung_cells.resize(num_grid_points, EpiCellType::AIR);
+    Timer t_load_lung_model("load lung model");
+    t_load_lung_model.start();
+    // Read lung cells
+    num_lung_cells = load_data_file(_options->lung_model_dir + "/airways.dat", num_grid_points);
+    t_load_lung_model.stop();
+    SLOG("Lung model loaded ", num_lung_cells, " epithileal cells in ", fixed, setprecision(2),
+         t_load_lung_model.get_elapsed(), " s\n");
+  } else {
+    num_lung_cells = 0;
+  }
+
+  // FIXME: these blocks need to be stride distributed to better load balance
+  grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
+  int32_t cnt = 0;//TODO
+  for (int64_t i = 0; i < blocks_per_rank; i++) {
+    int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
+    if (start_id >= num_grid_points) break;
+    for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
+      assert(id < num_grid_points);
+      //int64_t z = id / (_grid_size->x * _grid_size->y);
+      //int64_t remaining = id % (_grid_size->x * _grid_size->y);
+      //int64_t y = remaining / _grid_size->x;
+      //int64_t x = remaining % _grid_size->x;
+	  GridCoords coords(id);
+	  int64_t x = coords.x;
+	  int64_t y = coords.y;
+	  int64_t z = coords.z;
+	  
+      EpiCell *epicell = new EpiCell(id); // TODO: Make sure this constructor is correct
+      if (x % 100 == 0 || y % 100 == 0 || z % 100 == 0 || x % 100 == 1 || y % 100 == 1 || z % 100 == 1 || x % 100 == 95 || y % 100 == 95 || z % 100 == 95 || x % 100 == 96 || y % 100 == 96 || z % 100 == 96) {
+        epicell->type = EpiCellType::TYPE2;
+        epicell->infectable = true;
+        //epicell->status = EpiCellStatus::TYPE2;
+      } 
+	  else if (x % 100 == 97 || y % 100 == 97 || z % 100 == 97 ||x % 100 == 98 || y % 100 == 98 || z % 100 == 98 || x % 100 == 99 || y % 100 == 99 || z % 100 == 99 ) {
+        epicell->type = EpiCellType::TYPE1;
+        epicell->infectable = false;
+        //epicell->status = EpiCellStatus::TYPE1;
+      } 
+	  else {
+        epicell->type = EpiCellType::AIR;
+        epicell->infectable = false;
+        //epicell->status = EpiCellStatus::AIR;
+      }
+
+    // Place epicell in the specified coordinates
+      grid_points->emplace_back(GridPoint({coords, epicell}));
+
+      
+      
+#ifdef DEBUG
+      DBG("adding grid point ", id, " at ", coords.str(), "\n");
+      auto id_1d = coords.to_1d();
+      if (id_1d != id) DIE("id ", id, " is not same as returned by to_1d ", id_1d);
+      auto nbs = get_neighbors(coords);
+      ostringstream oss;
+      for (auto nb_grid_i : *nbs) {
+        oss << GridCoords(nb_grid_i).str() << " ";
+      }
+      DBG("nbs: ", oss.str(), "\n");
+#endif
+    }
+  }
+  barrier();
+}
+
+
+
 
 int64_t Tissue::load_data_file(const string &fname, int64_t num_grid_points) {
   ifstream f(fname, ios::in | ios::binary);
@@ -466,6 +621,8 @@ bool Tissue::set_initial_infection(int64_t grid_i) {
              grid_points, new_active_grid_points, grid_i)
       .wait();
 }
+
+
 
 void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, float> &chemokines_to_update,
                                    IntermittentTimer &timer) {
