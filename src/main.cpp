@@ -436,11 +436,40 @@ void set_active_grid_points(Tissue &tissue) {
   // iterate through all active local grid points and set changes
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
-    auto nbs = tissue.get_neighbors(grid_point->coords);
-    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
+    auto nbs = tissue.get_neighbors(grid_point->coords, EpiCellType::NONE, true);
+
+    if (_options->chemokine_air_diffusion_coef > 0) {
+      if (grid_point->epicell->type == EpiCellType::AIR) {
+        auto pr_nbs = tissue.get_neighbors(grid_point->coords, EpiCellType::AIR);
+        diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_air_diffusion_coef,
+              pr_nbs->size());
+      } else {
+        auto pr_nbs = tissue.get_neighbors(grid_point->coords, EpiCellType::AIR, true);
+        diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
+              pr_nbs->size());
+      }
+    } else {
+      diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
             nbs->size());
-    spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+    }
+
+
+    if (_options->virion_air_diffusion_coef > 0) {
+      if (grid_point->epicell->type == EpiCellType::AIR) {
+        auto pr_nbs = tissue.get_neighbors(grid_point->coords, EpiCellType::AIR);
+        spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_air_diffusion_coef,
                    nbs->size());
+      } else {
+        auto pr_nbs = tissue.get_neighbors(grid_point->coords, EpiCellType::AIR, true);
+        spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+                   nbs->size());
+      }
+    } else {
+      spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef,
+                   nbs->size());
+    }
+
+    
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->virions < MIN_VIRIONS) grid_point->virions = 0;
@@ -726,7 +755,7 @@ void run_sim(Tissue &tissue) {
       }
       // DBG("updating grid point ", grid_point->str(), "\n");
       upcxx::progress();
-      auto nbs = tissue.get_neighbors(grid_point->coords);
+      auto nbs = tissue.get_neighbors(grid_point->coords, EpiCellType::NONE, true);
       // the tcells are moved (added to the new list, but only cleared out at the end of all
       // updates)
       if (grid_point->tcell)
