@@ -321,6 +321,7 @@ void setup_bind(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
   auto rnd_nbs = nbs;
   TCell* tcell = grid_point->tcell;
   if(tcell->binding_period != -1)
+    tcell->bindTarget = -1;
     return;
   // include the current location
   rnd_nbs.push_back(grid_point->coords.to_1d());
@@ -333,12 +334,14 @@ void setup_bind(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
     }
   }
 }
+
 void execute_bind(GridPoint* grid_point){
   TCell* tcell = grid_point->tcell;
   if(tcell->bindTarget != -1)
     tcell->binding_period = _options->tcell_binding_period;
   tcell->bindTarget = -1;
 }
+
 void execute_apop(GridPoint* grid_point){
   EpiCell* epicell = grid_point->epicell;
   if(epicell->boundTo){
@@ -368,7 +371,6 @@ void setup_move(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
   int tie_break = _rnd_gen->get(0, 10000);
   grid_point->tcell->moveTarget = selected_grid_i;
   grid_point->tcell->tie_break = tie_break;
-  grid_point->tie_break = tie_break;
   tissue.prepare_tcell_move(selected_grid_i, *(grid_point->tcell));
 }
 void execute_move(Tissue &tissue, GridPoint* grid_point){
