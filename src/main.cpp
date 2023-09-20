@@ -207,12 +207,6 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
                          HASH_TABLE<int64_t, float> &chemokines_cache) {
   update_tcell_timer.start();
   TCell *tcell = grid_point->tcell;
-  if (tcell->moved) {
-    // don't update tcells that were added this time step
-    tcell->moved = false;
-    update_tcell_timer.stop();
-    return;
-  }
   tcell->tissue_time_steps--;
   if (tcell->tissue_time_steps == 0) {
     _sim_stats.tcells_tissue--;
@@ -223,33 +217,33 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
     update_tcell_timer.stop();
     return;
   }
-  if (tcell->binding_period != -1) {
-    DBG(time_step, " tcell ", tcell->id, " is bound at ", grid_point->coords.str(), "\n");
-    // this tcell is bound
-    tcell->binding_period--;
-    // done with binding when set to -1
-    if (tcell->binding_period == 0) tcell->binding_period = -1;
-  } else {
+  update_tcell_timer.stop();
+  /**
     // not bound to an epicell - try to bind first with this cell then any one of the neighbors
     auto rnd_nbs = nbs;
     // include the current location
     rnd_nbs.push_back(grid_point->coords.to_1d());
     random_shuffle(rnd_nbs.begin(), rnd_nbs.end());
     for (auto &nb_grid_i : rnd_nbs) {
-      DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
-      auto nb_epicell_status = tissue.try_bind_tcell(nb_grid_i);
-      bool bound = true;
-      switch (nb_epicell_status) {
-        case EpiCellStatus::EXPRESSING: _sim_stats.expressing--; break;
-        case EpiCellStatus::INCUBATING: _sim_stats.incubating--; break;
-        case EpiCellStatus::APOPTOTIC: _sim_stats.apoptotic--; break;
-        default: bound = false;
-      }
-      if (bound) {
-        DBG(time_step, " tcell ", tcell->id, " binds at ", grid_point->coords.str(), "\n");
-        tcell->binding_period = _options->tcell_binding_period;
-        _sim_stats.apoptotic++;
-        break; //only allow tcell to bind to one cell!
+      // DBG(time_step, " tcell ", tcell->id, " trying to bind at ", grid_point->coords.str(), "\n");
+      // auto nb_epicell_status = tissue.try_bind_tcell(nb_grid_i);
+      // bool bound = true;
+      // switch (nb_epicell_status) {
+      //   case EpiCellStatus::EXPRESSING: _sim_stats.expressing--; break;
+      //   case EpiCellStatus::INCUBATING: _sim_stats.incubating--; break;
+      //   case EpiCellStatus::APOPTOTIC: _sim_stats.apoptotic--; break;
+      //   default: bound = false;
+      // }
+      // if (bound) {
+      //   DBG(time_step, " tcell ", tcell->id, " binds at ", grid_point->coords.str(), "\n");
+      //   tcell->binding_period = _options->tcell_binding_period;
+      //   _sim_stats.apoptotic++;
+      //   break; //only allow tcell to bind to one cell!
+      // }
+      bool targetFound = tissue.try_bind_tcell(nb_grid_i);
+      if(targetFound){
+        tcell->bindTarget = nb_grid_i;
+        break;
       }
     }
   }
@@ -307,8 +301,86 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
           GridCoords(selected_grid_i).str(), "\n");
     }
   }
-  update_tcell_timer.stop();
+  **/
 }
+
+void setup_bind(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
+  auto rnd_nbs = nbs;
+  TCell* tcell = grid_point->tcell;
+  if (tcell->binding_period != -1) {
+    DBG(time_step, " tcell ", tcell->id, " is bound at ", grid_point->coords.str(), "\n");
+    // this tcell is bound
+    tcell->binding_period--;
+    // done with binding when set to -1
+    if (tcell->binding_period == 0) tcell->binding_period = -1;
+    tcell->bindTarget = -1; //dont bind this turn
+    return;
+  }
+  // include the current location
+  rnd_nbs.push_back(grid_point->coords.to_1d());
+  random_shuffle(rnd_nbs.begin(), rnd_nbs.end());
+  for (auto &nb_grid_i : rnd_nbs) {
+    bool targetFound = tissue.try_bind_tcell(nb_grid_i);
+    if(targetFound){
+      tcell->bindTarget = nb_grid_i;
+      break;
+    }
+  }
+}
+
+void execute_bind(GridPoint* grid_point){
+  TCell* tcell = grid_point->tcell;
+  if(tcell->bindTarget != -1)
+    tcell->binding_period = _options->tcell_binding_period;
+  tcell->bindTarget = -1;
+}
+
+void execute_apop(GridPoint* grid_point){
+  EpiCell* epicell = grid_point->epicell;
+  if(epicell->boundTo){
+    switch (epicell->status)
+    {
+    case EpiCellStatus::INCUBATING:
+      _sim_stats.incubating--;
+      break;
+    case EpiCellStatus::EXPRESSING:
+      _sim_stats.expressing--;
+      break;
+    case EpiCellStatus::APOPTOTIC:
+      _sim_stats.apoptotic--;
+      break;
+    default:
+      break;
+    }
+    epicell->status = EpiCellStatus::APOPTOTIC;
+    _sim_stats.apoptotic++;
+  }
+  epicell->boundTo = false;
+}
+
+void setup_move(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
+  auto rnd_nb_i = _rnd_gen->get(0, (int64_t)nbs.size());
+  auto selected_grid_i = nbs[rnd_nb_i];
+  int tie_break = _rnd_gen->get(0, 10000);
+  grid_point->tcell->moveTarget = selected_grid_i;
+  grid_point->tcell->tie_break = tie_break;
+  tissue.prepare_tcell_move(selected_grid_i, *(grid_point->tcell));
+}
+
+void execute_move(Tissue &tissue, GridPoint* grid_point){
+  TCell* tcell = grid_point->tcell;
+  if(tcell->moveTarget != -1){
+      if (tissue.try_move_tissue_tcell(tcell->moveTarget, *tcell)) {
+      // DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
+      //     GridCoords(selected_grid_i).str(), "\n");
+      delete grid_point->tcell;
+      grid_point->tcell = nullptr;
+      } else {
+        tcell->moveTarget = -1;
+      }
+  }
+}
+
 
 void update_epicell(int time_step, Tissue &tissue, GridPoint *grid_point) {
   update_epicell_timer.start();
@@ -725,6 +797,47 @@ void run_sim(Tissue &tissue) {
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
+
+
+    for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+         grid_point = tissue.get_next_active_grid_point()) {
+          upcxx::progress();
+          auto nbs = tissue.get_neighbors(grid_point->coords);
+          if(grid_point->tcell)
+            setup_bind(tissue, grid_point, *nbs);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
+    }
+    barrier();
+    for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+         grid_point = tissue.get_next_active_grid_point()) {
+          upcxx::progress();
+          if(grid_point->tcell)
+            execute_bind(grid_point);
+          if(grid_point->epicell)
+            execute_apop(grid_point);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
+    }
+    barrier();
+
+    for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+         grid_point = tissue.get_next_active_grid_point()) {
+          upcxx::progress();
+          auto nbs = tissue.get_neighbors(grid_point->coords);
+          if(grid_point->tcell && grid_point->tcell->binding_period == -1)
+            setup_move(tissue, grid_point, *nbs);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
+    }
+    barrier();
+    for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
+         grid_point = tissue.get_next_active_grid_point()) {
+          upcxx::progress();
+          if(grid_point->tcell)
+            execute_move(tissue, grid_point);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
+    }
+    barrier();
+
+
     compute_updates_timer.stop();
     tissue.accumulate_chemokines(chemokines_to_update, accumulate_concentrations_timer);
     tissue.accumulate_virions(virions_to_update, accumulate_concentrations_timer);

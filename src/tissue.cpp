@@ -555,27 +555,64 @@ bool Tissue::try_add_tissue_tcell(int64_t grid_i, TCell &tcell) {
       .wait();
 }
 
-EpiCellStatus Tissue::try_bind_tcell(int64_t grid_i) {
+void Tissue::prepare_tcell_move(int64_t grid_i, TCell &tcell){
+  return rpc(
+    get_rank_for_grid_point(grid_i),
+    [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+      int64_t grid_i, TCell tcell) {
+        GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
+        if (!grid_point->tcell){
+          new_active_grid_points->insert({grid_point, true});
+          if(grid_point->tie_break < tcell.tie_break){
+            grid_point->tie_break = tcell.tie_break;
+          }
+        }
+      },
+      grid_points, new_active_grid_points, grid_i, tcell).wait();
+}
+
+bool Tissue::try_move_tissue_tcell(int64_t grid_i, TCell &tcell) {
+  return rpc(
+             get_rank_for_grid_point(grid_i),
+             [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
+                int64_t grid_i, TCell tcell) {
+               GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
+               // grid point is already occupied by a tcell, don't add
+               if (grid_point->tcell){
+                grid_point->tie_break = -1;
+                return false;
+               }
+               if (grid_point->tie_break != tcell.tie_break) return false;
+               if (grid_point->tie_break == -1) return false;
+               new_active_grid_points->insert({grid_point, true});
+               tcell.moved = true;
+               tcell.tie_break = -1;
+               tcell.moveTarget = -1;
+               grid_point->tie_break = -1;
+               grid_point->tcell = new TCell(tcell);
+               return true;
+             },
+             grid_points, new_active_grid_points, grid_i, tcell)
+      .wait();
+}
+
+bool Tissue::try_bind_tcell(int64_t grid_i) {
   return rpc(
              get_rank_for_grid_point(grid_i),
              [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points_t,
                 int64_t grid_i) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
-               if (!grid_point->epicell) return EpiCellStatus::DEAD;
+               if (!grid_point->epicell) return false;
                if (grid_point->epicell->status == EpiCellStatus::HEALTHY ||
                    grid_point->epicell->status == EpiCellStatus::DEAD)
-                 return grid_point->epicell->status;
-
-               // if (grid_point->epicell->status == EpiCellStatus::DEAD) return
-               // EpiCellStatus::DEAD;
+                 return false;
 
                double binding_prob = grid_point->epicell->get_binding_prob();
                if (_rnd_gen->trial_success(binding_prob)) {
-                 auto prev_status = grid_point->epicell->status;
-                 grid_point->epicell->status = EpiCellStatus::APOPTOTIC;
-                 return prev_status;
+                 grid_point->epicell->boundTo = true;
+                 return true;
                }
-               return EpiCellStatus::DEAD;
+               return false;
              },
              grid_points, new_active_grid_points, grid_i)
       .wait();

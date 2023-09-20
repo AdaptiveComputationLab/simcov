@@ -96,8 +96,11 @@ struct TCell {
   int binding_period = -1;
   int tissue_time_steps = -1;
   bool moved = true;
+  int bindTarget = -1;
+  int moveTarget = -1;
+  int tie_break = -1;
 
-  UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved);
+  UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved, moveTarget, bindTarget, tie_break);
 
   TCell(const string &id);
 
@@ -118,6 +121,7 @@ class EpiCell {
   EpiCellStatus status = EpiCellStatus::HEALTHY;
   EpiCellType type = EpiCellType::AIRWAY;
   bool infectable = true;
+  bool boundTo = false;
 
   EpiCell(int id);
 
@@ -144,6 +148,8 @@ struct GridPoint {
   float virions = 0, nb_virions = 0;
 
   string str() const;
+
+  int tie_break = -1;
 
   bool is_active();
 };
@@ -212,8 +218,10 @@ class Tissue {
   bool try_add_new_tissue_tcell(int64_t grid_i);
 
   bool try_add_tissue_tcell(int64_t grid_i, TCell &tcell);
+  void prepare_tcell_move(int64_t grid_i, TCell &tcell);
+  bool try_move_tissue_tcell(int64_t grid_i, TCell &tcell);
 
-  EpiCellStatus try_bind_tcell(int64_t grid_i);
+  bool try_bind_tcell(int64_t grid_i);
 
   GridPoint *get_first_local_grid_point();
   GridPoint *get_next_local_grid_point();
