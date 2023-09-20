@@ -100,7 +100,7 @@ struct TCell {
   int moveTarget = -1;
   int tie_break = -1;
 
-  UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved);
+  UPCXX_SERIALIZED_FIELDS(id, binding_period, tissue_time_steps, moved, moveTarget, bindTarget, tie_break);
 
   TCell(const string &id);
 

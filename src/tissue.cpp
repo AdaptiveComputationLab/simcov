@@ -578,7 +578,10 @@ bool Tissue::try_move_tissue_tcell(int64_t grid_i, TCell &tcell) {
                 int64_t grid_i, TCell tcell) {
                GridPoint *grid_point = Tissue::get_local_grid_point(grid_points, grid_i);
                // grid point is already occupied by a tcell, don't add
-               if (grid_point->tcell) return false;
+               if (grid_point->tcell){
+                grid_point->tie_break = -1;
+                return false;
+               }
                if (grid_point->tie_break != tcell.tie_break) return false;
                if (grid_point->tie_break == -1) return false;
                new_active_grid_points->insert({grid_point, true});

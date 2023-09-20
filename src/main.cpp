@@ -207,12 +207,6 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
                          HASH_TABLE<int64_t, float> &chemokines_cache) {
   update_tcell_timer.start();
   TCell *tcell = grid_point->tcell;
-  if (tcell->moved) {
-    // don't update tcells that were added this time step
-    tcell->moved = false;
-    update_tcell_timer.stop();
-    return;
-  }
   tcell->tissue_time_steps--;
   if (tcell->tissue_time_steps == 0) {
     _sim_stats.tcells_tissue--;
@@ -222,13 +216,6 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
     grid_point->tcell = nullptr;
     update_tcell_timer.stop();
     return;
-  }
-  if (tcell->binding_period != -1) {
-    DBG(time_step, " tcell ", tcell->id, " is bound at ", grid_point->coords.str(), "\n");
-    // this tcell is bound
-    tcell->binding_period--;
-    // done with binding when set to -1
-    if (tcell->binding_period == 0) tcell->binding_period = -1;
   }
   update_tcell_timer.stop();
   /**
@@ -320,9 +307,15 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
 void setup_bind(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
   auto rnd_nbs = nbs;
   TCell* tcell = grid_point->tcell;
-  if(tcell->binding_period != -1)
-    tcell->bindTarget = -1;
+  if (tcell->binding_period != -1) {
+    DBG(time_step, " tcell ", tcell->id, " is bound at ", grid_point->coords.str(), "\n");
+    // this tcell is bound
+    tcell->binding_period--;
+    // done with binding when set to -1
+    if (tcell->binding_period == 0) tcell->binding_period = -1;
+    tcell->bindTarget = -1; //dont bind this turn
     return;
+  }
   // include the current location
   rnd_nbs.push_back(grid_point->coords.to_1d());
   random_shuffle(rnd_nbs.begin(), rnd_nbs.end());
@@ -373,15 +366,18 @@ void setup_move(Tissue &tissue, GridPoint* grid_point, vector<int64_t> &nbs){
   grid_point->tcell->tie_break = tie_break;
   tissue.prepare_tcell_move(selected_grid_i, *(grid_point->tcell));
 }
+
 void execute_move(Tissue &tissue, GridPoint* grid_point){
   TCell* tcell = grid_point->tcell;
   if(tcell->moveTarget != -1){
       if (tissue.try_move_tissue_tcell(tcell->moveTarget, *tcell)) {
-      DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
-          GridCoords(selected_grid_i).str(), "\n");
+      // DBG(time_step, " tcell ", tcell->id, " at ", grid_point->coords.str(), " moves to ",
+      //     GridCoords(selected_grid_i).str(), "\n");
       delete grid_point->tcell;
       grid_point->tcell = nullptr;
-    }
+      } else {
+        tcell->moveTarget = -1;
+      }
   }
 }
 
@@ -802,12 +798,14 @@ void run_sim(Tissue &tissue) {
     }
     barrier();
 
+
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
          grid_point = tissue.get_next_active_grid_point()) {
           upcxx::progress();
           auto nbs = tissue.get_neighbors(grid_point->coords);
           if(grid_point->tcell)
             setup_bind(tissue, grid_point, *nbs);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
@@ -817,6 +815,7 @@ void run_sim(Tissue &tissue) {
             execute_bind(grid_point);
           if(grid_point->epicell)
             execute_apop(grid_point);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
 
@@ -824,8 +823,9 @@ void run_sim(Tissue &tissue) {
          grid_point = tissue.get_next_active_grid_point()) {
           upcxx::progress();
           auto nbs = tissue.get_neighbors(grid_point->coords);
-          if(grid_point->tcell)
+          if(grid_point->tcell && grid_point->tcell->binding_period == -1)
             setup_move(tissue, grid_point, *nbs);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
     for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
@@ -833,6 +833,7 @@ void run_sim(Tissue &tissue) {
           upcxx::progress();
           if(grid_point->tcell)
             execute_move(tissue, grid_point);
+          if (grid_point->is_active()) tissue.set_active(grid_point);
     }
     barrier();
 
