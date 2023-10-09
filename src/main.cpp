@@ -188,7 +188,9 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
   tissue.change_num_circulating_tcells(-num_dying);
   _sim_stats.tcells_vasculature -= num_dying;
   num_circulating = tissue.get_num_circulating_tcells();
-  double portion_xtravasing = extravasate_fraction * num_circulating;
+  double portion_xtravasing = (time_step <= 15) ? extravasate_fraction * num_circulating : 0;
+  //while (time_step < 20) double portion_xtravasing = ? extravasate_fraction * num_circulating : 0;
+  //double portion_xtravasing = ? extravasate_fraction * num_circulating;
   int num_xtravasing = floor(portion_xtravasing);
   if (_rnd_gen->trial_success(portion_xtravasing - num_xtravasing)) num_xtravasing++;
   for (int i = 0; i < num_xtravasing; i++) {
@@ -226,6 +228,8 @@ void update_tissue_tcell(int time_step, Tissue &tissue, GridPoint *grid_point, v
   if (tcell->binding_period != -1) {
     DBG(time_step, " tcell ", tcell->id, " is bound at ", grid_point->coords.str(), "\n");
     // this tcell is bound
+    //grid_point->nb_virions -= 100;
+    grid_point->virions -= 42; //arbitrary large bite size
     tcell->binding_period--;
     // done with binding when set to -1
     if (tcell->binding_period == 0) tcell->binding_period = -1;
