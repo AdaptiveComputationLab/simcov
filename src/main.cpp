@@ -43,7 +43,7 @@ class SimStats {
   float virions = 0;
 
   void init() {
-    if (!rank_me()) {
+    if (!upcxx::rank_me()) {
       log_file.open(_options->output_dir + "/simcov.stats");
       log_file << "# time" << header(0) << endl;
     }
@@ -65,16 +65,16 @@ class SimStats {
 
   string to_str(int width) {
     vector<int64_t> totals;
-    totals.push_back(reduce_one(incubating, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(expressing, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(apoptotic, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(dead, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(tcells_vasculature, op_fast_add, 0).wait());
-    totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
+    totals.push_back(upcxx::reduce_one(incubating, op_fast_add, 0).wait());
+    totals.push_back(upcxx::reduce_one(expressing, op_fast_add, 0).wait());
+    totals.push_back(upcxx::reduce_one(apoptotic, op_fast_add, 0).wait());
+    totals.push_back(upcxx::reduce_one(dead, op_fast_add, 0).wait());
+    totals.push_back(upcxx::reduce_one(tcells_vasculature, op_fast_add, 0).wait());
+    totals.push_back(upcxx::reduce_one(tcells_tissue, op_fast_add, 0).wait());
     vector<float> totals_d;
-    totals_d.push_back(reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
-    totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());  // / get_num_grid_points());
-    auto all_chem_pts = reduce_one(num_chemo_pts, op_fast_add, 0).wait();
+    totals_d.push_back(upcxx::reduce_one(chemokines, op_fast_add, 0).wait() / get_num_grid_points());
+    totals_d.push_back(upcxx::reduce_one(virions, op_fast_add, 0).wait());  // / get_num_grid_points());
+    auto all_chem_pts = upcxx::reduce_one(num_chemo_pts, op_fast_add, 0).wait();
     totals_d.push_back(all_chem_pts + totals[0] + totals[1] + totals[2] + totals[3]);
     auto perc_infected =
         100.0 * (float)(totals[0] + totals[1] + totals[2] + totals[3]) / get_num_grid_points();
@@ -104,7 +104,7 @@ class SimStats {
 
   void log(int time_step) {
     string s = to_str(0);
-    if (!rank_me()) log_file << time_step << s << endl;
+    if (!upcxx::rank_me()) log_file << time_step << s << endl;
   }
 };
 
@@ -151,21 +151,21 @@ void seed_infection(Tissue &tissue, int time_step) {
       _options->infection_coords.erase(it--);
     }
   }
-  barrier();
+  upcxx::barrier();
   tissue.add_new_actives(add_new_actives_timer);
-  barrier();
+  upcxx::barrier();
 }
 
 void generate_tcells(Tissue &tissue, int time_step) {
   generate_tcell_timer.start();
-  int local_num = _options->tcell_generation_rate / rank_n();
-  int rem = _options->tcell_generation_rate - local_num * rank_n();
-  if (rank_me() < rem) local_num++;
+  int local_num = _options->tcell_generation_rate / upcxx::rank_n();
+  int rem = _options->tcell_generation_rate - local_num * upcxx::rank_n();
+  if (upcxx::rank_me() < rem) local_num++;
   if (time_step == 1) WARN("rem ", rem, " local num ", local_num, "\n");
   tissue.change_num_circulating_tcells(local_num);
 #ifdef DEBUG
-  auto all_num = reduce_one(local_num, op_fast_add, 0).wait();
-  if (!rank_me() && all_num != _options->tcell_generation_rate)
+  auto all_num = upcxx::reduce_one(local_num, op_fast_add, 0).wait();
+  if (!upcxx::rank_me() && all_num != _options->tcell_generation_rate)
     DIE("num tcells generated ", all_num, " != generation rate ", _options->tcell_generation_rate);
 #endif
   generate_tcell_timer.stop();
@@ -194,7 +194,7 @@ void update_circulating_tcells(int time_step, Tissue &tissue, double extravasate
   int num_xtravasing = floor(portion_xtravasing);
   if (_rnd_gen->trial_success(portion_xtravasing - num_xtravasing)) num_xtravasing++;
   for (int i = 0; i < num_xtravasing; i++) {
-    progress();
+    upcxx::progress();
     GridCoords coords(_rnd_gen);
     if (tissue.try_add_new_tissue_tcell(coords.to_1d())) {
       _sim_stats.tcells_tissue++;
@@ -490,7 +490,7 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
   header_oss << " unsigned_char\n"
              << "LOOKUP_TABLE default\n";
   auto header_str = header_oss.str();
-  if (!rank_me()) {
+  if (!upcxx::rank_me()) {
     tot_sz += header_str.size();
     // rank 0 creates the file and truncates it to the correct length
     auto fileno = open(fname.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -563,9 +563,9 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
   int64_t num_points =
       get_num_grid_points() / (_options->sample_resolution * _options->sample_resolution);
   if (_grid_size->z > 1) num_points /= _options->sample_resolution;
-  int64_t num_points_per_rank = ceil((double)num_points / rank_n());
-  int64_t start_id = rank_me() * num_points_per_rank;
-  int64_t end_id = min((rank_me() + 1) * num_points_per_rank, num_points);
+  int64_t num_points_per_rank = ceil((double)num_points / upcxx::rank_n());
+  int64_t start_id = upcxx::rank_me() * num_points_per_rank;
+  int64_t end_id = min((upcxx::rank_me() + 1) * num_points_per_rank, num_points);
   samples.clear();
   if (end_id > start_id) {
     samples.reserve(end_id - start_id);
@@ -582,7 +582,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             break;
           }
           if (i >= start_id) {
-            progress();
+            upcxx::progress();
 #ifdef AVERAGE_SUBSAMPLE
             float virions = 0;
             float chemokine = 0;
@@ -650,8 +650,8 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
       if (done) break;
     }
   }
-  barrier();
-  auto samples_written = reduce_one(samples.size(), op_fast_add, 0).wait();
+  upcxx::barrier();
+  auto samples_written = upcxx::reduce_one(samples.size(), op_fast_add, 0).wait();
   if (num_points != samples_written)
     SWARN("Number of point ", num_points, " != ", samples_written, " samples written");
   SLOG_VERBOSE("Number of samples written ", samples_written, "\n");
@@ -684,7 +684,7 @@ void run_sim(Tissue &tissue) {
   for (int time_step = 0; time_step < _options->num_timesteps; time_step++) {
     DBG("Time step ", time_step, "\n");
     seed_infection(tissue, time_step);
-    barrier();
+    upcxx::barrier();
     if (time_step == _options->antibody_period)
       _options->virion_clearance_rate *= _options->antibody_factor;
     chemokines_to_update.clear();
@@ -692,7 +692,7 @@ void run_sim(Tissue &tissue) {
     chemokines_cache.clear();
     if (time_step > _options->tcell_initial_delay) {
       generate_tcells(tissue, time_step);
-      barrier();
+      upcxx::barrier();
     }
     compute_updates_timer.start();
     update_circulating_tcells(time_step, tissue, extravasate_fraction);
@@ -728,31 +728,31 @@ void run_sim(Tissue &tissue) {
       update_virions(grid_point, *nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
     }
-    barrier();
+    upcxx::barrier();
     compute_updates_timer.stop();
     tissue.accumulate_chemokines(chemokines_to_update, accumulate_concentrations_timer);
     tissue.accumulate_virions(virions_to_update, accumulate_concentrations_timer);
-    barrier();
+    upcxx::barrier();
     if (time_step % five_perc == 0 || time_step == _options->num_timesteps - 1) {
-      auto num_actives = reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait();
+      auto num_actives = upcxx::reduce_one(tissue.get_num_actives(), op_fast_add, 0).wait();
       auto perc_actives = 100.0 * num_actives / get_num_grid_points();
-      auto max_actives = reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
-      auto load_balance = max_actives ? (double)num_actives / rank_n() / max_actives : 1;
+      auto max_actives = upcxx::reduce_one(tissue.get_num_actives(), op_fast_max, 0).wait();
+      auto load_balance = max_actives ? (double)num_actives / upcxx::rank_n() / max_actives : 1;
       chrono::duration<double> t_elapsed = NOW() - curr_t;
       curr_t = NOW();
       SLOG("[", get_current_time(), " ", setprecision(2), fixed, setw(7), right, t_elapsed.count(),
            "s]: ", setw(8), left, time_step, _sim_stats.to_str(STATS_COL_WIDTH), setprecision(3),
            fixed, "< ", perc_actives, " ", load_balance, " >\n");
     }
-    barrier();
+    upcxx::barrier();
     tissue.add_new_actives(add_new_actives_timer);
-    barrier();
+    upcxx::barrier();
 
     _sim_stats.virions = 0;
     _sim_stats.chemokines = 0;
     _sim_stats.num_chemo_pts = 0;
     set_active_grid_points(tissue);
-    barrier();
+    upcxx::barrier();
 
     if (_options->sample_period > 0 &&
         (time_step % _options->sample_period == 0 || time_step == _options->num_timesteps - 1)) {
@@ -768,13 +768,13 @@ void run_sim(Tissue &tissue) {
 
     log_timer.start();
     _sim_stats.log(time_step);
-    barrier();
+    upcxx::barrier();
     log_timer.stop();
 
 #ifdef DEBUG
     DBG("check actives ", time_step, "\n");
     tissue.check_actives(time_step);
-    barrier();
+    upcxx::barrier();
 #endif
   }
 
@@ -803,11 +803,11 @@ int main(int argc, char **argv) {
   _options = make_shared<Options>();
   if (!_options->load(argc, argv)) return 0;
   ProgressBar::SHOW_PROGRESS = _options->show_progress;
-  if (pin_thread(getpid(), local_team().rank_me()) == -1)
-    WARN("Could not pin process ", getpid(), " to core ", rank_me());
+  if (pin_thread(getpid(), upcxx::local_team().rank_me()) == -1)
+    WARN("Could not pin process ", getpid(), " to core ", upcxx::rank_me());
   else
     SLOG_VERBOSE("Pinned processes, with process 0 (pid ", getpid(), ") pinned to core ",
-                 local_team().rank_me(), "\n");
+                 upcxx::local_team().rank_me(), "\n");
 #ifdef BLOCK_PARTITION
   SLOG_VERBOSE("Using block partitioning\n");
 #else
@@ -828,7 +828,7 @@ int main(int argc, char **argv) {
   chrono::duration<double> t_elapsed = NOW() - start_t;
   SLOG("Finished in ", setprecision(2), fixed, t_elapsed.count(), " s at ", get_current_time(),
        " for SimForager version ", SIMFORAGER_VERSION, "\n");
-  barrier();
+  upcxx::barrier();
   upcxx::finalize();
   return 0;
 }
