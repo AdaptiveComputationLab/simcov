@@ -170,8 +170,8 @@ static int get_cube_block_dim(int64_t num_grid_points) {
     size_t cube = (size_t)pow((double)d, 3.0);
     size_t num_cubes = num_grid_points / cube;
     DBG("cube size ", cube, " num cubes ", num_cubes, "\n");
-    if (num_cubes < rank_n() * MIN_BLOCKS_PER_PROC) {
-      DBG("not enough cubes ", num_cubes, " < ", rank_n() * MIN_BLOCKS_PER_PROC, "\n");
+    if (num_cubes < upcxx::rank_n() * MIN_BLOCKS_PER_PROC) {
+      DBG("not enough cubes ", num_cubes, " < ", upcxx::rank_n() * MIN_BLOCKS_PER_PROC, "\n");
       break;
     }
     // there is a remainder - this is not a perfect division
@@ -180,7 +180,7 @@ static int get_cube_block_dim(int64_t num_grid_points) {
       continue;
     }
     // skip sizes that distribute the blocks in columns
-    if (d > 1 && (_grid_size->x % (d * rank_n()) == 0 || _grid_size->y % (d * rank_n()) == 0)) {
+    if (d > 1 && (_grid_size->x % (d * upcxx::rank_n()) == 0 || _grid_size->y % (d * upcxx::rank_n()) == 0)) {
       DBG("dim ", d, " gives perfect division of all blocks into x axis - skip\n");
       continue;
     }
@@ -201,8 +201,8 @@ static int get_square_block_dim(int64_t num_grid_points) {
     size_t square = (size_t)pow((double)d, 2.0);
     size_t num_squares = num_grid_points / square;
     DBG("square size ", square, " num squares ", num_squares, "\n");
-    if (num_squares < rank_n() * MIN_BLOCKS_PER_PROC) {
-      DBG("not enough squares ", num_squares, " < ", rank_n() * MIN_BLOCKS_PER_PROC, "\n");
+    if (num_squares < upcxx::rank_n() * MIN_BLOCKS_PER_PROC) {
+      DBG("not enough squares ", num_squares, " < ", upcxx::rank_n() * MIN_BLOCKS_PER_PROC, "\n");
       break;
     }
     // there is a remainder - this is not a perfect division
@@ -211,7 +211,7 @@ static int get_square_block_dim(int64_t num_grid_points) {
       continue;
     }
     // skip sizes that distribute the blocks in columns
-    if (d > 1 && _grid_size->x % (d * rank_n()) == 0) {
+    if (d > 1 && _grid_size->x % (d * upcxx::rank_n()) == 0) {
       DBG("dim ", d, " gives perfect division of all blocks into x axis - skip\n");
       continue;
     }
@@ -259,7 +259,7 @@ Tissue::Tissue()
 
   int64_t num_blocks = num_grid_points / _grid_blocks.block_size;
 
-  int64_t blocks_per_rank = ceil((double)num_blocks / rank_n());
+  int64_t blocks_per_rank = ceil((double)num_blocks / upcxx::rank_n());
 
   bool threeD = _grid_size->z > 1;
   SLOG("Dividing ", num_grid_points, " grid points into ", num_blocks,
@@ -288,7 +288,7 @@ Tissue::Tissue()
   // FIXME: these blocks need to be stride distributed to better load balance
   grid_points->reserve(blocks_per_rank * _grid_blocks.block_size);
   for (int64_t i = 0; i < blocks_per_rank; i++) {
-    int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
+    int64_t start_id = (i * upcxx::rank_n() + upcxx::rank_me()) * _grid_blocks.block_size;
     if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
@@ -322,7 +322,7 @@ Tissue::Tissue()
 #endif
     }
   }
-  barrier();
+  upcxx::barrier();
 }
 
 int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType epicell_type) {
@@ -353,11 +353,11 @@ int Tissue::load_data_file(const string &fname, int num_grid_points, EpiCellType
 
 intrank_t Tissue::get_rank_for_grid_point(int64_t grid_i) {
   int64_t block_i = grid_i / _grid_blocks.block_size;
-  return block_i % rank_n();
+  return block_i % upcxx::rank_n();
 }
 
 GridPoint *Tissue::get_local_grid_point(grid_points_t &grid_points, int64_t grid_i) {
-  int64_t block_i = grid_i / _grid_blocks.block_size / rank_n();
+  int64_t block_i = grid_i / _grid_blocks.block_size / upcxx::rank_n();
   int64_t i = grid_i % _grid_blocks.block_size + block_i * _grid_blocks.block_size;
   assert(i < grid_points->size());
   GridPoint *grid_point = &(*grid_points)[i];
@@ -441,13 +441,13 @@ void Tissue::accumulate_chemokines(HASH_TABLE<int64_t, float> &chemokines_to_upd
   // accumulate updates for each target rank
   HASH_TABLE<intrank_t, vector<pair<int64_t, float>>> target_rank_updates;
   for (auto &[coords_1d, chemokines] : chemokines_to_update) {
-    progress();
+    upcxx::progress();
     target_rank_updates[get_rank_for_grid_point(coords_1d)].push_back({coords_1d, chemokines});
   }
   future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
   for (auto &[target_rank, update_vector] : target_rank_updates) {
-    progress();
+    upcxx::progress();
     auto fut = rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
@@ -473,13 +473,13 @@ void Tissue::accumulate_virions(HASH_TABLE<int64_t, float> &virions_to_update,
   // accumulate updates for each target rank
   HASH_TABLE<intrank_t, vector<pair<int64_t, float>>> target_rank_updates;
   for (auto &[coords_1d, virions] : virions_to_update) {
-    progress();
+    upcxx::progress();
     target_rank_updates[get_rank_for_grid_point(coords_1d)].push_back({coords_1d, virions});
   }
   future<> fut_chain = make_future<>();
   // dispatch all updates to each target rank in turn
   for (auto &[target_rank, update_vector] : target_rank_updates) {
-    progress();
+    upcxx::progress();
     auto fut = rpc(
         target_rank,
         [](grid_points_t &grid_points, new_active_grid_points_t &new_active_grid_points,
@@ -525,7 +525,7 @@ bool Tissue::try_add_new_tissue_tcell(int64_t grid_i) {
                    if (grid_point->tcell) return false;
                    if (grid_point->chemokine < _options->min_chemokine) return false;
                    new_active_grid_points->insert({grid_point, true});
-                   string tcell_id = to_string(rank_me()) + "-" + to_string(*tcells_generated);
+                   string tcell_id = to_string(upcxx::rank_me()) + "-" + to_string(*tcells_generated);
                    (*tcells_generated)++;
                    grid_point->tcell = new TCell(tcell_id);
                    grid_point->tcell->moved = true;

@@ -9,8 +9,8 @@ module load cmake/3.11.4-qkyj
 module load openmpi/4.1.3-j6zb
 module load upcxx/2020.10.0-6eh2
 
-if [ -n "$SIMCOV_BUILD_ENV" ]; then
-    source $SIMCOV_BUILD_ENV
+if [ -n "$SIMFORAGER_BUILD_ENV" ]; then
+    source $SIMFORAGER_BUILD_ENV
 fi
 
 upcxx_exec=`which upcxx`
@@ -32,11 +32,11 @@ SECONDS=0
 
 rootdir=`pwd`
 
-INSTALL_PATH=${SIMCOV_INSTALL_PATH:=$rootdir/install}
+INSTALL_PATH=${SIMFORAGER_INSTALL_PATH:=$rootdir/install}
 
 echo "Installing to $INSTALL_PATH"
 
-rm -rf $INSTALL_PATH/bin/simcov
+rm -rf $INSTALL_PATH/bin/simforager
 
 if [ "$1" == "clean" ]; then
     rm -rf .build

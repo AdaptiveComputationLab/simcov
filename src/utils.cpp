@@ -42,7 +42,7 @@ void dump_single_file(const string &fname, const string &out_str) {
   upcxx::barrier();
   ad.destroy();
   // wait until rank 0 has finished setting up the file
-  if (rank_me()) fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (upcxx::rank_me()) fileno = open(fname.c_str(), O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fileno == -1) WARN("Error trying to open file ", fname, ": ", strerror(errno), "\n");
   auto bytes_written = pwrite(fileno, out_str.c_str(), sz, my_fpos);
   close(fileno);

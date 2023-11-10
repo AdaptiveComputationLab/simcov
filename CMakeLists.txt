@@ -1,16 +1,16 @@
 # The name of our project is "MHMxx". CMakeLists files in this project can
-# refer to the root source directory of the project as ${SIMCOV_SOURCE_DIR} and
-# to the root binary directory of the project as ${SIMCOV_BINARY_DIR}
+# refer to the root source directory of the project as ${SIMFORAGER_SOURCE_DIR} and
+# to the root binary directory of the project as ${SIMFORAGER_BINARY_DIR}
 cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
-project(SimCov)
+project(SimForager)
 #----------------------------------------------------------------------------------------#
 #   project specification
 #----------------------------------------------------------------------------------------#
-file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/VERSION SIMCOV_BASE_VERSION)
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/VERSION SIMFORAGER_BASE_VERSION)
 
 # use PROJECT_SOURCE_DIR, not CMAKE_SOURCE_DIR
-set(SIMCOV_SOURCE_DIR ${PROJECT_SOURCE_DIR})
-set(SIMCOV_BINARY_DIR ${PROJECT_BINARY_DIR})
+set(SIMFORAGER_SOURCE_DIR ${PROJECT_SOURCE_DIR})
+set(SIMFORAGER_BINARY_DIR ${PROJECT_BINARY_DIR})
 
 # include modules
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake/Modules)
@@ -55,7 +55,7 @@ CHECK_SUBMODULES(upcxx-utils)
 
 # set version
 include_directories(include)
-GET_GIT_VERSION(SIMCOV)
+GET_GIT_VERSION(SIMFORAGER)
 
 # add upcxx-utils
 if (DEFINED ENV{UPCXX_UTILS_DIR} AND EXISTS $ENV{UPCXX_UTILS_DIR})

@@ -4,10 +4,10 @@
 extern "C" {
 #endif
 
-extern const char *SIMCOV_VERSION;
-extern const char *SIMCOV_VERSION_DATE;
-extern const char *SIMCOV_BUILD_DATE;
-extern const char *SIMCOV_BRANCH;
+extern const char *SIMFORAGER_VERSION;
+extern const char *SIMFORAGER_VERSION_DATE;
+extern const char *SIMFORAGER_BUILD_DATE;
+extern const char *SIMFORAGER_BRANCH;
 
 #define MAX_BUILD_KMER_STR "Maximum kmer len=MAX_BUILD_KMER"
 
