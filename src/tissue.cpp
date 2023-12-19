@@ -463,16 +463,27 @@ Tissue::Tissue()
 	  int64_t z = coords.z;
 	  
       EpiCell *epicell = new EpiCell(id); // TODO: Make sure this constructor is correct
-      if (x % 100 == 0 || y % 100 == 0 || z % 100 == 0 || x % 100 == 1 || y % 100 == 1 || z % 100 == 1 || x % 100 == 95 || y % 100 == 95 || z % 100 == 95 || x % 100 == 96 || y % 100 == 96 || z % 100 == 96) {
+	   //if ((x % 100 == 0 && y % 100 == 0 && z % 100 == 0) || (x % 100 == 1 && y % 100 == 1 && z % 100 == 1) || (x % 100 == 95 && y % 100 == 95 && z % 100 == 95) || (x % 100 == 96 && y % 100 == 96 && z % 100 == 96)) {
+	 
+	  //if (x % 100 == 97 || y % 100 == 97 || z % 100 == 97 || x % 100 == 98 || y % 100 == 98 || z % 100 == 98 || x % 100 == 99 || y % 100 == 99 || z % 100 == 99 ) {
+     if (x % 100 == 0 || y % 100 == 0 || z % 100 == 0 || x % 100 == 99 || y % 100 == 99 || z % 100 == 99) {
+     //if ((x % 100 == 0 || x % 100 == 99) && 
+       // (y % 100 == 0 || y % 100 == 99) && 
+        //(z % 100 == 0 || z % 100 == 99)){
+		epicell->type = EpiCellType::TYPE1;
+        epicell->infectable = false;
+        //epicell->status = EpiCellStatus::TYPE1;
+      }
+
+     else if (x % 100 == 1 || y % 100 == 1 || z % 100 == 1 || x % 100 == 98 || y % 100 == 98 || z % 100 == 98) {
+     //else if (x % 100 == 1 || y % 100 == 1 || z % 100 == 1 ) {
+	 //if ((x % 100 == 1 || x % 100 == 98) && 
+      //  (y % 100 == 1 || y % 100 == 98) && 
+        //(z % 100 == 1 || z % 100 == 98)) {
         epicell->type = EpiCellType::TYPE2;
         epicell->infectable = true;
         //epicell->status = EpiCellStatus::TYPE2;
-      } 
-	  else if (x % 100 == 97 || y % 100 == 97 || z % 100 == 97 ||x % 100 == 98 || y % 100 == 98 || z % 100 == 98 || x % 100 == 99 || y % 100 == 99 || z % 100 == 99 ) {
-        epicell->type = EpiCellType::TYPE1;
-        epicell->infectable = false;
-        //epicell->status = EpiCellStatus::TYPE1;
-      } 
+      } 	  
 	  else {
         epicell->type = EpiCellType::AIR;
         epicell->infectable = false;
@@ -562,6 +573,14 @@ SampleData Tissue::get_grid_point_sample_data(int64_t grid_i) {
                }
                if (grid_point->inflam_signal_cell) {
                  sample.has_inflam_signal_cell = true;
+				 //add
+				 if(grid_point->epicell->type == EpiCellType::AIR)
+					 sample.has_air = true;
+				 if (grid_point->epicell->type == EpiCellType::TYPE1)
+					 sample.has_interstitial  = true;
+				 if (grid_point->epicell->type == EpiCellType::TYPE2)
+					 sample.has_infected  = true;
+					 
                }
                sample.virions = grid_point->virions;
                sample.chemokine = grid_point->chemokine;

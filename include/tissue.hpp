@@ -157,7 +157,9 @@ struct GridPoint {
   float virions = 0, nb_virions = 0;
   bool inflam_signal_all = false;
   bool inflam_signal_cell = false;
-
+  bool air = false;
+  bool interstitial = false;
+  bool infected = false; 
   string str() const;
 
   bool is_active();
@@ -167,6 +169,10 @@ struct SampleData {
   double tcells = 0;
   bool has_epicell = false;
   bool has_inflam_signal_cell = false;
+  bool has_air = false;
+  bool has_interstitial = false;
+  bool has_infected = false;
+  
   EpiCellStatus epicell_status = EpiCellStatus::HEALTHY;
   float virions = 0;
   float chemokine = 0;

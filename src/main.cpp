@@ -44,6 +44,16 @@ class SimStats {
   float virions = 0;
   int64_t num_inflam_signal_all = 0;
   int64_t num_inflam_signal_cell = 0;
+  //added
+  int64_t num_aircell = 0;
+  int64_t num_intertsitial = 0;
+  int64_t num_infected = 0;
+  
+  int64_t num_aircell_w_inflam = 0;
+  int64_t num_intertsitial_w_inflam = 0;
+  int64_t num_infected_w_inflam = 0;
+  
+  
 
   void init() {
     if (!rank_me()) {
@@ -54,7 +64,7 @@ class SimStats {
 
   string header(int width) {
     vector<string> columns = {"incb", "expr", "apop", "dead", "tvas",
-                              "ttis", "inflcell", "inflall" "virs", "%infct"};
+                              "ttis", "inflcell", "inflall", "air" , "interstitial", "infection", "infl_air", "infl_ins", "infl_inf", "virs", "%infct"  };
     ostringstream oss;
     oss << left;
     for (auto column : columns) {
@@ -76,6 +86,8 @@ class SimStats {
     totals.push_back(reduce_one(tcells_tissue, op_fast_add, 0).wait());
     totals.push_back(reduce_one(num_inflam_signal_cell, op_fast_add, 0).wait());
     totals.push_back(reduce_one(num_inflam_signal_all, op_fast_add, 0).wait());
+
+	
     vector<float> totals_d;
     totals_d.push_back(reduce_one(virions, op_fast_add, 0).wait());
     auto perc_infected =
@@ -85,6 +97,16 @@ class SimStats {
           * (float)(totals[0] + totals[1] + totals[2] + totals[3])
           / Tissue::get_num_lung_cells();
     }
+	
+	//added the serial matters
+	totals.push_back(reduce_one(num_aircell, op_fast_add, 0).wait());
+	totals.push_back(reduce_one(num_intertsitial, op_fast_add, 0).wait());
+	totals.push_back(reduce_one(num_infected, op_fast_add, 0).wait());
+	
+	totals.push_back(reduce_one(num_aircell_w_inflam, op_fast_add, 0).wait());
+	totals.push_back(reduce_one(num_intertsitial_w_inflam, op_fast_add, 0).wait());
+	totals.push_back(reduce_one(num_infected_w_inflam, op_fast_add, 0).wait());
+
 
     ostringstream oss;
     oss << left;
@@ -258,7 +280,7 @@ void seed_infection(Tissue &tissue, int time_step) {
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
 	int64_t num_points = 60000;
-	double sideLength = 100.0;
+	double sideLength = 97.0;
 
     if (infection_coords[3] == time_step) {
 	  Point3D center = {infection_coords[0], infection_coords[1], infection_coords[2]};
@@ -719,7 +741,10 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
         if (sample.chemokine > 0 && val == 0) val = 1;
         break;
       case ViewObject::INFLAM_SIGNAL_CELL:
-        if (sample.has_inflam_signal_cell) val = static_cast<unsigned char>(1);
+        //if (sample.has_inflam_signal_cell) val = static_cast<unsigned char>(1);
+		if (sample.has_inflam_signal_cell && sample.has_air) val = static_cast<unsigned char>(1);
+		if (sample.has_inflam_signal_cell && sample.has_interstitial) val = static_cast<unsigned char>(2);
+		if (sample.has_inflam_signal_cell && sample.has_infected) val = static_cast<unsigned char>(3);
         break;
       default: break;
     }
@@ -766,6 +791,9 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             int num_tcells = 0;
             bool epicell_found = false;
             bool inflam_signal_found = false;
+			bool air_found = false;
+			bool interstitial_found = false;
+			bool infected_found = false;
             array<int, 8> epicell_counts{0};
             block_samples.clear();
             bool done_sub = false;
@@ -793,7 +821,14 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
                   }
                   if (sub_sd.has_inflam_signal_cell) {
                     inflam_signal_found = true;
+					if (sub_sd.has_air)
+						air_found = true;
+					if (sub_sd.has_interstitial)
+						interstitial_found = true;
+					if (sub_sd.has_infected)
+						infected_found = true;
                   }
+				  
                   chemokine += sub_sd.chemokine;
                   virions += sub_sd.virions;
                 }
@@ -824,6 +859,9 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
             SampleData sd = {.tcells = (double)num_tcells / block_size,
                              .has_epicell = epicell_found,
                              .has_inflam_signal_cell = inflam_signal_found,
+							 .has_air = air_found,
+							 .has_interstitial = interstitial_found,
+							 .has_infected = infected_found,
                              .epicell_status = epi_status,
                              .virions = virions / block_size,
                              .chemokine = chemokine / block_size};
@@ -916,14 +954,37 @@ void run_sim(Tissue &tissue) {
       if (grid_point->tcell)
         update_tissue_tcell(time_step, tissue, grid_point, *nbs, chemokines_cache);
       if (grid_point->epicell) update_epicell(time_step, tissue, grid_point);
+	 
+	  
       if (!grid_point->inflam_signal_all && grid_point->chemokine > 0) {
         grid_point->inflam_signal_all = true;
         _sim_stats.num_inflam_signal_all++;
+		if (grid_point->epicell && grid_point->epicell->type == EpiCellType::AIR){
+		   grid_point->air = true;
+		  _sim_stats.num_aircell_w_inflam++;
+	    }
+		if (grid_point->epicell && grid_point->epicell->type == EpiCellType::TYPE1){
+		  grid_point->interstitial = true;
+		  _sim_stats.num_intertsitial_w_inflam++;
+		}
+        if (grid_point->epicell && grid_point->epicell->type == EpiCellType::TYPE2){
+		  grid_point->infected = true;
+		  _sim_stats.num_infected_w_inflam++;
+		}
         if (grid_point->epicell && grid_point->epicell->type != EpiCellType::AIR) {
           grid_point->inflam_signal_cell = true;
           _sim_stats.num_inflam_signal_cell++;
         }
+
       }
+	  
+	   //added
+	  if (grid_point->epicell && grid_point->epicell->type == EpiCellType::AIR)
+		_sim_stats.num_aircell++;
+	  if (grid_point->epicell && grid_point->epicell->type == EpiCellType::TYPE1)
+		_sim_stats.num_intertsitial++;
+      if (grid_point->epicell && grid_point->epicell->type == EpiCellType::TYPE2)
+		_sim_stats.num_infected++;
       update_chemokines(grid_point, *nbs, chemokines_to_update);
       update_virions(grid_point, *nbs, virions_to_update);
       if (grid_point->is_active()) tissue.set_active(grid_point);
