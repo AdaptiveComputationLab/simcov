@@ -626,17 +626,26 @@ void set_active_grid_points(Tissue &tissue) {
   for (auto grid_point = tissue.get_first_active_grid_point(); grid_point;
        grid_point = tissue.get_next_active_grid_point()) {
     auto nbs = tissue.get_neighbors(grid_point->coords);
-    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
-            nbs->size());
-	if (grid_point->epicell->type == EpiCellType::TYPE2)
+    //diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
+            //nbs->size());
+	if (grid_point->epicell->type == EpiCellType::TYPE2){
 		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_infectable,
                    nbs->size());
-	else if (grid_point->epicell->type == EpiCellType::TYPE1)
+	    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef_infectable,
+            nbs->size());
+	}
+	else if (grid_point->epicell->type == EpiCellType::TYPE1){
 		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_interstitial,
                    nbs->size());
-	else
+	    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef_interstitial,
+            nbs->size());
+	}
+	else{
 		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_air,
-                   nbs->size());		
+                   nbs->size());
+		diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef_air,
+            nbs->size());
+	}				   
     if (grid_point->chemokine < _options->min_chemokine) grid_point->chemokine = 0;
     if (grid_point->virions > MAX_VIRIONS) grid_point->virions = MAX_VIRIONS;
     if (grid_point->virions < MIN_VIRIONS) grid_point->virions = 0;
@@ -743,8 +752,8 @@ void sample(int time_step, vector<SampleData> &samples, int64_t start_id, ViewOb
       case ViewObject::INFLAM_SIGNAL_CELL:
         //if (sample.has_inflam_signal_cell) val = static_cast<unsigned char>(1);
 		if (sample.has_inflam_signal_cell && sample.has_air) val = static_cast<unsigned char>(1);
-		if (sample.has_inflam_signal_cell && sample.has_interstitial) val = static_cast<unsigned char>(2);
-		if (sample.has_inflam_signal_cell && sample.has_infected) val = static_cast<unsigned char>(3);
+		else if (sample.has_inflam_signal_cell && sample.has_interstitial) val = static_cast<unsigned char>(2);
+		else if (sample.has_inflam_signal_cell && sample.has_infected) val = static_cast<unsigned char>(3);
         break;
       default: break;
     }
@@ -794,7 +803,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
 			bool air_found = false;
 			bool interstitial_found = false;
 			bool infected_found = false;
-            array<int, 8> epicell_counts{0};
+            array<int, 5> epicell_counts{0};
             block_samples.clear();
             bool done_sub = false;
             for (int subx = x; subx < x + _options->sample_resolution; subx++) {

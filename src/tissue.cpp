@@ -450,7 +450,8 @@ Tissue::Tissue()
   int32_t cnt = 0;//TODO
   for (int64_t i = 0; i < blocks_per_rank; i++) {
     int64_t start_id = (i * rank_n() + rank_me()) * _grid_blocks.block_size;
-    if (start_id >= num_grid_points) break;
+    
+	if (start_id >= num_grid_points) break;
     for (auto id = start_id; id < start_id + _grid_blocks.block_size; id++) {
       assert(id < num_grid_points);
       //int64_t z = id / (_grid_size->x * _grid_size->y);
@@ -462,7 +463,8 @@ Tissue::Tissue()
 	  int64_t y = coords.y;
 	  int64_t z = coords.z;
 	  
-      EpiCell *epicell = new EpiCell(id); // TODO: Make sure this constructor is correct
+      EpiCell *epicell = new EpiCell(id);	  // TODO: Make sure this constructor is correct
+	  
 	   //if ((x % 100 == 0 && y % 100 == 0 && z % 100 == 0) || (x % 100 == 1 && y % 100 == 1 && z % 100 == 1) || (x % 100 == 95 && y % 100 == 95 && z % 100 == 95) || (x % 100 == 96 && y % 100 == 96 && z % 100 == 96)) {
 	 
 	  //if (x % 100 == 97 || y % 100 == 97 || z % 100 == 97 || x % 100 == 98 || y % 100 == 98 || z % 100 == 98 || x % 100 == 99 || y % 100 == 99 || z % 100 == 99 ) {
@@ -485,15 +487,25 @@ Tissue::Tissue()
         //epicell->status = EpiCellStatus::TYPE2;
       } 	  
 	  else {
-        epicell->type = EpiCellType::AIR;
-        epicell->infectable = false;
-        //epicell->status = EpiCellStatus::AIR;
+        int randomValue = rand() % 10;  // Generates values from 0 to 9
+        int result = (randomValue < 7) ? 0 : 1;  // 7:3 chance of generating 0 over 1
+		if (result==1){
+			epicell->type = EpiCellType::TYPE2;
+            epicell->infectable = true;
+			//epicell->status = EpiCellStatus::TYPE2;
+			
+		}
+		else{
+			epicell->type = EpiCellType::AIR;
+			epicell->infectable = false;
+            //epicell->status = EpiCellStatus::AIR;
+		}
+		
       }
 
     // Place epicell in the specified coordinates
       grid_points->emplace_back(GridPoint({coords, epicell}));
-
-      
+	
       
 #ifdef DEBUG
       DBG("adding grid point ", id, " at ", coords.str(), "\n");

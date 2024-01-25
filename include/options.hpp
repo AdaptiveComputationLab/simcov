@@ -270,7 +270,10 @@ class Options {
 
   double chemokine_production = 1.0;
   double chemokine_decay_rate = 0.01;
-  double chemokine_diffusion_coef = 1.0;
+  //double chemokine_diffusion_coef = 1.0;
+  double chemokine_diffusion_coef_air = 1.0;
+  double chemokine_diffusion_coef_interstitial = 1.0;
+  double chemokine_diffusion_coef_infectable = 1.0;
   double min_chemokine = 1e-6;
 
   double antibody_factor = 1;
@@ -372,8 +375,25 @@ class Options {
                    "Amount by which chemokine concentration drops each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
-    app.add_option("--chemokine-diffusion", chemokine_diffusion_coef,
-                   "Fraction of chemokine concentration that diffuses into all neighbors "
+    //app.add_option("--chemokine-diffusion", chemokine_diffusion_coef,
+      //             "Fraction of chemokine concentration that diffuses into all neighbors "
+        //           "each time step")
+        //->check(CLI::Range(0.0, 1.0))
+        //->capture_default_str();
+	app.add_option("--chemokine-diffusion-air", chemokine_diffusion_coef_air,
+                   "Fraction of chemokine concentration in air that diffuses into all neighbors "
+                   "each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+		
+	app.add_option("--chemokine-diffusion-interstitial", chemokine_diffusion_coef_interstitial,
+                   "Fraction of chemokine concentration in interstitial space that diffuses into all neighbors "
+                   "each time step")
+        ->check(CLI::Range(0.0, 1.0))
+        ->capture_default_str();
+		
+	app.add_option("--chemokine-diffusion-infectable", chemokine_diffusion_coef_infectable,
+                   "Fraction of chemokine concentration in infectable cells that diffuses into all neighbors "
                    "each time step")
         ->check(CLI::Range(0.0, 1.0))
         ->capture_default_str();
