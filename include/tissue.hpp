@@ -112,10 +112,10 @@ struct TCell {
 };
 
 //viz hack
-//enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4, TYPE2 = 5, TYPE1 = 6, AIR = 7  };
+//enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4, TYPE2 = 5, TYPE1 = 6, AIR = 7, INTERSTITIAL = 8  };
 enum class EpiCellStatus { HEALTHY = 0, INCUBATING = 1, EXPRESSING = 2, APOPTOTIC = 3, DEAD = 4};
 const string EpiCellStatusStr[] = { "HEALTHY", "INCUBATING", "EXPRESSING", "APOPTOTIC", "DEAD" };
-enum class EpiCellType{ AIR, EPITHELIAL, TYPE1, TYPE2 };
+enum class EpiCellType{ AIR, EPITHELIAL, TYPE1, TYPE2,INTERSTITIAL };
 
 class EpiCell {
   int id;

@@ -189,7 +189,8 @@ std::vector<Point> generateAllPointsInSphere(Point center, double radius, int nu
         double z = center.z + radius * cos(phi);
 
         // Create a new point
-        Point p = {x, y, z};
+        //Point p = {static_cast<int>(x), static_cast<int>( y ), static_cast<int> (z)};
+		Point p = {x,y,z};
 
         // Add the point to the set
         if (generatedPoints.count(p) == 0) {
@@ -211,6 +212,8 @@ std::vector<Point3D> generateUniqueRandomPointsOnCube(int numPoints, double side
     std::mt19937 gen(rd());
     std::uniform_real_distribution<double> dis(-0.5 * sideLength, 0.5 * sideLength);
     std::unordered_set<int> usedIndices;
+	// change for w narrowing
+	//std::unordered_set<std::size_t> usedIndices;
 
     while (points.size() < numPoints) {
         Point3D point;
@@ -244,6 +247,8 @@ std::vector<Point3D> generateUniqueRandomPointsOnCube(int numPoints, double side
 
         // Generate a unique hash for the point
         int pointHash = static_cast<int>(point.x * 10000 + point.y * 100 + point.z);
+		//change for w narrowing
+		//int pointHash = static_cast<std::size_t>(point.x * 10000 + point.y * 100 + point.z);
 
         // Check if the point is already generated
         if (usedIndices.find(pointHash) == usedIndices.end()) {
@@ -262,7 +267,8 @@ std::vector<Point3D> generateAllPointsInsideCube(double sideLength, const Point3
     for (double x = center.x - 0.5 * sideLength; x <= center.x + 0.5 * sideLength; x++) {
         for (double y = center.y - 0.5 * sideLength; y <= center.y + 0.5 * sideLength; y++) {
             for (double z = center.z - 0.5 * sideLength; z <= center.z + 0.5 * sideLength; z++) {
-                points.push_back({x, y, z});
+                //points.push_back({static_cast<int>(x), static_cast<int>( y ), static_cast<int> (z)});
+				points.push_back({x,y,z});
             }
         }
     }
@@ -274,8 +280,11 @@ std::vector<Point3D> generateAllPointsInsideCube(double sideLength, const Point3
 //void seed_infection(Tissue &tissue, int time_step, GridPoint *grid_point) {
 void seed_infection(Tissue &tissue, int time_step) {
   // _options->infection_coords contains the coords assigned just to rank_me()
-  int64_t num_success = 0;
-  int64_t num_failure = 0;
+  int64_t num_success_surface = 0;
+  int64_t num_failure_surface = 0;
+  
+  int64_t num_success_inside = 0;
+  int64_t num_failure_inside = 0;
   
   for (auto it = _options->infection_coords.begin(); it != _options->infection_coords.end(); it++) {
     auto infection_coords = *it;
@@ -287,7 +296,7 @@ void seed_infection(Tissue &tissue, int time_step) {
 	  
 	  //std::vector<Point> points = generateAllPointsInSphere(center, 20.0, num_points);
 	  std::vector<Point3D> points = generateUniqueRandomPointsOnCube(num_points, sideLength, center);
-	  //std::vector<Point3D> inside_points = generateAllPointsInsideCube(sideLength, center);
+	  std::vector<Point3D> inside_points = generateAllPointsInsideCube(sideLength - 4.0, center);
 	  // Process the generated points as needed
 	  
 	  
@@ -297,6 +306,9 @@ void seed_infection(Tissue &tissue, int time_step) {
 		// ...
 		GridCoords coords({point.x, point.y,point.z});
 		auto coords_1d = coords.to_1d();
+		//change for w narrowing
+		//std::size_t coords_1d = coords.to_1d();
+		
 		
 		//while (true) {
         //GridCoords new_coords(coords_1d);
@@ -308,10 +320,10 @@ void seed_infection(Tissue &tissue, int time_step) {
           //    << " tries\n";
           //cerr << oss.str();
           //break;
-		  num_success++;
+		  num_success_surface++;
         }
 		else{
-		  num_failure++;
+		  num_failure_surface++;
 		}
 		
         coords_1d++;
@@ -323,7 +335,39 @@ void seed_infection(Tissue &tissue, int time_step) {
 	  //}
 	 }
 	 
-	 //for (const auto& point : inside_points) {
+	   for (const auto& point : inside_points) {
+		// Do something with each point, such as setting initial infection
+		std::cout << "Processing point (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
+		// ...
+		GridCoords coords({point.x, point.y,point.z});
+		auto coords_1d = coords.to_1d();
+		//change for w narrowing
+		//std::size_t coords_1d = coords.to_1d();
+		
+		//while (true) {
+        //GridCoords new_coords(coords_1d);
+        if (tissue.set_initial_infection(coords_1d)) {
+          WARN("Time step ", time_step, ": SUCCESSFUL initial infection at ", coords.str());
+          //ostringstream oss;
+          //oss << "rank " << rank_me() << " of " << rank_n() << " time step " << time_step
+          //    << ": SUCCESSFUL initial infection at " << new_coords.str() << " after " << num_tries
+          //    << " tries\n";
+          //cerr << oss.str();
+          //break;
+		  num_success_inside++;
+        }
+		else{
+		  num_failure_inside++;
+		}
+		
+        coords_1d++;
+	
+        if (coords_1d >= get_num_grid_points()) {
+          WARN("Could not find epicell to match uniform initial infection coord at ", coords.str());
+          break;
+        }
+	  //}
+	 }
 		//GridCoords coords({point.x, point.y,point.z});
 		//int64_t grid_i = coords.to_1d();
 		//tissue.make_epi_dead(grid_i);
@@ -334,15 +378,23 @@ void seed_infection(Tissue &tissue, int time_step) {
 		
 		//grid_point->epicell = EpiCellStatus::DEAD
 		
-	  //}
-
+	//}
+	
+      int64_t num_points_inside = inside_points.size();
+	  int64_t total_inf_points = num_success_inside + num_success_surface;
       _options->infection_coords.erase(it--);
 	  
-	  WARN("total points ", num_points);
-	  double suc_per = ((double)num_success/(double)num_points)*100;
-	  double fail_per =  ((double)num_failure/(double)num_points)*100;
-	  WARN("Success ", num_success, " and Failure ", num_failure);
-	  WARN("Success ", suc_per, "% and Failure ", fail_per,"%");
+	  WARN("total points_surface ", num_points);
+	  WARN("total points_inside ", num_points_inside);
+	  double suc_per_sur = ((double)num_success_surface/(double)num_points)*100;
+	  double fail_per_sur =  ((double)num_failure_surface/(double)num_points)*100;
+	  double suc_per_ins = ((double)num_success_inside/(double)num_points_inside)*100;
+	  double fail_per_ins =  ((double)num_failure_inside/(double)num_points_inside)*100;
+	  WARN("Success_surface ", num_success_surface, " and Failure_surface ", num_failure_surface);
+	  WARN("Success_surface ", suc_per_sur, "% and Failure_surface ", fail_per_sur,"%");
+	  WARN("Success_inside ", num_success_inside, " and Failure_inside ", num_failure_inside);
+	  WARN("Success_inside ", suc_per_ins, "% and Failure_inside ", fail_per_ins,"%");
+	  WARN("total infection point ", total_inf_points);
     }
   }
   
@@ -628,13 +680,13 @@ void set_active_grid_points(Tissue &tissue) {
     auto nbs = tissue.get_neighbors(grid_point->coords);
     //diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef,
             //nbs->size());
-	if (grid_point->epicell->type == EpiCellType::TYPE2){
+	if (grid_point->epicell->type == EpiCellType::TYPE2 || grid_point->epicell->type == EpiCellType::TYPE1 ){
 		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_infectable,
                    nbs->size());
 	    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef_infectable,
             nbs->size());
 	}
-	else if (grid_point->epicell->type == EpiCellType::TYPE1){
+	else if (grid_point->epicell->type == EpiCellType::INTERSTITIAL){
 		spread_virions(grid_point->virions, grid_point->nb_virions, _options->virion_diffusion_coef_interstitial,
                    nbs->size());
 	    diffuse(grid_point->chemokine, grid_point->nb_chemokine, _options->chemokine_diffusion_coef_interstitial,
@@ -826,6 +878,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
 					  //case EpiCellStatus::TYPE2: epicell_counts[5]++; break;
 					  //case EpiCellStatus::TYPE1: epicell_counts[6]++; break;
 					  //case EpiCellStatus::AIR: epicell_counts[7]++; break;
+					  //case EpiCellStatus::INTERSTITIAL: epicell_counts[8]++; break;
                     }
                   }
                   if (sub_sd.has_inflam_signal_cell) {
@@ -862,6 +915,7 @@ int64_t get_samples(Tissue &tissue, vector<SampleData> &samples) {
 				//case 5: epi_status = EpiCellStatus::TYPE2; break;
 				//case 6: epi_status = EpiCellStatus::TYPE1; break;
 				//case 7: epi_status = EpiCellStatus::AIR; break;
+				//case 8: epi_status = EpiCellStatus::INTERSTITIAL; break;
 				
               }
             }

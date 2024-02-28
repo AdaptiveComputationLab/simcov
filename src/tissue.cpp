@@ -472,9 +472,9 @@ Tissue::Tissue()
      //if ((x % 100 == 0 || x % 100 == 99) && 
        // (y % 100 == 0 || y % 100 == 99) && 
         //(z % 100 == 0 || z % 100 == 99)){
-		epicell->type = EpiCellType::TYPE1;
+		epicell->type = EpiCellType::INTERSTITIAL;
         epicell->infectable = false;
-        //epicell->status = EpiCellStatus::TYPE1;
+        //epicell->status = EpiCellStatus::INTERSTITIAL;
       }
 
      else if (x % 100 == 1 || y % 100 == 1 || z % 100 == 1 || x % 100 == 98 || y % 100 == 98 || z % 100 == 98) {
@@ -482,13 +482,13 @@ Tissue::Tissue()
 	 //if ((x % 100 == 1 || x % 100 == 98) && 
       //  (y % 100 == 1 || y % 100 == 98) && 
         //(z % 100 == 1 || z % 100 == 98)) {
-        epicell->type = EpiCellType::TYPE2;
-        epicell->infectable = true;
+		
+        //epicell->type = EpiCellType::TYPE2;
+        //epicell->infectable = true;
         //epicell->status = EpiCellStatus::TYPE2;
-      } 	  
-	  else {
-        int randomValue = rand() % 10;  // Generates values from 0 to 9
-        int result = (randomValue < 7) ? 0 : 1;  // 7:3 chance of generating 0 over 1
+		
+		int randomValue = rand() % 100;  // Generates values from 0 to 100
+        int result = (randomValue < 95) ? 0 : 1;  // 95:5 chance of generating 0 over 1
 		if (result==1){
 			epicell->type = EpiCellType::TYPE2;
             epicell->infectable = true;
@@ -496,10 +496,42 @@ Tissue::Tissue()
 			
 		}
 		else{
+			epicell->type = EpiCellType::TYPE1;
+			epicell->infectable = false;
+            //epicell->status = EpiCellStatus::TYPE1;
+		}
+      } 	  
+	  else {
+        int randomValue = rand() % 10;  // Generates values from 0 to 9
+        int result = (randomValue < 7) ? 0 : 1;  // 7:3 chance of generating 0 over 1
+		if (result==1){
+			int randomValue = rand() % 100;  // Generates values from 0 to 100
+            int result = (randomValue < 95) ? 0 : 1;  // 95:5 chance of generating 0 over 1	
+			if (result==1){
+				epicell->type = EpiCellType::TYPE2;
+				epicell->infectable = true;
+				//epicell->status = EpiCellStatus::TYPE2;
+			}
+		    else {
+				epicell->type = EpiCellType::TYPE1;
+				epicell->infectable = false;
+				//epicell->status = EpiCellStatus::TYPE1;
+			
+			
+			}
+			
+		}
+		else{
 			epicell->type = EpiCellType::AIR;
 			epicell->infectable = false;
             //epicell->status = EpiCellStatus::AIR;
 		}
+		
+		//epicell->type = EpiCellType::AIR;
+		//epicell->infectable = false;
+        //epicell->status = EpiCellStatus::AIR;
+		
+		
 		
       }
 
