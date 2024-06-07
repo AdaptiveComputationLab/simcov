@@ -27,9 +27,9 @@ endif
 
 CXXFLAGS = -Iinclude -std=c++11 -O3
 DEBUGFLAGS = -Iinclude -std=c++11 -g
+UPCXXINC = -Iinclude
 
 CPUSRCS = src/main.cpp src/options.cpp
-UPCXXINC = -I/home/kirtus/Software/upcxx/install/include/
 
 CUDALINK = -lcurand_static -lculibos -lcudart_static -lpthread -ldl -I /usr/local/cuda-12.1/include -L /usr/local/cuda-12.1/lib64
 
