@@ -36,9 +36,9 @@ endforeach()
 
 add_definitions(-DALL_DEFNS=\"${all_defs}\")
 
-add_executable(simcov main.cpp tissue.cpp utils.cpp)
+add_executable(simforager main.cpp tissue.cpp utils.cpp)
 
-target_link_libraries(simcov Threads::Threads ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES} SIMCOV_VERSION_LIB)
+target_link_libraries(simforager Threads::Threads ${UPCXX_LIBRARIES} ${UPCXX_UTILS_LIBRARIES} SIMFORAGER_VERSION_LIB)
 
 #install(PROGRAMS simcov.py DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-install(TARGETS simcov DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+install(TARGETS simforager DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)

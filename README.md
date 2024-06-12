@@ -1,3 +1,5 @@
+simforager is a forked adaptation of:
+
 simcov Copyright (c) 2021, The Regents of the University of California,
 through Lawrence Berkeley National Laboratory (subject to receipt of
 any required approvals from the U.S. Dept. of Energy), Arizona State
@@ -14,9 +16,9 @@ its behalf a paid-up, nonexclusive, irrevocable, worldwide license in the
 Software to reproduce, distribute copies to the public, prepare derivative 
 works, and perform publicly and display publicly, and to permit others to do so.
 
-# SimCov #
+# SimForager #
 
-This is a model for simulating the response of the immune system to infections in the lungs.
+This is a model for simulating large amounts of [currently homogeneous] foragers.
 
 ## Installing and building
 
@@ -24,7 +26,7 @@ It requires [UPC++](https://bitbucket.org/berkeleylab/upcxx/wiki/Home), C++ and 
 
 This repo contains a submodule, so to install, it's best to run
 
-`git clone --recurse-submodules git@github.com:AdaptiveComputationLab/simcov.git`
+`git clone --recurse-submodules git@github.com:cswritlarge/simforager.git`
 
 to fully initialize the submodules.
 
@@ -38,22 +40,21 @@ or
 
 The executable will be installed in
 
-`<simcov-repo-directory>/install/bin`
+`<simforager-repo-directory>/install/bin`
 
 ## Running
 
 To run, execute
 
-`upcxx-run -n <number_processes> -N <number_nodes> -- simcov`
+`upcxx-run -n <number_processes> -N <number_nodes> -- simforager`
 
 To see the parameters available, run with `-h`.
 
-It will create an output directory, which will contain a detailed log file (`simcov.log`). It will also create a file containing
-all the configuration parameters (`simcov.config`).
+It will create an output directory, which will contain a detailed log file (`simforager.log`). It will also create a file containing all the configuration parameters (`simforager.config`).
 
 A run can also be executed with a config file as
 
-`upcxx-run -n <number_processes> -N <number_nodes> -- simcov --config <config_file>`
+`upcxx-run -n <number_processes> -N <number_nodes> -- simforager --config <config_file>`
 
 The config file consists of a list of all the command line options as key-value pairs, with semi-colons denoting comments.
 For example:

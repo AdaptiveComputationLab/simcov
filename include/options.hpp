@@ -94,10 +94,10 @@ class Options {
 
   void setup_log_file() {
     if (!upcxx::rank_me()) {
-      string log_fname = output_dir + "/simcov.log";
+      string log_fname = output_dir + "/simforager.log";
       // check to see if simcov.log exists. If so, rename it
       if (file_exists(log_fname)) {
-        string new_log_fname = output_dir + "/simcov-" + get_current_time(true) + ".log";
+        string new_log_fname = output_dir + "/simforager-" + get_current_time(true) + ".log";
         cerr << KLRED << "WARNING: " << KNORM << log_fname << " exists. Renaming to "
              << new_log_fname << endl;
         if (rename(log_fname.c_str(), new_log_fname.c_str()) == -1)
@@ -109,7 +109,7 @@ class Options {
 
   void set_random_infections(int num) {
     for (int i = 0; i < num; i++) {
-      if (i % rank_n() != rank_me()) continue;
+      if (i % upcxx::rank_n() != upcxx::rank_me()) continue;
       infection_coords.push_back(
           {_rnd_gen->get(dimensions[0] * 0.1, dimensions[0] * 0.9),
            _rnd_gen->get(dimensions[1] * 0.1, dimensions[1] * 0.9),
@@ -123,7 +123,7 @@ class Options {
     vector<array<int, 3>> infections =
         get_uniform_infections(num, dimensions[0], dimensions[1], dimensions[2]);
     for (int i = 0; i < infections.size(); i++) {
-      if (i % rank_n() != rank_me()) continue;
+      if (i % upcxx::rank_n() != upcxx::rank_me()) continue;
       infection_coords.push_back({infections[i][0], infections[i][1], infections[i][2], 0});
     }
   }
@@ -197,7 +197,7 @@ class Options {
       }
     }
     for (int i = 0; i < coords_strs.size(); i++) {
-      if (i % rank_n() != rank_me()) continue;
+      if (i % upcxx::rank_n() != upcxx::rank_me()) continue;
       auto coords_and_time = splitter(",", coords_strs[i]);
       if (coords_and_time.size() == 4) {
         try {
@@ -255,7 +255,8 @@ class Options {
   int tcell_initial_delay = 10080;
   int tcell_vascular_period = 5760;
   int tcell_tissue_period = 1440;
-  int tcell_binding_period = 10;
+  // int tcell_binding_period = 10;
+  double tcell_binding_period = 10;
   double max_binding_prob = 1.0;
 
   double infectivity = 0.02;
@@ -274,7 +275,7 @@ class Options {
   int antibody_period = 5760;
 
   unsigned rnd_seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  string output_dir = "simcov-results-n" + to_string(upcxx::rank_n()) + "-N" +
+  string output_dir = "simforager-results-n" + to_string(upcxx::rank_n()) + "-N" +
                       to_string(upcxx::rank_n() / upcxx::local_team().rank_n());
   int sample_period = 0;
   int sample_resolution = 1;
@@ -287,8 +288,8 @@ class Options {
 
   bool load(int argc, char **argv) {
     // SIMCOV version v0.1-a0decc6-master (Release) built on 2020-04-08T22:15:40 with g++
-    string full_version_str = "SimCov version " + string(SIMCOV_VERSION) + "-" +
-                              string(SIMCOV_BRANCH) + " built on " + string(SIMCOV_BUILD_DATE);
+    string full_version_str = "SimForager version " + string(SIMFORAGER_VERSION) + "-" +
+                              string(SIMFORAGER_BRANCH) + " built on " + string(SIMFORAGER_BUILD_DATE);
     vector<string> infection_coords_strs;
 
     CLI::App app(full_version_str);
@@ -419,7 +420,7 @@ class Options {
 
     upcxx::barrier();
 
-    _rnd_gen = make_shared<Random>(rnd_seed + rank_me());
+    _rnd_gen = make_shared<Random>(rnd_seed + upcxx::rank_me());
     
     if (!lung_model_dir.empty()) {
       auto model_dims = get_model_dims(lung_model_dir + "/alveolus.dat");
@@ -427,7 +428,7 @@ class Options {
       for (int i = 0; i < 3; i++) {
         if (model_dims[i] != dimensions[i]) {
           dimensions = model_dims;
-          if (!rank_me())
+          if (!upcxx::rank_me())
             cerr << KLRED << "WARNING: " << KNORM
                  << "Setting dimensions to model data: " << dimensions[0] << ", " << dimensions[1]
                  << ", " << dimensions[2] << endl;
@@ -437,7 +438,7 @@ class Options {
     }
 
     if (virion_clearance_rate * antibody_factor > 1.0) {
-      if (!rank_me())
+      if (!upcxx::rank_me())
         cerr << "Invalid parameter settings: virion-clearance * antibody_factor > 1.\n"
              << "Reduce either or both of those settings\n";
       return false;
@@ -453,7 +454,7 @@ class Options {
 
     if (dimensions[0] % sample_resolution || dimensions[1] % sample_resolution ||
         (dimensions[2] > 1 && dimensions[2] % sample_resolution)) {
-      if (!rank_me())
+      if (!upcxx::rank_me())
         cerr << "Error: sample period " << sample_resolution
              << " must be a factor of all the dimensions\n";
       return false;
@@ -461,20 +462,20 @@ class Options {
 
     for (int i = 0; i < 3; i++) {
       if (dimensions[i] > whole_lung_dims[i]) {
-        if (!rank_me()) cerr << "Dimensions must be <= whole lung dimensions\n";
+        if (!upcxx::rank_me()) cerr << "Dimensions must be <= whole lung dimensions\n";
         return false;
       }
     }
     setup_output_dir();
     setup_log_file();
 
-    init_logger(output_dir + "/simcov.log", verbose);
+    init_logger(output_dir + "/simforager.log", verbose);
 
 #ifdef DEBUG
     open_dbg("debug");
 #endif
 
-    SLOG(KLBLUE, "SimCov version ", full_version_str, KNORM, "\n");
+    SLOG(KLBLUE, "SimForager version ", full_version_str, KNORM, "\n");
 
     if (upcxx::rank_me() == 0) {
       // print out all compiler definitions
@@ -498,7 +499,7 @@ class Options {
 #endif
     if (!upcxx::rank_me()) {
       // write out configuration file for restarts
-      ofstream ofs(output_dir + "/simcov.config");
+      ofstream ofs(output_dir + "/simforager.config");
       ofs << app.config_to_str(true, true);
     }
     upcxx::barrier();
