@@ -502,8 +502,8 @@ Tissue::Tissue()
 		}
       } 	  
 	  else {
-        int randomValue = rand() % 10;  // Generates values from 0 to 9
-        int result = (randomValue < 7) ? 0 : 1;  // 7:3 chance of generating 0 over 1
+        int randomValue = rand() % 13;  // Generates values from 0 to 9
+        int result = (randomValue < 10) ? 0 : 1;  // 7:3 chance of generating 0 over 1
 		if (result==1){
 			int randomValue = rand() % 100;  // Generates values from 0 to 100
             int result = (randomValue < 95) ? 0 : 1;  // 95:5 chance of generating 0 over 1	
